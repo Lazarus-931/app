@@ -1,0 +1,41 @@
+name: MLXPlatform
+options:
+  bundleIdPrefix: dev.local
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ARCHS: arm64
+targets:
+  MLXServerKit:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/MLXServerKit
+    postBuildScripts:
+      - name: Build mlx-vlm-server resource
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          python3 "$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerKit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: NO
+  MLXServerDemo:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/MLXServerDemo
+    dependencies:
+      - target: MLXServerKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerDemo
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        INFOPLIST_KEY_NSHighResolutionCapable: YES
