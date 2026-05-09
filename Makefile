@@ -1,5 +1,5 @@
 .PHONY: build verify clean
-.PHONY: xcode-generate xcode-build xcode-smoke
+.PHONY: xcode-generate xcode-build xcode-smoke xcode-lifecycle-smoke
 
 XCODE_DERIVED_DATA ?= build/XcodeDerivedData
 
@@ -23,3 +23,6 @@ xcode-build: xcode-generate
 
 xcode-smoke: xcode-build
 	$(XCODE_DERIVED_DATA)/Build/Products/Debug/MLXServerDemo.app/Contents/MacOS/MLXServerDemo --smoke-test
+
+xcode-lifecycle-smoke: xcode-build
+	$(XCODE_DERIVED_DATA)/Build/Products/Debug/MLXServerDemo.app/Contents/MacOS/MLXServerDemo --lifecycle-smoke-test

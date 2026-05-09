@@ -1,61 +1,151 @@
 # mlx-platform
 
-Build a relocatable `mlx-vlm` server distribution using
-[`python-build-standalone`](https://github.com/astral-sh/python-build-standalone).
+`mlx-platform` is a small macOS/Xcode project for embedding and controlling an
+`mlx-vlm` HTTP server from an app.
 
-The build downloads a standalone CPython archive for the current platform,
-installs `mlx-vlm` into a private copy of that Python, and writes a native
-launcher executable that runs:
+The primary targets are:
 
-```sh
-python -m mlx_vlm.server
-```
+- `MLXServerKit`: a framework that embeds a relocatable `mlx-vlm` server bundle
+  and exposes Swift APIs to locate, launch, monitor, and stop it.
+- `MLXServerDemo`: a macOS app that uses `MLXServerKit`, starts the bundled
+  server, streams its log output, and exposes Start/Stop actions from a menu bar
+  extra.
+
+The Python packaging flow exists to support `MLXServerKit`: the framework build
+phase creates a self-contained Python runtime and installs `mlx-vlm` into the
+framework resources.
 
 ## Requirements
 
 - macOS Apple Silicon for MLX runtime use.
+- Xcode and `xcodebuild`.
+- `xcodegen` for regenerating `MLXPlatform.xcodeproj`.
 - `python3` on the build machine.
-- Network access to GitHub releases and PyPI.
-
-The build defaults to CPython 3.12.13 from the pinned
-`python-build-standalone` `20260508` release. Python package versions are
-pinned in `PythonDistribution/Requirements/mlx-vlm-server-macos-arm64.txt`.
+- Network access to GitHub releases and PyPI when the embedded Python bundle
+  needs to be built or refreshed.
 
 ## Project Layout
 
 ```text
+Sources/
+├── MLXServerDemo/
+└── MLXServerKit/
 PythonDistribution/
 ├── Launcher/
 ├── Requirements/
 └── Scripts/
-Sources/
-├── MLXServerDemo/
-└── MLXServerKit/
 project.yml
 ```
 
-`PythonDistribution/` owns everything needed to generate the embedded Python
-runtime. `Sources/` contains the Swift targets used by the Xcode project.
+`Sources/` contains the app and framework Swift sources. `PythonDistribution/`
+contains the implementation details for generating the framework's embedded
+`mlx-vlm-server` resource.
 
-## Build
+## Build And Run
+
+Generate and build the Xcode project:
+
+```sh
+make xcode-generate
+make xcode-build
+```
+
+Run the demo app from Xcode, or launch the built app directly:
+
+```sh
+open build/XcodeDerivedData/Build/Products/Debug/MLXServerDemo.app
+```
+
+When launched normally, `MLXServerDemo` starts `mlx-vlm-server` without
+arguments. The app keeps a reference to the long-running process, streams
+stdout/stderr into the window, and provides `Start`, `Stop`, and `Quit` actions
+from the `MLX` menu bar extra.
+
+## Smoke Tests
+
+Check that the bundled executable can run and print `mlx_vlm.server` help:
+
+```sh
+make xcode-smoke
+```
+
+Check process lifecycle management:
+
+```sh
+make xcode-lifecycle-smoke
+```
+
+The lifecycle smoke test starts `mlx-vlm-server` without arguments, confirms it
+continues running, then stops it through `MLXServerProcessController`.
+
+## MLXServerKit
+
+`MLXServerKit` embeds this resource in the built framework:
+
+```text
+MLXServerKit.framework/Resources/mlx-vlm-server/
+├── bin/mlx-vlm-server
+└── python/
+```
+
+The framework exposes:
+
+- `MLXServer.distributionURL()`
+- `MLXServer.executableURL()`
+- `MLXServer.makeProcess(arguments:)`
+- `MLXServer.run(arguments:timeout:)`
+- `MLXServerProcessController.start(arguments:)`
+- `MLXServerProcessController.stop(timeout:)`
+
+`MLXServerProcessController` is the app-facing API for long-running server
+management. It retains the active `Process`, streams output through callbacks,
+and clears its state when the server exits.
+
+## Embedded Python Bundle
+
+The `MLXServerKit` build phase runs:
+
+```sh
+python3 "$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py"
+```
+
+That script builds `mlx-vlm-server` directly into the framework resources. The
+output is stamped with the Python archive, requirements hash, and launcher hash,
+so repeat Xcode builds reuse the existing resource tree until one of those
+inputs changes.
+
+The build defaults to:
+
+- CPython `3.12.13`
+- `python-build-standalone` release `20260508`
+- macOS arm64 `install_only_stripped` asset
+- pinned Python packages from
+  `PythonDistribution/Requirements/mlx-vlm-server-macos-arm64.txt`
+
+## Standalone Bundle
+
+For development, the same bundling script can write a standalone output under
+`dist/`:
 
 ```sh
 make build
 ```
 
-The output is written to:
+The output is:
 
 ```text
 dist/mlx-vlm-server/
+├── bin/mlx-vlm-server
+└── python/
 ```
 
-Run the server launcher with any arguments accepted by `mlx_vlm.server`:
+Run it directly with any arguments accepted by `mlx_vlm.server`:
 
 ```sh
 ./dist/mlx-vlm-server/bin/mlx-vlm-server --help
 ```
 
-## Useful Options
+Useful builder options:
 
 ```sh
 python3 PythonDistribution/Scripts/build_mlx_vlm_server.py --python-version 3.12
@@ -66,46 +156,3 @@ python3 PythonDistribution/Scripts/build_mlx_vlm_server.py --output dist/custom-
 
 Use `--skip-install` to assemble the Python distribution and launcher without
 installing `mlx-vlm`, which is useful for testing the packaging flow quickly.
-
-## Output Layout
-
-```text
-dist/mlx-vlm-server/
-├── bin/mlx-vlm-server
-└── python/
-```
-
-`bin/mlx-vlm-server` resolves its own install directory at runtime, sets
-`PYTHONHOME` to the bundled `python/` directory, and executes
-`mlx_vlm.server`.
-
-## Xcode Demo
-
-Generate and build the Xcode project:
-
-```sh
-make xcode-generate
-make xcode-build
-```
-
-Run the non-GUI app smoke test:
-
-```sh
-make xcode-smoke
-```
-
-The `MLXServerKit` framework build phase runs:
-
-```sh
-python3 "$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py"
-```
-
-That script builds `mlx-vlm-server` directly into the framework resources:
-
-```text
-MLXServerKit.framework/Resources/mlx-vlm-server/
-```
-
-The output is stamped with the Python archive, requirements hash, and launcher
-hash, so repeat Xcode builds reuse the existing resource tree until one of those
-inputs changes.
