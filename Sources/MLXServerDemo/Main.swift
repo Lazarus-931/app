@@ -25,10 +25,16 @@ enum Main {
             }
 
             do {
-                try server.start()
+                let smokePort = ProcessInfo.processInfo.environment["MLX_SERVER_SMOKE_PORT"] ?? "18080"
+                try server.start(arguments: ["--host", "127.0.0.1", "--port", smokePort])
                 Thread.sleep(forTimeInterval: 3)
                 guard server.isRunning else {
                     fputs("mlx-vlm-server exited before stop was requested\n", stderr)
+                    exit(EXIT_FAILURE)
+                }
+                guard checkMetricsEndpoint(port: smokePort) else {
+                    fputs("mlx-vlm-server did not expose /metrics on port \(smokePort)\n", stderr)
+                    try? server.stop()
                     exit(EXIT_FAILURE)
                 }
                 try server.stop()
@@ -50,5 +56,26 @@ enum Main {
         application.setActivationPolicy(.regular)
         application.activate(ignoringOtherApps: true)
         application.run()
+    }
+
+    private static func checkMetricsEndpoint(port: String) -> Bool {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/metrics") else {
+            return false
+        }
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var didSucceed = false
+        let task = URLSession.shared.dataTask(with: url) { _, response, _ in
+            if let httpResponse = response as? HTTPURLResponse {
+                didSucceed = (200..<300).contains(httpResponse.statusCode)
+            }
+            semaphore.signal()
+        }
+        task.resume()
+
+        if semaphore.wait(timeout: .now() + 5) == .timedOut {
+            task.cancel()
+        }
+        return didSucceed
     }
 }

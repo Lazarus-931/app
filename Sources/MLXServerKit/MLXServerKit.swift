@@ -312,7 +312,7 @@ public struct MLXServerAPCSnapshot: Decodable {
     }
 }
 
-public enum MLXServerMetricsError: Error, CustomStringConvertible {
+public enum MLXServerMetricsError: Error, LocalizedError, CustomStringConvertible {
     case invalidResponse
     case httpStatus(Int)
 
@@ -323,6 +323,10 @@ public enum MLXServerMetricsError: Error, CustomStringConvertible {
         case .httpStatus(let statusCode):
             return "Metrics endpoint returned HTTP \(statusCode)"
         }
+    }
+
+    public var errorDescription: String? {
+        description
     }
 }
 

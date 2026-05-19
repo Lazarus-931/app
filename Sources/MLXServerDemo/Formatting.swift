@@ -1,0 +1,421 @@
+import Foundation
+import MLXServerKit
+
+struct FormattedCount {
+    let display: String
+    let tooltip: String
+}
+
+struct StatsEntry {
+    let label: String
+    let value: String
+    let tooltip: String?
+}
+
+enum MLXServerDemoFormatting {
+    private static let integerFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
+
+    static func compactCount(_ value: Int) -> FormattedCount {
+        let raw = integerFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        let sign = value < 0 ? "-" : ""
+        let absoluteValue = Double(abs(value))
+        let units: [(suffix: String, factor: Double)] = [
+            ("T", 1_000_000_000_000),
+            ("B", 1_000_000_000),
+            ("M", 1_000_000),
+            ("K", 1_000),
+        ]
+
+        for unit in units where absoluteValue >= unit.factor {
+            let scaled = absoluteValue / unit.factor
+            let formatted = scaled >= 100
+                ? String(format: "%.0f%@", scaled, unit.suffix)
+                : String(format: "%.1f%@", scaled, unit.suffix)
+            return FormattedCount(
+                display: sign + formatted.replacingOccurrences(of: ".0", with: ""),
+                tooltip: raw
+            )
+        }
+
+        return FormattedCount(display: "\(value)", tooltip: raw)
+    }
+
+    static func rate(_ value: Double?) -> String {
+        guard let value, value > 0, value.isFinite else {
+            return "--"
+        }
+        return String(format: "%.1f tok/s", value)
+    }
+
+    static func duration(_ value: Double?) -> String {
+        guard let value, value >= 0, value.isFinite else {
+            return "--"
+        }
+
+        if value < 1 {
+            return String(format: "%.2fs", value)
+        }
+        if value < 60 {
+            return String(format: "%.1fs", value)
+        }
+
+        let totalSeconds = Int(value.rounded())
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        return "\(minutes)m \(seconds)s"
+    }
+
+    static func gigabytes(_ value: Double) -> String {
+        guard value.isFinite else {
+            return "--"
+        }
+        return String(format: "%.2f GB", value)
+    }
+
+    static func percent(_ value: Double) -> String {
+        guard value.isFinite else {
+            return "--"
+        }
+        let percent = value <= 1 ? value * 100 : value
+        return String(format: "%.1f%%", percent)
+    }
+
+    static func truncateModelName(_ value: String, maxLength: Int = 48) -> String {
+        guard value.count > maxLength else {
+            return value
+        }
+
+        let keep = max(8, (maxLength - 3) / 2)
+        let prefix = value.prefix(keep)
+        let suffix = value.suffix(keep)
+        return "\(prefix)...\(suffix)"
+    }
+}
+
+enum MLXServerDemoStats {
+    static func sessionEntries(_ metrics: MLXServerMetrics) -> [StatsEntry] {
+        [
+            statsEntry("Requests completed", metrics.summary.requestsCompleted),
+            statsEntry("Requests failed", metrics.summary.requestsFailed),
+            statsEntry("In flight", metrics.summary.inFlight),
+            statsEntry("Prompt tokens", metrics.summary.promptTokensTotal),
+            statsEntry("Generated tokens", metrics.summary.generatedTokensTotal),
+            statsEntry("Total processed tokens", metrics.summary.totalProcessedTokens),
+            StatsEntry(
+                label: "Avg decode speed",
+                value: MLXServerDemoFormatting.rate(metrics.summary.averageDecodeTokensPerSecond),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Avg request speed",
+                value: MLXServerDemoFormatting.rate(metrics.summary.averageRequestTokensPerSecond),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Uptime",
+                value: MLXServerDemoFormatting.duration(metrics.summary.uptimeSeconds),
+                tooltip: nil
+            ),
+        ]
+    }
+
+    static func allTimeEntries(_ allTimeStats: MLXServerAllTimeStats) -> [StatsEntry] {
+        [
+            statsEntry("Requests completed", allTimeStats.requestsCompleted),
+            statsEntry("Requests failed", allTimeStats.requestsFailed),
+            statsEntry("Prompt tokens", allTimeStats.promptTokensTotal),
+            statsEntry("Generated tokens", allTimeStats.generatedTokensTotal),
+            statsEntry("Total processed tokens", allTimeStats.totalProcessedTokens),
+            StatsEntry(
+                label: "Avg decode speed",
+                value: MLXServerDemoFormatting.rate(allTimeStats.averageDecodeTokensPerSecond),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Avg request speed",
+                value: MLXServerDemoFormatting.rate(allTimeStats.averageRequestTokensPerSecond),
+                tooltip: nil
+            ),
+        ]
+    }
+
+    static func latestRequestEntries(_ latest: MLXServerLatestRequest) -> [StatsEntry] {
+        let fullModel = latest.model ?? "None"
+        var entries: [StatsEntry] = [
+            StatsEntry(
+                label: "Model",
+                value: MLXServerDemoFormatting.truncateModelName(fullModel),
+                tooltip: fullModel
+            ),
+            StatsEntry(label: "Endpoint", value: latest.endpoint ?? "--", tooltip: nil),
+            statsEntry("Prompt tokens", latest.promptTokens),
+            statsEntry("Completion tokens", latest.completionTokens),
+            statsEntry("Generated tokens", latest.generatedTokens),
+            statsEntry("Total tokens", latest.promptTokens + latest.generatedTokens),
+            StatsEntry(
+                label: "Time to first token",
+                value: MLXServerDemoFormatting.duration(latest.timeToFirstTokenSeconds),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Prefill speed",
+                value: MLXServerDemoFormatting.rate(latest.prefillTokensPerSecond),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Decode speed",
+                value: MLXServerDemoFormatting.rate(latest.decodeTokensPerSecond),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Elapsed time",
+                value: MLXServerDemoFormatting.duration(latest.requestElapsedSeconds),
+                tooltip: nil
+            ),
+        ]
+
+        if let peakMemoryGB = latest.peakMemoryGB {
+            entries.append(StatsEntry(
+                label: "Peak memory",
+                value: MLXServerDemoFormatting.gigabytes(peakMemoryGB),
+                tooltip: nil
+            ))
+        }
+        if latest.imageCount > 0 || latest.audioCount > 0 {
+            entries.append(StatsEntry(
+                label: "Media",
+                value: "\(latest.imageCount) images, \(latest.audioCount) audio",
+                tooltip: nil
+            ))
+        }
+        if latest.thinkingEnabled || latest.toolCalls || latest.apcEnabled {
+            entries.append(StatsEntry(label: "Flags", value: latestFlags(latest), tooltip: nil))
+        }
+
+        return entries
+    }
+
+    static func runtimeEntries(_ runtime: MLXServerRuntimeSnapshot) -> [StatsEntry] {
+        let loadedModel = runtime.displayLoadedModel
+        var entries: [StatsEntry] = [
+            StatsEntry(
+                label: "Loaded model",
+                value: MLXServerDemoFormatting.truncateModelName(loadedModel),
+                tooltip: loadedModel
+            ),
+            statsEntry("Queue depth", runtime.requestQueueDepth),
+            StatsEntry(label: "Batching", value: runtime.continuousBatchingEnabled ? "On" : "Off", tooltip: nil),
+            StatsEntry(label: "APC", value: runtime.apc.enabled ? "On" : "Off", tooltip: nil),
+        ]
+
+        if let contextLimit = runtime.effectiveContextLimit ?? runtime.configuredContextLimit ?? runtime.loadedContextSize {
+            entries.append(statsEntry("Context limit", contextLimit))
+        }
+        if let loadedAdapter = runtime.loadedAdapter {
+            entries.append(StatsEntry(
+                label: "Adapter",
+                value: MLXServerDemoFormatting.truncateModelName(loadedAdapter),
+                tooltip: loadedAdapter
+            ))
+        }
+        if let toolParser = runtime.loadedToolParser {
+            entries.append(StatsEntry(label: "Tool parser", value: toolParser, tooltip: nil))
+        }
+        if runtime.apc.enabled {
+            if let tokenHitRate = runtime.apc.tokenHitRate {
+                entries.append(StatsEntry(
+                    label: "APC token hit rate",
+                    value: MLXServerDemoFormatting.percent(tokenHitRate),
+                    tooltip: nil
+                ))
+            }
+            if let matchedTokens = runtime.apc.matchedTokens {
+                entries.append(statsEntry("APC matched tokens", matchedTokens))
+            }
+            if let diskHits = runtime.apc.diskHits {
+                entries.append(statsEntry("APC disk hits", diskHits))
+            }
+        }
+
+        return entries
+    }
+
+    static func statsEntry(_ label: String, _ value: Int) -> StatsEntry {
+        let formatted = MLXServerDemoFormatting.compactCount(value)
+        return StatsEntry(label: label, value: formatted.display, tooltip: formatted.tooltip)
+    }
+
+    private static func latestFlags(_ latest: MLXServerLatestRequest) -> String {
+        var flags: [String] = []
+        if latest.thinkingEnabled {
+            flags.append("thinking")
+        }
+        if latest.toolCalls {
+            flags.append("tools")
+        }
+        if latest.apcEnabled {
+            flags.append("APC")
+        }
+        return flags.isEmpty ? "--" : flags.joined(separator: ", ")
+    }
+}
+
+struct MLXServerSessionTotals {
+    static let zero = MLXServerSessionTotals(
+        requestsCompleted: 0,
+        requestsFailed: 0,
+        promptTokensTotal: 0,
+        completionTokensTotal: 0,
+        generatedTokensTotal: 0,
+        requestTimeTotalSeconds: 0,
+        decodeTimeTotalSeconds: 0
+    )
+
+    var requestsCompleted: Int
+    var requestsFailed: Int
+    var promptTokensTotal: Int
+    var completionTokensTotal: Int
+    var generatedTokensTotal: Int
+    var requestTimeTotalSeconds: Double
+    var decodeTimeTotalSeconds: Double
+
+    init(
+        requestsCompleted: Int,
+        requestsFailed: Int,
+        promptTokensTotal: Int,
+        completionTokensTotal: Int,
+        generatedTokensTotal: Int,
+        requestTimeTotalSeconds: Double,
+        decodeTimeTotalSeconds: Double
+    ) {
+        self.requestsCompleted = requestsCompleted
+        self.requestsFailed = requestsFailed
+        self.promptTokensTotal = promptTokensTotal
+        self.completionTokensTotal = completionTokensTotal
+        self.generatedTokensTotal = generatedTokensTotal
+        self.requestTimeTotalSeconds = requestTimeTotalSeconds
+        self.decodeTimeTotalSeconds = decodeTimeTotalSeconds
+    }
+
+    init(summary: MLXServerMetricsSummary) {
+        requestsCompleted = summary.requestsCompleted
+        requestsFailed = summary.requestsFailed
+        promptTokensTotal = summary.promptTokensTotal
+        completionTokensTotal = summary.completionTokensTotal
+        generatedTokensTotal = summary.generatedTokensTotal
+        requestTimeTotalSeconds = summary.averageRequestTimeSeconds * Double(summary.requestsCompleted)
+        decodeTimeTotalSeconds = summary.averageDecodeTokensPerSecond > 0
+            ? Double(summary.generatedTokensTotal) / summary.averageDecodeTokensPerSecond
+            : 0
+    }
+
+    var hasValues: Bool {
+        requestsCompleted > 0 ||
+            requestsFailed > 0 ||
+            promptTokensTotal > 0 ||
+            completionTokensTotal > 0 ||
+            generatedTokensTotal > 0 ||
+            requestTimeTotalSeconds > 0 ||
+            decodeTimeTotalSeconds > 0
+    }
+
+    func appearsReset(comparedTo previous: MLXServerSessionTotals) -> Bool {
+        requestsCompleted < previous.requestsCompleted ||
+            requestsFailed < previous.requestsFailed ||
+            promptTokensTotal < previous.promptTokensTotal ||
+            completionTokensTotal < previous.completionTokensTotal ||
+            generatedTokensTotal < previous.generatedTokensTotal
+    }
+
+    func delta(since previous: MLXServerSessionTotals) -> MLXServerSessionTotals {
+        MLXServerSessionTotals(
+            requestsCompleted: max(0, requestsCompleted - previous.requestsCompleted),
+            requestsFailed: max(0, requestsFailed - previous.requestsFailed),
+            promptTokensTotal: max(0, promptTokensTotal - previous.promptTokensTotal),
+            completionTokensTotal: max(0, completionTokensTotal - previous.completionTokensTotal),
+            generatedTokensTotal: max(0, generatedTokensTotal - previous.generatedTokensTotal),
+            requestTimeTotalSeconds: max(0, requestTimeTotalSeconds - previous.requestTimeTotalSeconds),
+            decodeTimeTotalSeconds: max(0, decodeTimeTotalSeconds - previous.decodeTimeTotalSeconds)
+        )
+    }
+}
+
+struct MLXServerAllTimeStats: Codable {
+    var requestsCompleted: Int = 0
+    var requestsFailed: Int = 0
+    var promptTokensTotal: Int = 0
+    var completionTokensTotal: Int = 0
+    var generatedTokensTotal: Int = 0
+    var requestTimeTotalSeconds: Double = 0
+    var decodeTimeTotalSeconds: Double = 0
+    var lastUpdated: Date?
+
+    var totalProcessedTokens: Int {
+        promptTokensTotal + generatedTokensTotal
+    }
+
+    var averageDecodeTokensPerSecond: Double? {
+        guard generatedTokensTotal > 0, decodeTimeTotalSeconds > 0 else {
+            return nil
+        }
+        return Double(generatedTokensTotal) / decodeTimeTotalSeconds
+    }
+
+    var averageRequestTokensPerSecond: Double? {
+        guard completionTokensTotal > 0, requestTimeTotalSeconds > 0 else {
+            return nil
+        }
+        return Double(completionTokensTotal) / requestTimeTotalSeconds
+    }
+
+    mutating func apply(delta: MLXServerSessionTotals) {
+        requestsCompleted += delta.requestsCompleted
+        requestsFailed += delta.requestsFailed
+        promptTokensTotal += delta.promptTokensTotal
+        completionTokensTotal += delta.completionTokensTotal
+        generatedTokensTotal += delta.generatedTokensTotal
+        requestTimeTotalSeconds += delta.requestTimeTotalSeconds
+        decodeTimeTotalSeconds += delta.decodeTimeTotalSeconds
+        lastUpdated = Date()
+    }
+
+    static func load() -> MLXServerAllTimeStats {
+        let url = storageURL()
+        guard let data = try? Data(contentsOf: url) else {
+            return MLXServerAllTimeStats()
+        }
+        return (try? PropertyListDecoder().decode(MLXServerAllTimeStats.self, from: data)) ?? MLXServerAllTimeStats()
+    }
+
+    func save() {
+        let url = Self.storageURL()
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let data = try PropertyListEncoder().encode(self)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            // Stats are best-effort cache data; keep the in-memory counters.
+        }
+    }
+
+    private static func storageURL() -> URL {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let bundleID = Bundle.main.bundleIdentifier ?? "dev.local.MLXServerDemo"
+        return caches
+            .appendingPathComponent(bundleID, isDirectory: true)
+            .appendingPathComponent("MLXServerStats.plist")
+    }
+}

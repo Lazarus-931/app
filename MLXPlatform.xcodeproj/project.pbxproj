@@ -7,9 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0F1DC5A03D5852A5D9334D85 /* ControlPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */; };
+		14E63F48F62A4F1B8D639139 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C167745187A4892E26BA3BC /* LogsView.swift */; };
+		33CBEFA3EDA5C21878C45FB9 /* MLXServerDemoModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 407939E1CDFD2C6D24170E71 /* MLXServerDemoModel.swift */; };
 		59D763EE60AF4E826404A5F0 /* MLXServerKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		65518C3B8CFFCB021938B536 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */; };
 		A841AE69F144D09E71807127 /* MLXServerKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; };
+		A93021B45F62CF668BA0F097 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7902FB9F159500C5939C27 /* StatsView.swift */; };
+		D63EB8DC9FD1B889B779EB78 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C732254F6B490DC7013A27 /* Formatting.swift */; };
 		DD726A45F5C6AED0FF38E82D /* MLXServerKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6776FF6417E520723AB5D793 /* MLXServerKit.swift */; };
 		F8B6A5BA3BEBA0234436C1E2 /* Main.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAAF4B832B30BF0E9EE4C343 /* Main.swift */; };
 /* End PBXBuildFile section */
@@ -39,9 +44,14 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		08C732254F6B490DC7013A27 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MLXServerKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		407939E1CDFD2C6D24170E71 /* MLXServerDemoModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerDemoModel.swift; sourceTree = "<group>"; };
+		4C7902FB9F159500C5939C27 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
+		5C167745187A4892E26BA3BC /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		6776FF6417E520723AB5D793 /* MLXServerKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerKit.swift; sourceTree = "<group>"; };
 		6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelView.swift; sourceTree = "<group>"; };
 		EAAF4B832B30BF0E9EE4C343 /* Main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Main.swift; sourceTree = "<group>"; };
 		F3165B1D9BA2757328A73CFA /* MLXServerDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MLXServerDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -87,7 +97,12 @@
 			isa = PBXGroup;
 			children = (
 				6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */,
+				C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */,
+				08C732254F6B490DC7013A27 /* Formatting.swift */,
+				5C167745187A4892E26BA3BC /* LogsView.swift */,
 				EAAF4B832B30BF0E9EE4C343 /* Main.swift */,
+				407939E1CDFD2C6D24170E71 /* MLXServerDemoModel.swift */,
+				4C7902FB9F159500C5939C27 /* StatsView.swift */,
 			);
 			path = MLXServerDemo;
 			sourceTree = "<group>";
@@ -191,7 +206,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nMLX_VLM_MAIN_CHECKOUT=\"$SRCROOT/../mlx-vlm\"\nif [ -d \"$MLX_VLM_MAIN_CHECKOUT/.git\" ] && command -v git >/dev/null 2>&1; then\n  if [ \"$(git -C \"$MLX_VLM_MAIN_CHECKOUT\" branch --show-current)\" = \"main\" ]; then\n    export MLX_VLM_SOURCE_PATH=\"$MLX_VLM_MAIN_CHECKOUT\"\n  fi\nfi\npython3 \"$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py\"\n";
+			shellScript = "set -euo pipefail\nMLX_VLM_MAIN_CHECKOUT=\"$SRCROOT/../mlx-vlm\"\nif [ -d \"$MLX_VLM_MAIN_CHECKOUT/.git\" ] && command -v git >/dev/null 2>&1; then\n  echo \"Using local mlx-vlm checkout: $MLX_VLM_MAIN_CHECKOUT ($(git -C \"$MLX_VLM_MAIN_CHECKOUT\" branch --show-current))\"\n  export MLX_VLM_SOURCE_PATH=\"$MLX_VLM_MAIN_CHECKOUT\"\nfi\npython3 \"$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -201,7 +216,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				65518C3B8CFFCB021938B536 /* AppDelegate.swift in Sources */,
+				0F1DC5A03D5852A5D9334D85 /* ControlPanelView.swift in Sources */,
+				D63EB8DC9FD1B889B779EB78 /* Formatting.swift in Sources */,
+				14E63F48F62A4F1B8D639139 /* LogsView.swift in Sources */,
+				33CBEFA3EDA5C21878C45FB9 /* MLXServerDemoModel.swift in Sources */,
 				F8B6A5BA3BEBA0234436C1E2 /* Main.swift in Sources */,
+				A93021B45F62CF668BA0F097 /* StatsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
