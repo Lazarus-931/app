@@ -20,6 +20,12 @@ targets:
         basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
+          MLX_VLM_MAIN_CHECKOUT="$SRCROOT/../mlx-vlm"
+          if [ -d "$MLX_VLM_MAIN_CHECKOUT/.git" ] && command -v git >/dev/null 2>&1; then
+            if [ "$(git -C "$MLX_VLM_MAIN_CHECKOUT" branch --show-current)" = "main" ]; then
+              export MLX_VLM_SOURCE_PATH="$MLX_VLM_MAIN_CHECKOUT"
+            fi
+          fi
           python3 "$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py"
     settings:
       base:

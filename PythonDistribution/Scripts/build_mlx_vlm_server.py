@@ -210,6 +210,33 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def relative_or_absolute(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def git_output(cwd: Path, args: list[str]) -> str | None:
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(cwd), *args],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def validate_mlx_vlm_source(path: Path) -> Path:
+    source = path.resolve()
+    if not (source / "pyproject.toml").exists():
+        raise SystemExit(f"Missing pyproject.toml in local mlx-vlm source: {source}")
+    if not (source / "mlx_vlm").exists():
+        raise SystemExit(f"Missing mlx_vlm package in local mlx-vlm source: {source}")
+    return source
+
+
 def build_signature(
     *,
     asset: Asset,
@@ -217,16 +244,33 @@ def build_signature(
     pbs_release: str,
     target: str,
     requirements: Path | None,
+    mlx_vlm_source: Path | None,
     skip_install: bool,
 ) -> dict[str, object]:
     return {
-        "version": 1,
+        "version": 2,
         "asset": asset.name,
         "python_version": python_version,
         "pbs_release": pbs_release,
         "target": target,
         "requirements": str(requirements.relative_to(REPO_ROOT)) if requirements else None,
         "requirements_sha256": file_sha256(requirements) if requirements else None,
+        "mlx_vlm_source": relative_or_absolute(mlx_vlm_source) if mlx_vlm_source else None,
+        "mlx_vlm_source_branch": (
+            git_output(mlx_vlm_source, ["branch", "--show-current"])
+            if mlx_vlm_source
+            else None
+        ),
+        "mlx_vlm_source_head": (
+            git_output(mlx_vlm_source, ["rev-parse", "HEAD"])
+            if mlx_vlm_source
+            else None
+        ),
+        "mlx_vlm_source_status": (
+            git_output(mlx_vlm_source, ["status", "--short", "--untracked-files=no"])
+            if mlx_vlm_source
+            else None
+        ),
         "launcher_sha256": file_sha256(LAUNCHER_SOURCE),
         "skip_install": skip_install,
     }
@@ -243,7 +287,9 @@ def read_stamp(output: Path) -> dict[str, object] | None:
 
 
 def write_stamp(output: Path, signature: dict[str, object]) -> None:
-    (output / BUILD_STAMP).write_text(json.dumps(signature, indent=2, sort_keys=True) + "\n")
+    (output / BUILD_STAMP).write_text(
+        json.dumps(signature, indent=2, sort_keys=True) + "\n"
+    )
 
 
 def has_valid_stamp(output: Path, signature: dict[str, object]) -> bool:
@@ -378,6 +424,45 @@ def install_requirements(
     )
 
 
+def install_local_mlx_vlm(
+    python: Path,
+    *,
+    source: Path,
+    extra_pip_args: list[str],
+) -> None:
+    env = os.environ.copy()
+    env["PYTHONNOUSERSITE"] = "1"
+
+    log(f"Installing mlx-vlm from local source {source}")
+    run(
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "pip",
+            "setuptools",
+            "wheel",
+        ],
+        env=env,
+    )
+    run(
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
+            "--force-reinstall",
+            "--no-build-isolation",
+            str(source),
+            *extra_pip_args,
+        ],
+        env=env,
+    )
+
+
 def verify_distribution(output: Path, *, expect_mlx_vlm: bool) -> None:
     python = python_executable(output / "python")
     launcher = output / "bin" / "mlx-vlm-server"
@@ -397,10 +482,15 @@ def verify_distribution(output: Path, *, expect_mlx_vlm: bool) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    default_mlx_vlm_source = os.environ.get("MLX_VLM_SOURCE_PATH")
     parser = argparse.ArgumentParser(
         description="Build a relocatable mlx-vlm server distribution with python-build-standalone."
     )
-    parser.add_argument("--python-version", default=DEFAULT_PYTHON_VERSION, help="CPython version to use")
+    parser.add_argument(
+        "--python-version",
+        default=DEFAULT_PYTHON_VERSION,
+        help="CPython version to use",
+    )
     parser.add_argument(
         "--pbs-release",
         default=DEFAULT_PBS_RELEASE,
@@ -411,9 +501,23 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_PBS_ASSET,
         help="Exact python-build-standalone asset name, or auto to query GitHub releases",
     )
-    parser.add_argument("--target", default=None, help="Override python-build-standalone target triple")
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="Output directory")
-    parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE, help="Download cache directory")
+    parser.add_argument(
+        "--target",
+        default=None,
+        help="Override python-build-standalone target triple",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_OUTPUT,
+        help="Output directory",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=DEFAULT_CACHE,
+        help="Download cache directory",
+    )
     parser.add_argument(
         "--requirements",
         type=Path,
@@ -425,15 +529,33 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Install mlx-vlm directly instead of using the pinned requirements file",
     )
-    parser.add_argument("--mlx-vlm-version", default=None, help="Pin mlx-vlm to an exact version")
+    parser.add_argument(
+        "--mlx-vlm-version",
+        default=None,
+        help="Pin mlx-vlm to an exact version",
+    )
+    parser.add_argument(
+        "--mlx-vlm-source",
+        type=Path,
+        default=Path(default_mlx_vlm_source) if default_mlx_vlm_source else None,
+        help="Install mlx-vlm from a local source checkout after installing dependencies",
+    )
     parser.add_argument(
         "--pip-arg",
         action="append",
         default=[],
         help="Extra argument to pass through to pip install mlx-vlm",
     )
-    parser.add_argument("--skip-install", action="store_true", help="Do not install mlx-vlm")
-    parser.add_argument("--verify-only", action="store_true", help="Only verify an existing output tree")
+    parser.add_argument(
+        "--skip-install",
+        action="store_true",
+        help="Do not install mlx-vlm",
+    )
+    parser.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="Only verify an existing output tree",
+    )
     parser.add_argument("--force", action="store_true", help="Rebuild even if output exists")
     return parser.parse_args()
 
@@ -462,13 +584,21 @@ def main() -> None:
         asset = asset_from_name(tag, args.pbs_asset)
     log(f"Selected {asset.name}")
 
-    requirements = None if args.skip_install or args.no_requirements else args.requirements.resolve()
+    requirements = (
+        None if args.skip_install or args.no_requirements else args.requirements.resolve()
+    )
+    mlx_vlm_source = (
+        validate_mlx_vlm_source(args.mlx_vlm_source)
+        if args.mlx_vlm_source and not args.skip_install
+        else None
+    )
     signature = build_signature(
         asset=asset,
         python_version=args.python_version,
         pbs_release=tag,
         target=target,
         requirements=requirements,
+        mlx_vlm_source=mlx_vlm_source,
         skip_install=args.skip_install,
     )
 
@@ -492,6 +622,12 @@ def main() -> None:
             install_mlx_vlm(
                 python,
                 mlx_vlm_version=args.mlx_vlm_version,
+                extra_pip_args=args.pip_arg,
+            )
+        if mlx_vlm_source:
+            install_local_mlx_vlm(
+                python,
+                source=mlx_vlm_source,
                 extra_pip_args=args.pip_arg,
             )
 

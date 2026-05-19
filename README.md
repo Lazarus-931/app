@@ -61,6 +61,11 @@ arguments. The app keeps a reference to the long-running process, streams
 stdout/stderr into the window, and provides `Start`, `Stop`, and `Quit` actions
 from the `MLX` menu bar extra.
 
+When the server is running, the menu also polls
+`http://127.0.0.1:8080/metrics` and shows a read-only `Serving Stats` submenu.
+Session values reset with the server process. All-time counters are accumulated
+by the app in `~/Library/Caches/<bundle-id>/MLXServerStats.plist`.
+
 ## Smoke Tests
 
 Check that the bundled executable can run and print `mlx_vlm.server` help:
@@ -77,6 +82,17 @@ make xcode-lifecycle-smoke
 
 The lifecycle smoke test starts `mlx-vlm-server` without arguments, confirms it
 continues running, then stops it through `MLXServerProcessController`.
+
+To exercise the stats menu manually, start the app or server and run:
+
+```sh
+scripts/run_metrics_queries.py
+```
+
+The script sends a few `/v1/chat/completions` requests with
+`mlx-community/Qwen3.5-0.8B-8bit`, then prints the `/metrics` before/after
+values and deltas. The first request may take longer while the model downloads
+and loads.
 
 ## MLXServerKit
 
@@ -122,6 +138,12 @@ The build defaults to:
 - pinned Python packages from
   `PythonDistribution/Requirements/mlx-vlm-server-macos-arm64.txt`
 
+During Xcode builds, if `../mlx-vlm` exists and is checked out on `main`, the
+build phase installs that local checkout over the pinned `mlx-vlm` wheel after
+installing dependencies. The build stamp includes the local checkout's branch,
+HEAD, and tracked working-tree status so source changes refresh the embedded
+server resource.
+
 ## Standalone Bundle
 
 For development, the same bundling script can write a standalone output under
@@ -150,6 +172,7 @@ Useful builder options:
 ```sh
 python3 PythonDistribution/Scripts/build_mlx_vlm_server.py --python-version 3.12
 python3 PythonDistribution/Scripts/build_mlx_vlm_server.py --mlx-vlm-version 0.5.0
+python3 PythonDistribution/Scripts/build_mlx_vlm_server.py --mlx-vlm-source ../mlx-vlm
 python3 PythonDistribution/Scripts/build_mlx_vlm_server.py --pbs-release 20260508
 python3 PythonDistribution/Scripts/build_mlx_vlm_server.py --output dist/custom-name
 ```
