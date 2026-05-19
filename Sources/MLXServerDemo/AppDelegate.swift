@@ -336,9 +336,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func addSection(_ title: String, entries: [StatsEntry], to menu: NSMenu) {
         menu.addItem(sectionHeader(title))
-        let tabStop = statsTabStop(for: entries)
         for entry in entries {
-            menu.addItem(makeAlignedStatsItem(label: entry.label, value: entry.value, tabStop: tabStop, tooltip: entry.tooltip))
+            menu.addItem(makeAlignedStatsItem(label: entry.label, value: entry.value, tooltip: entry.tooltip))
         }
     }
 
@@ -353,20 +352,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
-    private func makeAlignedStatsItem(label: String, value: String, tabStop: CGFloat, tooltip: String?) -> NSMenuItem {
+    private func makeAlignedStatsItem(label: String, value: String, tooltip: String?) -> NSMenuItem {
         let item = NSMenuItem(title: "\(label): \(value)", action: nil, keyEquivalent: "")
         item.isEnabled = false
         item.toolTip = tooltip
-
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: tabStop, options: [:])]
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .paragraphStyle: paragraph,
-            .font: NSFont.menuFont(ofSize: 0)
-        ]
-        item.attributedTitle = NSAttributedString(string: "\(label)\t\(value)", attributes: attributes)
+        item.view = statsRowView(label: label, value: value, tooltip: tooltip)
         return item
+    }
+
+    private func statsRowView(label: String, value: String, tooltip: String?) -> NSView {
+        let row = NSView(frame: NSRect(
+            x: 0,
+            y: 0,
+            width: StatsMenuLayout.rowWidth,
+            height: StatsMenuLayout.rowHeight
+        ))
+        row.toolTip = tooltip
+
+        let labelField = menuLabel(label, alignment: .left, lineBreakMode: .byTruncatingTail)
+        let valueField = menuLabel(value, alignment: .right, lineBreakMode: .byTruncatingMiddle)
+        labelField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        valueField.setContentCompressionResistancePriority(.required, for: .horizontal)
+        valueField.setContentHuggingPriority(.required, for: .horizontal)
+
+        row.addSubview(labelField)
+        row.addSubview(valueField)
+
+        NSLayoutConstraint.activate([
+            labelField.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: StatsMenuLayout.horizontalPadding),
+            labelField.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            labelField.trailingAnchor.constraint(lessThanOrEqualTo: valueField.leadingAnchor, constant: -StatsMenuLayout.minimumColumnGap),
+
+            valueField.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -StatsMenuLayout.horizontalPadding),
+            valueField.centerYAnchor.constraint(equalTo: row.centerYAnchor)
+        ])
+
+        row.setAccessibilityLabel("\(label): \(value)")
+        return row
+    }
+
+    private func menuLabel(_ text: String, alignment: NSTextAlignment, lineBreakMode: NSLineBreakMode) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.alignment = alignment
+        field.font = NSFont.menuFont(ofSize: 0)
+        field.textColor = NSColor.secondaryLabelColor
+        field.lineBreakMode = lineBreakMode
+        field.maximumNumberOfLines = 1
+        field.usesSingleLineMode = true
+        return field
     }
 
     private func disabledMenuItem(_ title: String) -> NSMenuItem {
@@ -378,26 +412,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func statsEntry(_ label: String, _ value: Int) -> StatsEntry {
         let formatted = formatCompactCount(value)
         return (label, formatted.display, formatted.tooltip)
-    }
-
-    private func statsTabStop(for entries: [StatsEntry]) -> CGFloat {
-        guard !entries.isEmpty else {
-            return 240
-        }
-
-        let font = NSFont.menuFont(ofSize: 0)
-        let labelWidth = entries
-            .map { measureMenuText($0.label, font: font) }
-            .max() ?? 0
-        let valueWidth = entries
-            .map { measureMenuText($0.value, font: font) }
-            .max() ?? 0
-        return max(220, labelWidth + 20 + valueWidth)
-    }
-
-    private func measureMenuText(_ text: String, font: NSFont) -> CGFloat {
-        let attributed = NSAttributedString(string: text, attributes: [.font: font])
-        return ceil(attributed.size().width)
     }
 
     private func latestFlags(_ latest: MLXServerLatestRequest) -> String {
@@ -626,6 +640,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 }
 
 private typealias StatsEntry = (label: String, value: String, tooltip: String?)
+
+private enum StatsMenuLayout {
+    static let rowWidth: CGFloat = 440
+    static let rowHeight: CGFloat = 22
+    static let horizontalPadding: CGFloat = 14
+    static let minimumColumnGap: CGFloat = 24
+}
 
 private struct MLXServerSessionTotals {
     static let zero = MLXServerSessionTotals(
