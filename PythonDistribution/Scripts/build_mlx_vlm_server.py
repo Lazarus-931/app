@@ -338,7 +338,68 @@ ROOT_DIR="$(cd "$BIN_DIR/.." >/dev/null 2>&1 && pwd)"
 export PYTHONHOME="$ROOT_DIR/python"
 export PYTHONNOUSERSITE=1
 
-exec "$ROOT_DIR/python/bin/python3" -m mlx_vlm.server "$@"
+PARENT_PID="$PPID"
+LAUNCHER_PID="$$"
+"$ROOT_DIR/python/bin/python3" -m mlx_vlm.server "$@" &
+CHILD_PID="$!"
+
+request_child_shutdown() {
+  kill -TERM "$CHILD_PID" >/dev/null 2>&1 || true
+  (
+    sleep 3
+    kill -KILL "$CHILD_PID" >/dev/null 2>&1 || true
+  ) &
+}
+
+terminate_child() {
+  local signal_name="$1"
+  kill "-$signal_name" "$CHILD_PID" >/dev/null 2>&1 || true
+  (
+    sleep 3
+    kill -KILL "$CHILD_PID" >/dev/null 2>&1 || true
+  ) &
+  local killer_pid="$!"
+
+  set +e
+  wait "$CHILD_PID"
+  local status="$?"
+  set -e
+
+  kill "$killer_pid" >/dev/null 2>&1 || true
+  exit "$status"
+}
+
+monitor_parent() {
+  while kill -0 "$CHILD_PID" >/dev/null 2>&1; do
+    local current_parent
+    current_parent="$(ps -o ppid= -p "$LAUNCHER_PID" 2>/dev/null | tr -d ' ')"
+    if [[ -z "$current_parent" || "$current_parent" != "$PARENT_PID" ]]; then
+      request_child_shutdown
+      exit 0
+    fi
+    sleep 0.1
+  done
+}
+
+monitor_parent &
+MONITOR_PID="$!"
+
+cleanup_monitor() {
+  kill "$MONITOR_PID" >/dev/null 2>&1 || true
+}
+
+trap cleanup_monitor EXIT
+trap 'terminate_child TERM' TERM
+trap 'terminate_child INT' INT
+trap 'terminate_child HUP' HUP
+trap 'terminate_child QUIT' QUIT
+
+set +e
+wait "$CHILD_PID"
+STATUS="$?"
+set -e
+
+exit "$STATUS"
 """
 
 

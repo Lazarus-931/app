@@ -14,16 +14,7 @@ struct ControlPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
-            Picker("", selection: $selectedTab) {
-                ForEach(ControlPanelTab.allCases) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 220)
-            .padding(.vertical, 12)
-
+            
             Divider()
 
             Group {
@@ -56,13 +47,25 @@ struct ControlPanelView: View {
             }
 
             Spacer(minLength: 16)
+            
+            Picker("", selection: $selectedTab) {
+                ForEach(ControlPanelTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 220)
+            .padding(.vertical, 12)
+
+            Spacer(minLength: 16)
 
             Button(model.isRunning ? "Stop Server" : "Start Server") {
                 model.toggleServer()
             }
             .keyboardShortcut("s", modifiers: .command)
         }
-        .padding(.horizontal, 18)
+        .padding(.leading, 18)
+        .padding(.trailing, 18)
         .padding(.vertical, 14)
     }
 

@@ -57,6 +57,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             defer: false
         )
         window.title = "MLX Server"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.styleMask.insert(.fullSizeContentView)
+        window.isMovableByWindowBackground = true
         window.center()
         window.contentView = NSHostingView(rootView: ControlPanelView(model: model))
         window.makeKeyAndOrderFront(nil)

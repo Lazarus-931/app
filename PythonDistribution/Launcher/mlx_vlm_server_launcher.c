@@ -1,14 +1,20 @@
 #include <errno.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
+
+static volatile sig_atomic_t pending_signal = 0;
 
 static int executable_path(char *buffer, size_t buffer_size) {
 #ifdef __APPLE__
@@ -56,6 +62,82 @@ static int join_path(char *buffer, size_t buffer_size, const char *left, const c
   return 0;
 }
 
+static void handle_signal(int signal_number) {
+  pending_signal = signal_number;
+}
+
+static void install_signal_forwarding(void) {
+  struct sigaction action;
+  memset(&action, 0, sizeof(action));
+  action.sa_handler = handle_signal;
+  sigemptyset(&action.sa_mask);
+
+  sigaction(SIGTERM, &action, NULL);
+  sigaction(SIGINT, &action, NULL);
+  sigaction(SIGHUP, &action, NULL);
+  sigaction(SIGQUIT, &action, NULL);
+}
+
+static void sleep_milliseconds(long milliseconds) {
+  struct timespec delay;
+  delay.tv_sec = milliseconds / 1000;
+  delay.tv_nsec = (milliseconds % 1000) * 1000000L;
+
+  while (nanosleep(&delay, &delay) != 0 && errno == EINTR) {
+  }
+}
+
+static int exit_code_from_status(int status) {
+  if (WIFEXITED(status)) {
+    return WEXITSTATUS(status);
+  }
+  if (WIFSIGNALED(status)) {
+    return 128 + WTERMSIG(status);
+  }
+  return 1;
+}
+
+static int wait_for_child(pid_t child_pid, int timeout_milliseconds, int *status) {
+  int elapsed = 0;
+  while (timeout_milliseconds < 0 || elapsed < timeout_milliseconds) {
+    pid_t result = waitpid(child_pid, status, WNOHANG);
+    if (result == child_pid) {
+      return 1;
+    }
+    if (result < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return -1;
+    }
+
+    sleep_milliseconds(50);
+    elapsed += 50;
+  }
+  return 0;
+}
+
+static int terminate_child(pid_t child_pid, int signal_number) {
+  int status = 0;
+  if (kill(child_pid, signal_number) != 0 && errno != ESRCH) {
+    return 127;
+  }
+
+  int wait_result = wait_for_child(child_pid, 3000, &status);
+  if (wait_result == 1) {
+    return exit_code_from_status(status);
+  }
+  if (wait_result < 0) {
+    return 127;
+  }
+
+  if (kill(child_pid, SIGKILL) != 0 && errno != ESRCH) {
+    return 127;
+  }
+  wait_result = wait_for_child(child_pid, -1, &status);
+  return wait_result == 1 ? exit_code_from_status(status) : 127;
+}
+
 int main(int argc, char **argv) {
   char exe_path[PATH_MAX];
   char root_dir[PATH_MAX];
@@ -100,8 +182,48 @@ int main(int argc, char **argv) {
   }
   child_argv[argc + 2] = NULL;
 
-  execv(python_exe, child_argv);
-  fprintf(stderr, "failed to exec %s: %s\n", python_exe, strerror(errno));
+  pid_t parent_pid = getppid();
+  install_signal_forwarding();
+
+  pid_t child_pid = fork();
+  if (child_pid < 0) {
+    fprintf(stderr, "failed to fork Python child: %s\n", strerror(errno));
+    free(child_argv);
+    return 127;
+  }
+
+  if (child_pid == 0) {
+    execv(python_exe, child_argv);
+    fprintf(stderr, "failed to exec %s: %s\n", python_exe, strerror(errno));
+    _exit(127);
+  }
+
   free(child_argv);
-  return 127;
+
+  for (;;) {
+    int status = 0;
+    pid_t result = waitpid(child_pid, &status, WNOHANG);
+    if (result == child_pid) {
+      return exit_code_from_status(status);
+    }
+    if (result < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      fprintf(stderr, "failed to wait for Python child: %s\n", strerror(errno));
+      return 127;
+    }
+
+    if (pending_signal != 0) {
+      int signal_number = pending_signal;
+      pending_signal = 0;
+      return terminate_child(child_pid, signal_number);
+    }
+
+    if (getppid() != parent_pid) {
+      return terminate_child(child_pid, SIGTERM);
+    }
+
+    sleep_milliseconds(100);
+  }
 }
