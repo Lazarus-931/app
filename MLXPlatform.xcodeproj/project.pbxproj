@@ -165,8 +165,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = A7B987521A587FFC32A46ABC /* Build configuration list for PBXProject "MLXPlatform" */;
 			developmentRegion = en;
@@ -320,6 +318,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.local.MLXServerDemo;
 				SDKROOT = macosx;
 			};
@@ -360,6 +359,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.local.MLXServerDemo;
 				SDKROOT = macosx;
 			};

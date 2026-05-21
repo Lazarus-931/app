@@ -48,21 +48,26 @@ struct ControlPanelView: View {
 
             Spacer(minLength: 16)
             
-            Picker("", selection: $selectedTab) {
-                ForEach(ControlPanelTab.allCases) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
+            GlassEffectContainer(spacing: 0) {
+                GlassTabPicker(selectedTab: $selectedTab)
             }
-            .pickerStyle(.segmented)
-            .frame(width: 220)
-            .padding(.vertical, 12)
 
             Spacer(minLength: 16)
 
-            Button(model.isRunning ? "Stop Server" : "Start Server") {
+            Button(model.isRunning ? "Stop" : "Start") {
                 model.toggleServer()
             }
+            .buttonBorderShape(.capsule)
+            .buttonStyle(.glassProminent)
+            .tint(model.isRunning ? .gray : .accentColor)
             .keyboardShortcut("s", modifiers: .command)
+            
+            Button {
+                
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .buttonStyle(.plain)
         }
         .padding(.leading, 18)
         .padding(.trailing, 18)
@@ -75,4 +80,48 @@ struct ControlPanelView: View {
         }
         return "Stopped"
     }
+}
+
+struct GlassTabPicker: View {
+    @Binding var selectedTab: ControlPanelTab
+    @Namespace private var selectionNamespace
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(ControlPanelTab.allCases) { tab in
+                Button {
+                    withAnimation(.snappy(duration: 0.22)) {
+                        selectedTab = tab
+                    }
+                } label: {
+                    Text(tab.rawValue)
+                        .font(.body.weight(.medium))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .padding(.horizontal, 10)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(selectedTab == tab ? .primary : .secondary)
+                .background {
+                    if selectedTab == tab {
+                        Capsule()
+                            .fill(.primary.opacity(0.12))
+                            .matchedGeometryEffect(
+                                id: "selected-segment",
+                                in: selectionNamespace
+                            )
+                    }
+                }
+            }
+        }
+        .padding(1)
+        .frame(width: 220)
+        .glassEffect(.regular.interactive(), in: Capsule())
+    }
+}
+
+#Preview {
+    ControlPanelView(model: .init())
 }
