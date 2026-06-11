@@ -1,6 +1,7 @@
 import Foundation
 import MLXServerKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @ObservedObject var model: MLXServerDemoModel
@@ -94,6 +95,7 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var sessions: [ChatSessionSummary] = []
     @Published private(set) var currentSessionID: UUID?
     @Published private(set) var messages: [ChatTranscriptMessage] = []
+    @Published private(set) var pendingImageAttachments: [ChatImageAttachment] = []
     @Published var draft = ""
     @Published private(set) var isSending = false
     @Published private(set) var scrollToken = 0
@@ -121,7 +123,8 @@ final class ChatViewModel: ObservableObject {
         isRunning
             && selectedModelID?.isEmpty == false
             && !isSending
-            && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !pendingImageAttachments.isEmpty)
     }
 
     func unavailableReason(isRunning: Bool, selectedModelID: String?) -> String? {
@@ -154,6 +157,7 @@ final class ChatViewModel: ObservableObject {
         storedSessions.append(session)
         sessionStore.saveSession(session)
         draft = ""
+        pendingImageAttachments.removeAll()
         applyCurrentSession(session)
     }
 
@@ -164,6 +168,7 @@ final class ChatViewModel: ObservableObject {
 
         if let session = storedSessions.first(where: { $0.id == sessionID }) {
             draft = ""
+            pendingImageAttachments.removeAll()
             applyCurrentSession(session)
             return
         }
@@ -171,6 +176,7 @@ final class ChatViewModel: ObservableObject {
         if let session = sessionStore.loadSession(id: sessionID) {
             storedSessions.append(session)
             draft = ""
+            pendingImageAttachments.removeAll()
             applyCurrentSession(session)
         }
     }
@@ -189,6 +195,7 @@ final class ChatViewModel: ObservableObject {
         }
 
         draft = ""
+        pendingImageAttachments.removeAll()
 
         if let nextSession = storedSessions.sorted(by: ChatSession.recencySort).first {
             applyCurrentSession(nextSession)
@@ -210,9 +217,16 @@ final class ChatViewModel: ObservableObject {
         }
 
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let imageAttachments = pendingImageAttachments
         draft = ""
+        pendingImageAttachments.removeAll()
 
-        let userMessage = ChatTranscriptMessage(role: .user, content: prompt, modelID: modelID)
+        let userMessage = ChatTranscriptMessage(
+            role: .user,
+            content: prompt,
+            modelID: modelID,
+            imageAttachments: imageAttachments
+        )
         messages.append(userMessage)
         persistCurrentSession(updateTimestamp: true)
 
@@ -279,11 +293,41 @@ final class ChatViewModel: ObservableObject {
         activeTask?.cancel()
     }
 
+    func chooseImageAttachments() {
+        guard !isSending else {
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.image]
+
+        guard panel.runModal() == .OK else {
+            return
+        }
+
+        let attachments = panel.urls.compactMap { url in
+            try? ChatImageAttachment(contentsOf: url)
+        }
+        guard !attachments.isEmpty else {
+            return
+        }
+
+        pendingImageAttachments.append(contentsOf: attachments)
+    }
+
+    func removePendingImageAttachment(_ id: UUID) {
+        pendingImageAttachments.removeAll { $0.id == id }
+    }
+
     func clear() {
         activeTask?.cancel()
         activeTask = nil
         isSending = false
         draft = ""
+        pendingImageAttachments.removeAll()
         messages.removeAll()
         persistCurrentSession(updateTimestamp: true)
         bumpScroll()
@@ -417,10 +461,17 @@ private struct ChatSession: Identifiable, Equatable, Codable {
         createdAt: Date,
         fallback: String? = nil
     ) -> String {
-        if let firstUserTitle = messages
-            .first(where: { $0.role == .user })
-            .flatMap({ title(fromUserContent: $0.content) }) {
-            return firstUserTitle
+        if let firstUserMessage = messages.first(where: { $0.role == .user }) {
+            if let firstUserTitle = title(fromUserContent: firstUserMessage.content) {
+                return firstUserTitle
+            }
+
+            if !firstUserMessage.imageAttachments.isEmpty {
+                if firstUserMessage.imageAttachments.count == 1 {
+                    return firstUserMessage.imageAttachments[0].filename
+                }
+                return "\(firstUserMessage.imageAttachments.count) images"
+            }
         }
 
         let trimmedFallback = fallback?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -482,6 +533,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
     var modelID: String?
     var createdAt: Date
     var isStreaming: Bool
+    var imageAttachments: [ChatImageAttachment]
 
     init(
         id: UUID = UUID(),
@@ -489,7 +541,8 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         content: String,
         modelID: String? = nil,
         createdAt: Date = Date(),
-        isStreaming: Bool = false
+        isStreaming: Bool = false,
+        imageAttachments: [ChatImageAttachment] = []
     ) {
         self.id = id
         self.role = role
@@ -497,6 +550,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         self.modelID = modelID
         self.createdAt = createdAt
         self.isStreaming = isStreaming
+        self.imageAttachments = imageAttachments
     }
 
     enum CodingKeys: String, CodingKey {
@@ -506,6 +560,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         case modelID
         case createdAt
         case isStreaming
+        case imageAttachments
     }
 
     init(from decoder: Decoder) throws {
@@ -516,6 +571,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         isStreaming = false
+        imageAttachments = try container.decodeIfPresent([ChatImageAttachment].self, forKey: .imageAttachments) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -526,11 +582,21 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         try container.encodeIfPresent(modelID, forKey: .modelID)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(false, forKey: .isStreaming)
+        try container.encode(imageAttachments, forKey: .imageAttachments)
     }
 
     var apiMessage: MLXChatMessage? {
         switch role {
         case .user:
+            if !imageAttachments.isEmpty {
+                var parts: [MLXChatContentPart] = []
+                if !content.isEmpty {
+                    parts.append(MLXChatContentPart(text: content))
+                }
+                parts.append(contentsOf: imageAttachments.map { MLXChatContentPart(imageURL: $0.dataURL) })
+                return MLXChatMessage(role: "user", content: .parts(parts))
+            }
+
             return MLXChatMessage(role: "user", content: content)
         case .assistant:
             guard !content.isEmpty else {
@@ -540,6 +606,45 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         case .error:
             return nil
         }
+    }
+}
+
+struct ChatImageAttachment: Identifiable, Equatable, Codable {
+    let id: UUID
+    var filename: String
+    var mimeType: String
+    var base64Data: String
+
+    init(id: UUID = UUID(), filename: String, mimeType: String, base64Data: String) {
+        self.id = id
+        self.filename = filename
+        self.mimeType = mimeType
+        self.base64Data = base64Data
+    }
+
+    init(contentsOf url: URL) throws {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let data = try Data(contentsOf: url)
+        let type = UTType(filenameExtension: url.pathExtension)
+        self.init(
+            filename: url.lastPathComponent,
+            mimeType: type?.preferredMIMEType ?? "application/octet-stream",
+            base64Data: data.base64EncodedString()
+        )
+    }
+
+    var dataURL: String {
+        "data:\(mimeType);base64,\(base64Data)"
+    }
+
+    var imageData: Data? {
+        Data(base64Encoded: base64Data)
     }
 }
 
@@ -870,22 +975,33 @@ private struct ChatMessageRow: View {
                             .controlSize(.small)
                     }
 
-                    if usesCompactBubble {
-                        ChatMessageText(
-                            content: displayContent,
-                            rendersMarkdown: rendersMarkdown
-                        )
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: true, vertical: false)
-                    } else {
-                        ChatMessageText(
-                            content: displayContent,
-                            rendersMarkdown: rendersMarkdown
-                        )
-                            .lineSpacing(2)
-                            .multilineTextAlignment(textAlignment)
-                            .frame(maxWidth: 560, alignment: alignment)
-                            .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: contentStackAlignment, spacing: 8) {
+                        if !message.imageAttachments.isEmpty {
+                            ChatImageAttachmentGrid(
+                                attachments: message.imageAttachments,
+                                isUserMessage: message.role == .user
+                            )
+                        }
+
+                        if showsTextContent {
+                            if usesCompactBubble {
+                                ChatMessageText(
+                                    content: displayContent,
+                                    rendersMarkdown: rendersMarkdown
+                                )
+                                    .lineSpacing(2)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            } else {
+                                ChatMessageText(
+                                    content: displayContent,
+                                    rendersMarkdown: rendersMarkdown
+                                )
+                                    .lineSpacing(2)
+                                    .multilineTextAlignment(textAlignment)
+                                    .frame(maxWidth: 560, alignment: alignment)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
 
                     if message.isStreaming && !message.content.isEmpty {
@@ -937,12 +1053,22 @@ private struct ChatMessageRow: View {
         message.role == .user ? .trailing : .leading
     }
 
+    private var contentStackAlignment: HorizontalAlignment {
+        message.role == .user ? .trailing : .leading
+    }
+
     private var displayContent: String {
         message.content.isEmpty ? " " : message.content
     }
 
     private var usesCompactBubble: Bool {
-        !displayContent.contains(where: \.isNewline) && displayContent.count <= 72
+        message.imageAttachments.isEmpty
+            && !displayContent.contains(where: \.isNewline)
+            && displayContent.count <= 72
+    }
+
+    private var showsTextContent: Bool {
+        !message.content.isEmpty || message.imageAttachments.isEmpty || message.isStreaming
     }
 
     private var rendersMarkdown: Bool {
@@ -973,6 +1099,63 @@ private struct ChatMessageRow: View {
         case .error:
             return Color(nsColor: .systemRed).opacity(0.45)
         }
+    }
+}
+
+private struct ChatImageAttachmentGrid: View {
+    let attachments: [ChatImageAttachment]
+    let isUserMessage: Bool
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 92, maximum: 132), spacing: 8)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(attachments) { attachment in
+                ChatImageThumbnail(attachment: attachment, isUserMessage: isUserMessage)
+            }
+        }
+        .frame(maxWidth: min(CGFloat(max(attachments.count, 1)) * 140, 420), alignment: .leading)
+    }
+}
+
+private struct ChatImageThumbnail: View {
+    let attachment: ChatImageAttachment
+    let isUserMessage: Bool
+    var width: CGFloat = 120
+    var height: CGFloat = 90
+
+    var body: some View {
+        Group {
+            if let data = attachment.imageData,
+               let image = NSImage(data: data) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                VStack(spacing: 6) {
+                    Image(systemName: "photo")
+                        .font(.title3)
+                    Text(attachment.filename)
+                        .font(.caption2)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundStyle(isUserMessage ? Color.white.opacity(0.82) : Color(nsColor: .secondaryLabelColor))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(
+                    isUserMessage ? Color.white.opacity(0.3) : Color(nsColor: .separatorColor),
+                    lineWidth: 0.5
+                )
+        )
+        .help(attachment.filename)
     }
 }
 
@@ -1015,6 +1198,19 @@ private struct ChatComposer: View {
                     .lineLimit(1)
             }
 
+            if !viewModel.pendingImageAttachments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(viewModel.pendingImageAttachments) { attachment in
+                            ChatPendingImageAttachmentView(attachment: attachment) {
+                                viewModel.removePendingImageAttachment(attachment.id)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+            }
+
             HStack(alignment: .bottom, spacing: 10) {
                 ZStack(alignment: .topLeading) {
                     RoundedRectangle(cornerRadius: 8)
@@ -1040,6 +1236,16 @@ private struct ChatComposer: View {
                     }
                 }
                 .frame(minHeight: 72, maxHeight: 120)
+
+                Button {
+                    viewModel.chooseImageAttachments()
+                } label: {
+                    Image(systemName: "photo.badge.plus")
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.bordered)
+                .disabled(unavailableReason != nil)
+                .help("Attach images")
 
                 Button {
                     if viewModel.isSending {
@@ -1076,6 +1282,47 @@ private struct ChatComposer: View {
             }
         }
         .padding(18)
+    }
+}
+
+private struct ChatPendingImageAttachmentView: View {
+    let attachment: ChatImageAttachment
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ChatImageThumbnail(
+                attachment: attachment,
+                isUserMessage: false,
+                width: 42,
+                height: 32
+            )
+
+            Text(attachment.filename)
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 180)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 14, height: 14)
+            }
+            .buttonStyle(.plain)
+            .help("Remove image")
+        }
+        .padding(.leading, 5)
+        .padding(.trailing, 7)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
     }
 }
 

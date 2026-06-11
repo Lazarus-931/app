@@ -30,11 +30,87 @@ public enum MLXServerChatError: Error, LocalizedError, CustomStringConvertible {
 
 public struct MLXChatMessage: Codable, Equatable, Sendable {
     public var role: String
-    public var content: String?
+    public var content: MLXChatMessageContent?
 
     public init(role: String, content: String?) {
         self.role = role
+        self.content = content.map(MLXChatMessageContent.text)
+    }
+
+    public init(role: String, content: MLXChatMessageContent?) {
+        self.role = role
         self.content = content
+    }
+
+    public var textContent: String? {
+        content?.textValue
+    }
+}
+
+public enum MLXChatMessageContent: Codable, Equatable, Sendable {
+    case text(String)
+    case parts([MLXChatContentPart])
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let text = try? container.decode(String.self) {
+            self = .text(text)
+            return
+        }
+
+        self = .parts(try container.decode([MLXChatContentPart].self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let text):
+            try container.encode(text)
+        case .parts(let parts):
+            try container.encode(parts)
+        }
+    }
+
+    public var textValue: String? {
+        switch self {
+        case .text(let text):
+            return text
+        case .parts(let parts):
+            let text = parts.compactMap(\.text).joined(separator: " ")
+            return text.isEmpty ? nil : text
+        }
+    }
+}
+
+public struct MLXChatContentPart: Codable, Equatable, Sendable {
+    public var type: String
+    public var text: String?
+    public var imageURL: MLXChatImageURL?
+
+    public init(text: String) {
+        self.type = "text"
+        self.text = text
+        self.imageURL = nil
+    }
+
+    public init(imageURL: String) {
+        self.type = "image_url"
+        self.text = nil
+        self.imageURL = MLXChatImageURL(url: imageURL)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case text
+        case imageURL = "image_url"
+    }
+}
+
+public struct MLXChatImageURL: Codable, Equatable, Sendable {
+    public var url: String
+
+    public init(url: String) {
+        self.url = url
     }
 }
 
@@ -157,7 +233,7 @@ public final class MLXServerChatClient {
 
         let decoded = try decoder.decode(ChatCompletionResponse.self, from: data)
         guard let choice = decoded.choices.first,
-              let content = choice.message.content,
+              let content = choice.message.textContent,
               !content.isEmpty
         else {
             throw MLXServerChatError.missingAssistantContent
@@ -219,7 +295,7 @@ public final class MLXServerChatClient {
 
             if let choice = chunk.choices.first {
                 finishReason = choice.finishReason ?? finishReason
-                if let delta = choice.delta.content, !delta.isEmpty {
+                if let delta = choice.delta.textContent, !delta.isEmpty {
                     content += delta
                     await onDelta(delta)
                 }
