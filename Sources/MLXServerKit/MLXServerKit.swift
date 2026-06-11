@@ -40,13 +40,17 @@ public enum MLXServer {
         return url
     }
 
-    public static func makeProcess(arguments: [String] = []) throws -> Process {
+    public static func makeProcess(
+        arguments: [String] = [],
+        environment: [String: String] = [:]
+    ) throws -> Process {
         let process = Process()
         process.executableURL = try executableURL()
         process.arguments = arguments
-        process.environment = ProcessInfo.processInfo.environment.merging([
-            "PYTHONNOUSERSITE": "1"
-        ]) { _, newValue in newValue }
+        var processEnvironment = ProcessInfo.processInfo.environment
+        processEnvironment.merge(environment) { _, newValue in newValue }
+        processEnvironment["PYTHONNOUSERSITE"] = "1"
+        process.environment = processEnvironment
         return process
     }
 
@@ -405,13 +409,16 @@ public final class MLXServerProcessController {
     }
 
     @discardableResult
-    public func start(arguments: [String] = []) throws -> Process {
+    public func start(
+        arguments: [String] = [],
+        environment: [String: String] = [:]
+    ) throws -> Process {
         try lock.withLock {
             if process?.isRunning == true {
                 throw MLXServerError.alreadyRunning
             }
 
-            let process = try MLXServer.makeProcess(arguments: arguments)
+            let process = try MLXServer.makeProcess(arguments: arguments, environment: environment)
             let outputPipe = Pipe()
             let errorPipe = Pipe()
             process.standardOutput = outputPipe

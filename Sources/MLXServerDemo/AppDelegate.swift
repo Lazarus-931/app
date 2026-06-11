@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.rebuildMenu()
         }
 
+        configureMainMenu()
         configureStatusItem()
         configureWindow()
         model.startServer()
@@ -47,6 +48,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func quit(_ sender: Any?) {
         NSApplication.shared.terminate(sender)
+    }
+
+    private func configureMainMenu() {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+
+        let appMenu = NSMenu()
+        let appName = ProcessInfo.processInfo.processName
+        let quitMenuItem = NSMenuItem(
+            title: "Quit \(appName)",
+            action: #selector(quit(_:)),
+            keyEquivalent: "q"
+        )
+        quitMenuItem.target = self
+        quitMenuItem.keyEquivalentModifierMask = [.command]
+        appMenu.addItem(quitMenuItem)
+
+        appMenuItem.submenu = appMenu
+        NSApplication.shared.mainMenu = mainMenu
     }
 
     private func configureWindow() {

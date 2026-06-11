@@ -10,6 +10,11 @@ final class MLXServerDemoModel: ObservableObject {
     @Published private(set) var lastMetricsError: String?
     @Published private(set) var lastMetricsFetchAt: Date?
     @Published private(set) var allTimeStats = MLXServerAllTimeStats.load()
+    @Published var settings = MLXServerSettings.load() {
+        didSet {
+            settings.save()
+        }
+    }
 
     var menuIsOpen = false
     var onMenuStateChanged: (() -> Void)?
@@ -20,6 +25,7 @@ final class MLXServerDemoModel: ObservableObject {
     private var metricsTimer: Timer?
     private var metricsStartupGraceUntil: Date?
     private var lastPersistedSessionTotals: MLXServerSessionTotals?
+    private var settingsAppliedAtServerStart: MLXServerSettings?
 
     private let maxLogCharacters = 250_000
 
@@ -43,15 +49,27 @@ final class MLXServerDemoModel: ObservableObject {
         lastMetricsError == nil ? "Waiting for server..." : "Metrics unavailable"
     }
 
+    var settingsRequireRestart: Bool {
+        guard isRunning, let settingsAppliedAtServerStart else {
+            return false
+        }
+        return !settings.hasSameLaunchConfiguration(as: settingsAppliedAtServerStart)
+    }
+
     func startServer() {
         var shouldStartMetrics = false
         do {
-            try server.start()
+            try server.start(
+                arguments: settings.launchArguments,
+                environment: settings.launchEnvironment
+            )
             isRunning = true
+            settingsAppliedAtServerStart = settings.normalized()
             appendLog("\nStarted mlx-vlm-server.\n")
             shouldStartMetrics = true
         } catch MLXServerError.alreadyRunning {
             isRunning = true
+            settingsAppliedAtServerStart = settings.normalized()
             appendLog("\nmlx-vlm-server is already running.\n")
             shouldStartMetrics = true
         } catch {
@@ -75,6 +93,9 @@ final class MLXServerDemoModel: ObservableObject {
         }
 
         isRunning = server.isRunning
+        if !isRunning {
+            settingsAppliedAtServerStart = nil
+        }
         stopMetricsPolling(clearSession: true)
         notifyMenuStateChanged()
     }
@@ -93,6 +114,11 @@ final class MLXServerDemoModel: ObservableObject {
             try? server.stop(timeout: 2)
         }
         isRunning = false
+        settingsAppliedAtServerStart = nil
+    }
+
+    func resetSettings() {
+        settings = MLXServerSettings()
     }
 
     func refreshMetricsIfRunning(force: Bool = false) {
@@ -138,6 +164,7 @@ final class MLXServerDemoModel: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.appendLog("\nmlx-vlm-server stopped with status \(status)\n")
                 self?.isRunning = false
+                self?.settingsAppliedAtServerStart = nil
                 self?.stopMetricsPolling(clearSession: true)
                 self?.notifyMenuStateChanged()
             }

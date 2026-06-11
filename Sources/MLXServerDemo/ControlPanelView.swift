@@ -2,6 +2,7 @@ import SwiftUI
 
 enum ControlPanelTab: String, CaseIterable, Identifiable {
     case stats = "Stats"
+    case settings = "Settings"
     case logs = "Logs"
 
     var id: String { rawValue }
@@ -21,6 +22,8 @@ struct ControlPanelView: View {
                 switch selectedTab {
                 case .stats:
                     StatsView(model: model)
+                case .settings:
+                    SettingsView(model: model)
                 case .logs:
                     LogsView(model: model)
                 }
@@ -76,6 +79,9 @@ struct ControlPanelView: View {
 
     private var statusSubtitle: String {
         if model.isRunning {
+            if model.settingsRequireRestart {
+                return "Running | \(model.loadedModelDisplay) | Settings pending"
+            }
             return "Running | \(model.loadedModelDisplay)"
         }
         return "Stopped"
@@ -117,7 +123,7 @@ struct GlassTabPicker: View {
             }
         }
         .padding(1)
-        .frame(width: 220)
+        .frame(width: 312)
         .glassEffect(.regular.interactive(), in: Capsule())
     }
 }

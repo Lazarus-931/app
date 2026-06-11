@@ -40,6 +40,7 @@ targets:
       - target: MLXServerKit
     settings:
       base:
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
         PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerDemo
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSPrincipalClass: NSApplication
