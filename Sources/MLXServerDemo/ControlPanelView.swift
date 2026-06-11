@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum ControlPanelTab: String, CaseIterable, Identifiable {
+    case chat = "Chat"
     case stats = "Stats"
     case settings = "Settings"
     case logs = "Logs"
@@ -10,7 +11,7 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
 
 struct ControlPanelView: View {
     @ObservedObject var model: MLXServerDemoModel
-    @State private var selectedTab: ControlPanelTab = .stats
+    @State private var selectedTab: ControlPanelTab = .chat
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +23,8 @@ struct ControlPanelView: View {
                 switch selectedTab {
                 case .stats:
                     StatsView(model: model)
+                case .chat:
+                    ChatView(model: model)
                 case .settings:
                     SettingsView(model: model)
                 case .logs:
@@ -123,7 +126,7 @@ struct GlassTabPicker: View {
             }
         }
         .padding(1)
-        .frame(width: 312)
+        .frame(width: 400)
         .glassEffect(.regular.interactive(), in: Capsule())
     }
 }

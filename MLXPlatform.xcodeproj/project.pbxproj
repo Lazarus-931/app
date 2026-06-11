@@ -15,10 +15,12 @@
 		690C9D518D413F04B23658CB /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E79C616B1499AB84D9C0C73 /* SettingsView.swift */; };
 		6BAF9797FB49E6C792EDCA3D /* MLXServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D1EB0EEA882E66FB200B81 /* MLXServerSettings.swift */; };
 		78E5B5ECF19EA010DF623E71 /* LocalModelDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */; };
+		9C9B78EFB56C0CCBD9269F93 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D906FE8C8AC46CC3A5B45200 /* ChatView.swift */; };
 		A841AE69F144D09E71807127 /* MLXServerKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; };
 		A93021B45F62CF668BA0F097 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7902FB9F159500C5939C27 /* StatsView.swift */; };
 		D63EB8DC9FD1B889B779EB78 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C732254F6B490DC7013A27 /* Formatting.swift */; };
 		DD726A45F5C6AED0FF38E82D /* MLXServerKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6776FF6417E520723AB5D793 /* MLXServerKit.swift */; };
+		EF5912E2A9204612E3945098 /* MLXServerChatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57AF974FB413126871D42D8 /* MLXServerChatClient.swift */; };
 		F8B6A5BA3BEBA0234436C1E2 /* Main.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAAF4B832B30BF0E9EE4C343 /* Main.swift */; };
 /* End PBXBuildFile section */
 
@@ -57,6 +59,8 @@
 		6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelDiscovery.swift; sourceTree = "<group>"; };
 		C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelView.swift; sourceTree = "<group>"; };
+		D57AF974FB413126871D42D8 /* MLXServerChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerChatClient.swift; sourceTree = "<group>"; };
+		D906FE8C8AC46CC3A5B45200 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		E1D1EB0EEA882E66FB200B81 /* MLXServerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerSettings.swift; sourceTree = "<group>"; };
 		EAAF4B832B30BF0E9EE4C343 /* Main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Main.swift; sourceTree = "<group>"; };
 		F3165B1D9BA2757328A73CFA /* MLXServerDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MLXServerDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -94,6 +98,7 @@
 		95601D7D7279D36575A48CD3 /* MLXServerKit */ = {
 			isa = PBXGroup;
 			children = (
+				D57AF974FB413126871D42D8 /* MLXServerChatClient.swift */,
 				6776FF6417E520723AB5D793 /* MLXServerKit.swift */,
 			);
 			path = MLXServerKit;
@@ -103,6 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */,
+				D906FE8C8AC46CC3A5B45200 /* ChatView.swift */,
 				C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */,
 				08C732254F6B490DC7013A27 /* Formatting.swift */,
 				A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */,
@@ -225,6 +231,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				65518C3B8CFFCB021938B536 /* AppDelegate.swift in Sources */,
+				9C9B78EFB56C0CCBD9269F93 /* ChatView.swift in Sources */,
 				0F1DC5A03D5852A5D9334D85 /* ControlPanelView.swift in Sources */,
 				D63EB8DC9FD1B889B779EB78 /* Formatting.swift in Sources */,
 				78E5B5ECF19EA010DF623E71 /* LocalModelDiscovery.swift in Sources */,
@@ -241,6 +248,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EF5912E2A9204612E3945098 /* MLXServerChatClient.swift in Sources */,
 				DD726A45F5C6AED0FF38E82D /* MLXServerKit.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
