@@ -5,39 +5,32 @@ import UniformTypeIdentifiers
 
 struct ChatView: View {
     @ObservedObject var model: MLXServerDemoModel
-    @StateObject private var chat = ChatViewModel()
+    @ObservedObject var chat: ChatViewModel
 
     var body: some View {
-        HStack(spacing: 0) {
-            ChatSessionsSidebar(viewModel: chat)
-                .frame(width: 230)
+        VStack(spacing: 0) {
+            ChatStatusBar(
+                isRunning: model.isRunning,
+                selectedModelID: selectedModelID,
+                loadedModel: model.loadedModelDisplay,
+                settingsRequireRestart: model.settingsRequireRestart,
+                inFlight: model.metrics?.summary.inFlight
+            )
 
             Divider()
 
-            VStack(spacing: 0) {
-                ChatStatusBar(
-                    isRunning: model.isRunning,
-                    selectedModelID: selectedModelID,
-                    loadedModel: model.loadedModelDisplay,
-                    settingsRequireRestart: model.settingsRequireRestart,
-                    inFlight: model.metrics?.summary.inFlight
-                )
+            transcript
 
-                Divider()
+            Divider()
 
-                transcript
-
-                Divider()
-
-                ChatComposer(
-                    viewModel: chat,
-                    unavailableReason: unavailableReason,
-                    canSend: canSend,
-                    onSend: {
-                        chat.send(using: model)
-                    }
-                )
-            }
+            ChatComposer(
+                viewModel: chat,
+                unavailableReason: unavailableReason,
+                canSend: canSend,
+                onSend: {
+                    chat.send(using: model)
+                }
+            )
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -78,7 +71,7 @@ struct ChatView: View {
                 }
                 .padding(18)
             }
-            .onChange(of: chat.scrollToken) { _ in
+            .onChange(of: chat.scrollToken) { _, _ in
                 proxy.scrollTo(ChatViewModel.bottomAnchorID, anchor: .bottom)
             }
             .onAppear {
@@ -800,6 +793,7 @@ private struct ChatSessionsSidebar: View {
                         ChatSessionRow(
                             session: session,
                             isSelected: session.id == viewModel.currentSessionID,
+                            isCurrent: session.id == viewModel.currentSessionID,
                             isDisabled: viewModel.isSending
                         ) {
                             viewModel.selectSession(session.id)
@@ -818,6 +812,7 @@ private struct ChatSessionsSidebar: View {
 private struct ChatSessionRow: View {
     let session: ChatSessionSummary
     let isSelected: Bool
+    let isCurrent: Bool
     let isDisabled: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
@@ -840,7 +835,7 @@ private struct ChatSessionRow: View {
 
                 Spacer(minLength: 0)
 
-                if isSelected {
+                if isCurrent {
                     Image(systemName: "checkmark")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -857,7 +852,7 @@ private struct ChatSessionRow: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .opacity(isDisabled && !isSelected ? 0.55 : 1)
+        .opacity(isDisabled && !isCurrent ? 0.55 : 1)
         .help(session.title)
         .contextMenu {
             Button(role: .destructive) {
@@ -870,7 +865,7 @@ private struct ChatSessionRow: View {
     }
 
     private var detail: String {
-        if isSelected {
+        if isCurrent {
             return "Current"
         }
 
@@ -1362,5 +1357,5 @@ private struct ChatEmptyTranscriptView: View {
 }
 
 #Preview {
-    ChatView(model: .init())
+    ChatView(model: .init(), chat: ChatViewModel())
 }
