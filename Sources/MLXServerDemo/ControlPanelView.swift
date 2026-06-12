@@ -2,6 +2,7 @@ import SwiftUI
 
 enum ControlPanelTab: String, CaseIterable, Identifiable {
     case chat = "Chat"
+    case imageGeneration = "Image Generation"
     case stats = "Stats"
     case settings = "Settings"
     case logs = "Logs"
@@ -12,6 +13,8 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
         switch self {
         case .chat:
             "bubble.left.and.bubble.right"
+        case .imageGeneration:
+            "photo.on.rectangle"
         case .stats:
             "chart.bar.xaxis"
         case .settings:
@@ -25,11 +28,13 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
 struct ControlPanelView: View {
     @ObservedObject var model: MLXServerDemoModel
     @StateObject private var chat = ChatViewModel()
+    @StateObject private var imageGeneration = ImageGenerationViewModel()
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
+    @State private var splitColumnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $splitColumnVisibility) {
             sidebar
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
         } detail: {
@@ -121,6 +126,8 @@ struct ControlPanelView: View {
                 switch selectedTab {
                 case .chat:
                     ChatView(model: model, chat: chat)
+                case .imageGeneration:
+                    ImageGenerationView(model: model, viewModel: imageGeneration)
                 case .stats:
                     StatsView(model: model)
                 case .settings:
@@ -176,9 +183,10 @@ struct ControlPanelView: View {
             .tint(model.isRunning ? .white : .accentColor)
             .keyboardShortcut("s", modifiers: .command)
         }
-        .padding(.leading, 18)
+        .padding(.leading, headerLeadingPadding)
         .padding(.trailing, 18)
         .padding(.vertical, 14)
+        .animation(.snappy(duration: 0.2), value: splitColumnVisibility)
     }
 
     private var statusSubtitle: String {
@@ -189,6 +197,10 @@ struct ControlPanelView: View {
             return "Running | \(model.loadedModelDisplay)"
         }
         return "Stopped"
+    }
+
+    private var headerLeadingPadding: CGFloat {
+        splitColumnVisibility == .detailOnly ? 164 : 18
     }
 }
 

@@ -36,7 +36,7 @@ struct ChatView: View {
     }
 
     private var selectedModelID: String? {
-        model.settings.normalized().selectedModelID
+        model.settings.normalized().languageModelID
     }
 
     private var canSend: Bool {
@@ -202,8 +202,8 @@ final class ChatViewModel: ObservableObject {
 
     func send(using appModel: MLXServerDemoModel) {
         let settings = appModel.settings.normalized()
-        guard canSend(isRunning: appModel.isRunning, selectedModelID: settings.selectedModelID),
-              let modelID = settings.selectedModelID,
+        guard canSend(isRunning: appModel.isRunning, selectedModelID: settings.languageModelID),
+              let modelID = settings.languageModelID,
               currentSession != nil
         else {
             return

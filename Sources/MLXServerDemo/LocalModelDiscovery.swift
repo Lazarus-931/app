@@ -130,8 +130,8 @@ enum LocalModelDiscovery {
     private static func isLikelyMLXModelSnapshot(_ snapshotURL: URL, fileManager: FileManager) -> Bool {
         let configURL = snapshotURL.appendingPathComponent("config.json")
         let tokenizerConfigURL = snapshotURL.appendingPathComponent("tokenizer_config.json")
-        guard fileManager.fileExists(atPath: configURL.path),
-              fileManager.fileExists(atPath: tokenizerConfigURL.path)
+        let modelIndexURL = snapshotURL.appendingPathComponent("model_index.json")
+        guard fileManager.fileExists(atPath: configURL.path) || fileManager.fileExists(atPath: tokenizerConfigURL.path) || fileManager.fileExists(atPath: modelIndexURL.path)
         else {
             return false
         }

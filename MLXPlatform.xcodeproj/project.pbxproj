@@ -7,11 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0A5BF495C93AFBBD50AD6C69 /* ImageGenerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C31C8C37F38184423C71293 /* ImageGenerationView.swift */; };
 		0F1DC5A03D5852A5D9334D85 /* ControlPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */; };
 		14E63F48F62A4F1B8D639139 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C167745187A4892E26BA3BC /* LogsView.swift */; };
+		1ACD7C1CA60EA1DEDE1FF275 /* MLXServerImageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15AE0B934327136178FAC319 /* MLXServerImageClient.swift */; };
 		33CBEFA3EDA5C21878C45FB9 /* MLXServerDemoModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 407939E1CDFD2C6D24170E71 /* MLXServerDemoModel.swift */; };
 		59D763EE60AF4E826404A5F0 /* MLXServerKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		65518C3B8CFFCB021938B536 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */; };
+		68EC2E304EA347E685D0EA44 /* ImageGenerationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */; };
 		690C9D518D413F04B23658CB /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E79C616B1499AB84D9C0C73 /* SettingsView.swift */; };
 		6BAF9797FB49E6C792EDCA3D /* MLXServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D1EB0EEA882E66FB200B81 /* MLXServerSettings.swift */; };
 		78E5B5ECF19EA010DF623E71 /* LocalModelDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */; };
@@ -50,6 +53,7 @@
 
 /* Begin PBXFileReference section */
 		08C732254F6B490DC7013A27 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
+		15AE0B934327136178FAC319 /* MLXServerImageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerImageClient.swift; sourceTree = "<group>"; };
 		1E79C616B1499AB84D9C0C73 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MLXServerKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		407939E1CDFD2C6D24170E71 /* MLXServerDemoModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerDemoModel.swift; sourceTree = "<group>"; };
@@ -57,6 +61,8 @@
 		5C167745187A4892E26BA3BC /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		6776FF6417E520723AB5D793 /* MLXServerKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerKit.swift; sourceTree = "<group>"; };
 		6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationViewModel.swift; sourceTree = "<group>"; };
+		9C31C8C37F38184423C71293 /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
 		A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelDiscovery.swift; sourceTree = "<group>"; };
 		C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelView.swift; sourceTree = "<group>"; };
 		D57AF974FB413126871D42D8 /* MLXServerChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerChatClient.swift; sourceTree = "<group>"; };
@@ -99,6 +105,7 @@
 			isa = PBXGroup;
 			children = (
 				D57AF974FB413126871D42D8 /* MLXServerChatClient.swift */,
+				15AE0B934327136178FAC319 /* MLXServerImageClient.swift */,
 				6776FF6417E520723AB5D793 /* MLXServerKit.swift */,
 			);
 			path = MLXServerKit;
@@ -111,6 +118,8 @@
 				D906FE8C8AC46CC3A5B45200 /* ChatView.swift */,
 				C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */,
 				08C732254F6B490DC7013A27 /* Formatting.swift */,
+				9C31C8C37F38184423C71293 /* ImageGenerationView.swift */,
+				8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */,
 				A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */,
 				5C167745187A4892E26BA3BC /* LogsView.swift */,
 				EAAF4B832B30BF0E9EE4C343 /* Main.swift */,
@@ -234,6 +243,8 @@
 				9C9B78EFB56C0CCBD9269F93 /* ChatView.swift in Sources */,
 				0F1DC5A03D5852A5D9334D85 /* ControlPanelView.swift in Sources */,
 				D63EB8DC9FD1B889B779EB78 /* Formatting.swift in Sources */,
+				0A5BF495C93AFBBD50AD6C69 /* ImageGenerationView.swift in Sources */,
+				68EC2E304EA347E685D0EA44 /* ImageGenerationViewModel.swift in Sources */,
 				78E5B5ECF19EA010DF623E71 /* LocalModelDiscovery.swift in Sources */,
 				14E63F48F62A4F1B8D639139 /* LogsView.swift in Sources */,
 				33CBEFA3EDA5C21878C45FB9 /* MLXServerDemoModel.swift in Sources */,
@@ -249,6 +260,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				EF5912E2A9204612E3945098 /* MLXServerChatClient.swift in Sources */,
+				1ACD7C1CA60EA1DEDE1FF275 /* MLXServerImageClient.swift in Sources */,
 				DD726A45F5C6AED0FF38E82D /* MLXServerKit.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

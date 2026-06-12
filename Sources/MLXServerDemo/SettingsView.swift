@@ -8,7 +8,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                SettingsSection(title: "Models") {
+                SettingsSection(title: "Model Search Path") {
                     SettingsRow(label: "Search path") {
                         HStack(spacing: 8) {
                             TextField(
@@ -25,19 +25,32 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.bordered)
                             .help("Choose folder")
+
+                            Button {
+                                modelLibrary.scan(path: model.settings.modelSearchPath)
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(modelLibrary.isScanning)
+                            .help("Refresh models")
+
+                            if modelLibrary.isScanning {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
                         }
                     }
-                    Divider()
-                    ModelPickerRow(
-                        selectedModelID: $model.settings.selectedModelID,
-                        library: modelLibrary,
-                        onRefresh: {
-                            modelLibrary.scan(path: model.settings.modelSearchPath)
-                        }
-                    )
                 }
 
-                SettingsSection(title: "Generation Defaults") {
+                SettingsSection(title: "Language Model") {
+                    ModelPickerRow(
+                        selectedModelID: $model.settings.languageModelID,
+                        library: modelLibrary,
+                        emptyTitle: "Do not preload",
+                        note: "Preloaded when the server starts and used by Chat."
+                    )
+                    Divider()
                     IntSettingRow(
                         label: "Max tokens",
                         value: $model.settings.maxTokens,
@@ -79,6 +92,33 @@ struct SettingsView: View {
                     RepetitionPenaltyRow(
                         enabled: $model.settings.repetitionPenaltyEnabled,
                         value: $model.settings.repetitionPenalty
+                    )
+                }
+
+                SettingsSection(title: "Image Generation Model") {
+                    ModelPickerRow(
+                        selectedModelID: $model.settings.imageGenerationModelID,
+                        library: modelLibrary,
+                        emptyTitle: "No image model selected",
+                        note: "Used by the Image Generation section."
+                    )
+                }
+
+                SettingsSection(title: "Text to Speech Model") {
+                    ModelPickerRow(
+                        selectedModelID: $model.settings.textToSpeechModelID,
+                        library: modelLibrary,
+                        emptyTitle: "No text to speech model selected",
+                        note: "Saved for future text to speech requests."
+                    )
+                }
+
+                SettingsSection(title: "Speech to Text Model") {
+                    ModelPickerRow(
+                        selectedModelID: $model.settings.speechToTextModelID,
+                        library: modelLibrary,
+                        emptyTitle: "No speech to text model selected",
+                        note: "Saved for future speech to text requests."
                     )
                 }
 
@@ -141,7 +181,8 @@ struct SettingsView: View {
 private struct ModelPickerRow: View {
     @Binding var selectedModelID: String?
     @ObservedObject var library: LocalModelLibrary
-    let onRefresh: () -> Void
+    let emptyTitle: String
+    let note: String
 
     private var selectedModelIsMissing: Bool {
         guard let selectedModelID else {
@@ -164,7 +205,7 @@ private struct ModelPickerRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Picker("", selection: selection) {
-                        Text("Do not preload").tag("")
+                        Text(emptyTitle).tag("")
 
                         if let selectedModelID, selectedModelIsMissing {
                             Text("\(selectedModelID) (missing)").tag(selectedModelID)
@@ -185,15 +226,6 @@ private struct ModelPickerRow: View {
                     }
 
                     Button {
-                        onRefresh()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(library.isScanning)
-                    .help("Refresh models")
-
-                    Button {
                         selectedModelID = nil
                     } label: {
                         Image(systemName: "xmark.circle")
@@ -207,6 +239,11 @@ private struct ModelPickerRow: View {
                     Text(statusText)
                         .font(.caption)
                         .foregroundStyle(selectedModelIsMissing || library.error != nil ? .orange : .secondary)
+                        .lineLimit(2)
+                } else {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
             }
@@ -226,7 +263,7 @@ private struct ModelPickerRow: View {
         if library.models.isEmpty {
             return "No local models found."
         }
-        return "\(library.models.count) local \(library.models.count == 1 ? "model" : "models") found."
+        return note
     }
 }
 
