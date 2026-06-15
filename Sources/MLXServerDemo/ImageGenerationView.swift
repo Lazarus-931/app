@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ImageGenerationView: View {
     @ObservedObject var model: MLXServerDemoModel
@@ -195,6 +196,25 @@ private struct ImageGenerationControls: View {
                         .font(.system(.body, design: .monospaced))
                         .frame(width: 78)
 
+                    Menu {
+                        ForEach(ImageGenerationSizeOptions.longestSides, id: \.self) { longestSide in
+                            Button {
+                                viewModel.applyLongestSide(longestSide)
+                            } label: {
+                                if viewModel.currentLongestSide == longestSide {
+                                    Label("\(longestSide) px", systemImage: "checkmark")
+                                } else {
+                                    Text("\(longestSide) px")
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("\(viewModel.currentLongestSide) px", systemImage: "arrow.up.left.and.arrow.down.right")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Set longest side")
+
                     Spacer(minLength: 0)
                 }
             }
@@ -258,6 +278,7 @@ private struct ImageGenerationControls: View {
 
 private struct ImageGenerationReferencePanel: View {
     @ObservedObject var viewModel: ImageGenerationViewModel
+    @State private var isDropTargeted = false
 
     var body: some View {
         ImageGenerationSection(title: "Reference Image") {
@@ -301,7 +322,7 @@ private struct ImageGenerationReferencePanel: View {
                             .font(.system(size: 36))
                             .foregroundStyle(.tertiary)
 
-                        Text("No reference image")
+                        Text("Drop or choose a reference image")
                             .font(.callout)
                             .foregroundStyle(.secondary)
 
@@ -325,6 +346,18 @@ private struct ImageGenerationReferencePanel: View {
                 }
             }
             .padding(12)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isDropTargeted ? Color.accentColor : Color.clear, lineWidth: 2)
+            )
+            .onDrop(
+                of: ImageGenerationDrag.supportedDropTypeIdentifiers,
+                isTargeted: $isDropTargeted
+            ) { providers in
+                viewModel.loadReferenceImage(from: providers)
+            }
+            .help("Drop an image here to use it as the reference")
         }
     }
 }
@@ -442,6 +475,10 @@ private struct GeneratedImageCard: View {
                     .frame(maxWidth: .infinity, minHeight: 180, maxHeight: 320)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .onDrag {
+                        ImageGenerationDrag.itemProvider(for: result)
+                    }
+                    .help("Drag image to use it as a reference")
             }
 
             HStack(spacing: 8) {
@@ -481,6 +518,30 @@ private struct GeneratedImageCard: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         )
+    }
+}
+
+private enum ImageGenerationDrag {
+    static let supportedDropTypeIdentifiers = [
+        UTType.fileURL,
+        .png,
+        .jpeg,
+        .tiff,
+        .gif,
+        .image
+    ].map(\.identifier)
+
+    static func itemProvider(for result: GeneratedImage) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.suggestedName = result.filename
+        provider.registerDataRepresentation(
+            forTypeIdentifier: result.imageType.identifier,
+            visibility: .all
+        ) { completion in
+            completion(result.imageData, nil)
+            return nil
+        }
+        return provider
     }
 }
 

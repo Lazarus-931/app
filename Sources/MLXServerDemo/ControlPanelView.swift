@@ -65,21 +65,18 @@ struct ControlPanelView: View {
             }
 
             Section {
-                ForEach(chat.sessions) { session in
-                    let selection = ControlPanelSidebarSelection.chat(session.id)
+                ForEach(recentSessions) { recent in
+                    let selection = recent.selection
+                    let isDisabled = isRecentDisabled(recent)
                     Button {
                         applySidebarSelection(selection)
                     } label: {
-                        ControlPanelChatSessionRow(
-                            session: session,
-                            isCurrent: session.id == chat.currentSessionID,
-                            isDisabled: chat.isSending,
+                        ControlPanelRecentSessionRow(
+                            recent: recent,
+                            isCurrent: isCurrentRecent(recent),
+                            isDisabled: isDisabled,
                             onDelete: {
-                                let deletingSelection = sidebarSelection == .chat(session.id)
-                                chat.deleteSession(session.id)
-                                if deletingSelection {
-                                    applySidebarSelection(chat.currentSessionID.map(ControlPanelSidebarSelection.chat) ?? .tab(.chat))
-                                }
+                                deleteRecentSession(recent)
                             }
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -87,8 +84,8 @@ struct ControlPanelView: View {
                     }
                     .sidebarRowSelectionStyle(isSelected: sidebarSelection == selection)
                     .buttonStyle(.plain)
-                    .disabled(chat.isSending)
-                    .opacity(chat.isSending && session.id != chat.currentSessionID ? 0.55 : 1)
+                    .disabled(isDisabled)
+                    .opacity(isDisabled && !isCurrentRecent(recent) ? 0.55 : 1)
                     .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                 }
             } header: {
@@ -99,21 +96,31 @@ struct ControlPanelView: View {
 
                     Button {
                         withAnimation(.snappy(duration: 0.2)) {
-                            chat.createSession()
-                            applySidebarSelection(chat.currentSessionID.map(ControlPanelSidebarSelection.chat) ?? .tab(.chat))
+                            createRecentSession()
                         }
                     } label: {
                         Image(systemName: "plus")
                             .imageScale(.small)
                     }
                     .buttonStyle(.borderless)
-                    .disabled(chat.isSending)
-                    .help("New chat")
+                    .disabled(isNewRecentDisabled)
+                    .help(newRecentHelp)
                 }
             }
         }
         .listStyle(.sidebar)
         .navigationTitle("MLX Server")
+    }
+
+    private var recentSessions: [ControlPanelRecentSession] {
+        let sessions = chat.sessions.map(ControlPanelRecentSession.init(chat:))
+            + imageGeneration.sessions.map(ControlPanelRecentSession.init(imageGeneration:))
+        let sortedSessions = sessions.sorted(by: ControlPanelRecentSession.recencySort)
+
+        guard let selectedRecent = sortedSessions.first(where: { $0.selection == sidebarSelection }) else {
+            return sortedSessions
+        }
+        return [selectedRecent] + sortedSessions.filter { $0.id != selectedRecent.id }
     }
 
     private var detail: some View {
@@ -154,7 +161,81 @@ struct ControlPanelView: View {
                 sidebarSelection = .tab(.chat)
             }
             selectedTab = .chat
+        case .imageGeneration(let sessionID):
+            if imageGeneration.sessions.contains(where: { $0.id == sessionID }) {
+                imageGeneration.selectSession(sessionID)
+                sidebarSelection = selection
+            } else {
+                sidebarSelection = .tab(.imageGeneration)
+            }
+            selectedTab = .imageGeneration
         }
+    }
+
+    private func createRecentSession() {
+        if selectedTab == .imageGeneration {
+            imageGeneration.createSession()
+            applySidebarSelection(
+                imageGeneration.currentSessionID.map(ControlPanelSidebarSelection.imageGeneration)
+                    ?? .tab(.imageGeneration)
+            )
+            return
+        }
+
+        chat.createSession()
+        applySidebarSelection(chat.currentSessionID.map(ControlPanelSidebarSelection.chat) ?? .tab(.chat))
+    }
+
+    private func deleteRecentSession(_ recent: ControlPanelRecentSession) {
+        let deletingSelection = sidebarSelection == recent.selection
+
+        switch recent.selection {
+        case .chat(let sessionID):
+            chat.deleteSession(sessionID)
+            if deletingSelection {
+                applySidebarSelection(chat.currentSessionID.map(ControlPanelSidebarSelection.chat) ?? .tab(.chat))
+            }
+        case .imageGeneration(let sessionID):
+            imageGeneration.deleteSession(sessionID)
+            if deletingSelection {
+                applySidebarSelection(
+                    imageGeneration.currentSessionID.map(ControlPanelSidebarSelection.imageGeneration)
+                        ?? .tab(.imageGeneration)
+                )
+            }
+        case .tab:
+            break
+        }
+    }
+
+    private func isCurrentRecent(_ recent: ControlPanelRecentSession) -> Bool {
+        switch recent.selection {
+        case .chat(let sessionID):
+            return sessionID == chat.currentSessionID
+        case .imageGeneration(let sessionID):
+            return sessionID == imageGeneration.currentSessionID
+        case .tab:
+            return false
+        }
+    }
+
+    private func isRecentDisabled(_ recent: ControlPanelRecentSession) -> Bool {
+        switch recent.selection {
+        case .chat:
+            return chat.isSending
+        case .imageGeneration:
+            return imageGeneration.isGenerating
+        case .tab:
+            return false
+        }
+    }
+
+    private var isNewRecentDisabled: Bool {
+        selectedTab == .imageGeneration ? imageGeneration.isGenerating : chat.isSending
+    }
+
+    private var newRecentHelp: String {
+        selectedTab == .imageGeneration ? "New image session" : "New chat"
     }
 
     private var header: some View {
@@ -207,10 +288,65 @@ struct ControlPanelView: View {
 private enum ControlPanelSidebarSelection: Hashable {
     case tab(ControlPanelTab)
     case chat(UUID)
+    case imageGeneration(UUID)
 }
 
-private struct ControlPanelChatSessionRow: View {
-    let session: ChatSessionSummary
+private struct ControlPanelRecentSession: Identifiable, Equatable {
+    enum ID: Hashable {
+        case chat(UUID)
+        case imageGeneration(UUID)
+    }
+
+    let id: ID
+    let title: String
+    let createdAt: Date
+    let updatedAt: Date
+    let modelKind: SessionModelKind
+    let itemCount: Int
+    let singularItemName: String
+    let pluralItemName: String
+
+    init(chat session: ChatSessionSummary) {
+        id = .chat(session.id)
+        title = session.title
+        createdAt = session.createdAt
+        updatedAt = session.updatedAt
+        modelKind = .language
+        itemCount = session.messageCount
+        singularItemName = "message"
+        pluralItemName = "messages"
+    }
+
+    init(imageGeneration session: ImageGenerationSessionSummary) {
+        id = .imageGeneration(session.id)
+        title = session.title
+        createdAt = session.createdAt
+        updatedAt = session.updatedAt
+        modelKind = session.modelKind
+        itemCount = session.resultCount
+        singularItemName = "image"
+        pluralItemName = "images"
+    }
+
+    var selection: ControlPanelSidebarSelection {
+        switch id {
+        case .chat(let sessionID):
+            return .chat(sessionID)
+        case .imageGeneration(let sessionID):
+            return .imageGeneration(sessionID)
+        }
+    }
+
+    static func recencySort(_ lhs: ControlPanelRecentSession, _ rhs: ControlPanelRecentSession) -> Bool {
+        if lhs.updatedAt == rhs.updatedAt {
+            return lhs.createdAt > rhs.createdAt
+        }
+        return lhs.updatedAt > rhs.updatedAt
+    }
+}
+
+private struct ControlPanelRecentSessionRow: View {
+    let recent: ControlPanelRecentSession
     let isCurrent: Bool
     let isDisabled: Bool
     let onDelete: () -> Void
@@ -218,15 +354,27 @@ private struct ControlPanelChatSessionRow: View {
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(session.title)
+                Text(recent.title)
                     .font(.callout.weight(isCurrent ? .semibold : .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Text(recent.modelKind.badgeTitle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule()
+                                .fill(Color.secondary.opacity(0.12))
+                        )
+                }
             }
 
             Spacer(minLength: 0)
@@ -237,7 +385,7 @@ private struct ControlPanelChatSessionRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .help(session.title)
+        .help(recent.title)
         .contextMenu {
             Button(role: .destructive) {
                 onDelete()
@@ -253,7 +401,7 @@ private struct ControlPanelChatSessionRow: View {
             return "Current"
         }
 
-        return "\(session.messageCount) \(session.messageCount == 1 ? "message" : "messages")"
+        return "\(recent.itemCount) \(recent.itemCount == 1 ? recent.singularItemName : recent.pluralItemName)"
     }
 }
 
