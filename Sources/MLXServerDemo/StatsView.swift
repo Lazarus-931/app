@@ -71,6 +71,20 @@ struct StatsView: View {
                 }
 
                 StatsSection(title: "Runtime", entries: MLXServerDemoStats.runtimeEntries(metrics.server))
+
+                if !metrics.models.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Models Used")
+                            .font(.headline)
+
+                        ForEach(metrics.models) { model in
+                            StatsSection(
+                                title: MLXServerDemoFormatting.truncateModelName(model.model, maxLength: 56),
+                                entries: MLXServerDemoStats.modelEntries(model)
+                            )
+                        }
+                    }
+                }
             }
             .padding(18)
         }

@@ -27,12 +27,11 @@ enum Main {
             do {
                 let smokePort = ProcessInfo.processInfo.environment["MLX_SERVER_SMOKE_PORT"] ?? "18080"
                 try server.start(arguments: ["--host", "127.0.0.1", "--port", smokePort])
-                Thread.sleep(forTimeInterval: 3)
                 guard server.isRunning else {
                     fputs("mlx-vlm-server exited before stop was requested\n", stderr)
                     exit(EXIT_FAILURE)
                 }
-                guard checkMetricsEndpoint(port: smokePort) else {
+                guard waitForMetricsEndpoint(port: smokePort) else {
                     fputs("mlx-vlm-server did not expose /metrics on port \(smokePort)\n", stderr)
                     try? server.stop()
                     exit(EXIT_FAILURE)
@@ -56,6 +55,17 @@ enum Main {
         application.setActivationPolicy(.regular)
         application.activate(ignoringOtherApps: true)
         application.run()
+    }
+
+    private static func waitForMetricsEndpoint(port: String, timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if checkMetricsEndpoint(port: port) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        return false
     }
 
     private static func checkMetricsEndpoint(port: String) -> Bool {

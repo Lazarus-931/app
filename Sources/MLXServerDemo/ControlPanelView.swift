@@ -3,9 +3,13 @@ import SwiftUI
 enum ControlPanelTab: String, CaseIterable, Identifiable {
     case chat = "Chat"
     case imageGeneration = "Image Generation"
-    case stats = "Stats"
+    case dashboard = "Dashboard"
     case settings = "Settings"
     case logs = "Logs"
+
+    static var allCases: [ControlPanelTab] {
+        [.chat, .dashboard, .settings, .logs]
+    }
 
     var id: String { rawValue }
 
@@ -15,7 +19,7 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
             "bubble.left.and.bubble.right"
         case .imageGeneration:
             "photo.on.rectangle"
-        case .stats:
+        case .dashboard:
             "chart.bar.xaxis"
         case .settings:
             "gearshape"
@@ -114,7 +118,6 @@ struct ControlPanelView: View {
 
     private var recentSessions: [ControlPanelRecentSession] {
         let sessions = chat.sessions.map(ControlPanelRecentSession.init(chat:))
-            + imageGeneration.sessions.map(ControlPanelRecentSession.init(imageGeneration:))
         let sortedSessions = sessions.sorted(by: ControlPanelRecentSession.recencySort)
 
         guard let selectedRecent = sortedSessions.first(where: { $0.selection == sidebarSelection }) else {
@@ -135,7 +138,7 @@ struct ControlPanelView: View {
                     ChatView(model: model, chat: chat)
                 case .imageGeneration:
                     ImageGenerationView(model: model, viewModel: imageGeneration)
-                case .stats:
+                case .dashboard:
                     StatsView(model: model)
                 case .settings:
                     SettingsView(model: model)

@@ -99,6 +99,16 @@ enum MLXServerDemoFormatting {
         let suffix = value.suffix(keep)
         return "\(prefix)...\(suffix)"
     }
+
+    static func timestamp(_ value: Double?) -> String {
+        guard let value, value > 0 else {
+            return "--"
+        }
+        return Date(timeIntervalSince1970: value).formatted(
+            date: .abbreviated,
+            time: .shortened
+        )
+    }
 }
 
 enum MLXServerDemoStats {
@@ -247,6 +257,32 @@ enum MLXServerDemoStats {
         }
 
         return entries
+    }
+
+    static func modelEntries(_ model: MLXServerModelMetrics) -> [StatsEntry] {
+        [
+            statsEntry("Requests completed", model.requestsCompleted),
+            statsEntry("Requests failed", model.requestsFailed),
+            statsEntry("Streamed requests", model.streamingRequests),
+            statsEntry("Prompt tokens", model.promptTokensTotal),
+            statsEntry("Generated tokens", model.generatedTokensTotal),
+            statsEntry("Total processed tokens", model.totalProcessedTokens),
+            StatsEntry(
+                label: "Avg request speed",
+                value: MLXServerDemoFormatting.rate(model.averageRequestTokensPerSecond),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Avg decode speed",
+                value: MLXServerDemoFormatting.rate(model.averageDecodeTokensPerSecond),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Last request",
+                value: MLXServerDemoFormatting.timestamp(model.lastRequestAt),
+                tooltip: nil
+            ),
+        ]
     }
 
     static func statsEntry(_ label: String, _ value: Int) -> StatsEntry {
