@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MLXServerKit
 import SwiftUI
@@ -1215,11 +1216,11 @@ private struct ChatComposer: View {
                                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                         )
 
-                    TextEditor(text: $viewModel.draft)
-                        .font(.body)
-                        .scrollContentBackground(.hidden)
-                        .padding(textInset)
-                        .disabled(unavailableReason != nil)
+                    ChatComposerTextEditor(
+                        text: $viewModel.draft,
+                        isEnabled: unavailableReason == nil,
+                        onSubmit: onSend
+                    )
 
                     if viewModel.draft.isEmpty {
                         Text("Message")
@@ -1262,8 +1263,7 @@ private struct ChatComposer: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!canSend)
-                .keyboardShortcut(.return, modifiers: .command)
-                .help("Send")
+                .help("Send (Return)")
 
                 Button {
                     viewModel.clear()
@@ -1277,6 +1277,132 @@ private struct ChatComposer: View {
             }
         }
         .padding(18)
+    }
+}
+
+private struct ChatComposerTextEditor: NSViewRepresentable {
+    @Binding var text: String
+    let isEnabled: Bool
+    let onSubmit: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, onSubmit: onSubmit)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let textView = ChatComposerNSTextView()
+        textView.delegate = context.coordinator
+        textView.onSubmit = context.coordinator.handleSubmit
+        textView.isEditable = isEnabled
+        textView.isSelectable = isEnabled
+        textView.font = NSFont.preferredFont(forTextStyle: .body)
+        textView.textColor = NSColor.labelColor
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.allowsUndo = true
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainerInset = NSSize(width: 14, height: 12)
+        textView.textContainer?.widthTracksTextView = true
+        textView.string = text
+
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.documentView = textView
+
+        context.coordinator.textView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.onSubmit = onSubmit
+
+        guard let textView = context.coordinator.textView else {
+            return
+        }
+
+        textView.isEditable = isEnabled
+        textView.isSelectable = isEnabled
+
+        guard textView.string != text else {
+            return
+        }
+
+        textView.string = text
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding private var text: String
+        var onSubmit: () -> Void
+        weak var textView: NSTextView?
+
+        init(text: Binding<String>, onSubmit: @escaping () -> Void) {
+            _text = text
+            self.onSubmit = onSubmit
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView else {
+                return
+            }
+
+            text = textView.string
+        }
+
+        func handleSubmit() {
+            onSubmit()
+        }
+    }
+}
+
+private final class ChatComposerNSTextView: NSTextView {
+    var onSubmit: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        switch ComposerReturnBehavior.resolve(for: event) {
+        case .submit:
+            onSubmit?()
+        case .insertNewline:
+            insertText("\n", replacementRange: selectedRange())
+        case .passthrough:
+            super.keyDown(with: event)
+        }
+    }
+}
+
+private enum ComposerReturnBehavior {
+    case submit
+    case insertNewline
+    case passthrough
+
+    static func resolve(for event: NSEvent) -> ComposerReturnBehavior {
+        guard isReturnKey(event) else {
+            return .passthrough
+        }
+
+        let modifiers = relevantModifiers(for: event)
+        if modifiers == [.command] {
+            return .insertNewline
+        }
+        if modifiers.isEmpty {
+            return .submit
+        }
+        return .passthrough
+    }
+
+    private static func isReturnKey(_ event: NSEvent) -> Bool {
+        event.keyCode == 36 || event.keyCode == 76
+    }
+
+    private static func relevantModifiers(for event: NSEvent) -> NSEvent.ModifierFlags {
+        event.modifierFlags.intersection([.command, .control, .option, .shift])
     }
 }
 
