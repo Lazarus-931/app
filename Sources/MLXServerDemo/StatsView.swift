@@ -6,10 +6,17 @@ struct StatsView: View {
 
     var body: some View {
         Group {
-            if !model.isRunning {
-                EmptyStatsView(title: "Server is off", detail: "Metrics paused")
-            } else if let metrics = model.metrics {
+            if let metrics = model.metrics {
                 metricsContent(metrics)
+            } else if model.allTimeStats.hasValues {
+                historicalContent(
+                    title: model.isRunning ? model.unavailableMetricsText : "Server is off",
+                    detail: model.isRunning
+                        ? "Live metrics unavailable. Historical analytics remain available."
+                        : "Live metrics paused. Historical analytics remain available."
+                )
+            } else if !model.isRunning {
+                EmptyStatsView(title: "Server is off", detail: "Metrics paused")
             } else {
                 EmptyStatsView(title: model.unavailableMetricsText, detail: nil)
             }
@@ -85,6 +92,28 @@ struct StatsView: View {
                         }
                     }
                 }
+            }
+            .padding(18)
+        }
+    }
+
+    private func historicalContent(title: String, detail: String?) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                    if let detail {
+                        Text(detail)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                StatsSection(
+                    title: "All-Time",
+                    entries: MLXServerDemoStats.allTimeEntries(model.allTimeStats)
+                )
             }
             .padding(18)
         }

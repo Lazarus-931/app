@@ -1,0 +1,482 @@
+import Foundation
+import SQLite3
+
+enum MLXServerAnalyticsRange: CaseIterable {
+    case last24Hours
+    case last7Days
+    case last30Days
+    case allTime
+
+    var granularity: MLXServerAnalyticsGranularity {
+        switch self {
+        case .last24Hours:
+            return .hour
+        case .last7Days, .last30Days, .allTime:
+            return .day
+        }
+    }
+
+    var trailingInterval: TimeInterval? {
+        switch self {
+        case .last24Hours:
+            return 24 * 60 * 60
+        case .last7Days:
+            return 7 * 24 * 60 * 60
+        case .last30Days:
+            return 30 * 24 * 60 * 60
+        case .allTime:
+            return nil
+        }
+    }
+
+    var rangeStartUnix: Double? {
+        guard let trailingInterval else {
+            return nil
+        }
+        return Date().addingTimeInterval(-trailingInterval).timeIntervalSince1970
+    }
+}
+
+enum MLXServerAnalyticsGranularity: String {
+    case hour
+    case day
+}
+
+struct MLXServerHistoricalAnalyticsSummary {
+    static let empty = MLXServerHistoricalAnalyticsSummary()
+
+    var requestsCompleted: Int = 0
+    var requestsFailed: Int = 0
+    var promptTokensTotal: Int = 0
+    var completionTokensTotal: Int = 0
+    var generatedTokensTotal: Int = 0
+    var requestTimeTotalMilliseconds: Int64 = 0
+    var decodeTimeTotalMilliseconds: Int64 = 0
+    var peakMemoryBytesMax: Int64?
+    var lastUpdatedAt: Date?
+
+    var totalProcessedTokens: Int {
+        promptTokensTotal + generatedTokensTotal
+    }
+
+    var averageDecodeTokensPerSecond: Double? {
+        guard generatedTokensTotal > 0, decodeTimeTotalMilliseconds > 0 else {
+            return nil
+        }
+        return Double(generatedTokensTotal) / (Double(decodeTimeTotalMilliseconds) / 1_000)
+    }
+
+    var averageRequestTokensPerSecond: Double? {
+        guard completionTokensTotal > 0, requestTimeTotalMilliseconds > 0 else {
+            return nil
+        }
+        return Double(completionTokensTotal) / (Double(requestTimeTotalMilliseconds) / 1_000)
+    }
+
+    var asAllTimeStats: MLXServerAllTimeStats {
+        MLXServerAllTimeStats(
+            requestsCompleted: requestsCompleted,
+            requestsFailed: requestsFailed,
+            promptTokensTotal: promptTokensTotal,
+            completionTokensTotal: completionTokensTotal,
+            generatedTokensTotal: generatedTokensTotal,
+            requestTimeTotalSeconds: Double(requestTimeTotalMilliseconds) / 1_000,
+            decodeTimeTotalSeconds: Double(decodeTimeTotalMilliseconds) / 1_000,
+            lastUpdated: lastUpdatedAt
+        )
+    }
+}
+
+struct MLXServerAnalyticsBucketPoint: Identifiable {
+    let granularity: MLXServerAnalyticsGranularity
+    let bucketStart: Date
+    let modelID: String
+    let requestsStarted: Int
+    let requestsCompleted: Int
+    let requestsFailed: Int
+    let streamingRequests: Int
+    let promptTokensTotal: Int
+    let completionTokensTotal: Int
+    let generatedTokensTotal: Int
+    let requestTimeTotalMilliseconds: Int64
+    let decodeTimeTotalMilliseconds: Int64
+    let peakMemoryBytesMax: Int64?
+    let updatedAt: Date?
+
+    var id: String {
+        "\(granularity.rawValue):\(bucketStart.timeIntervalSince1970):\(modelID)"
+    }
+
+    var totalProcessedTokens: Int {
+        promptTokensTotal + generatedTokensTotal
+    }
+}
+
+final class MLXServerAnalyticsStore {
+    private let databaseURL: URL
+
+    init(databaseURL: URL = MLXServerAnalyticsStore.defaultDatabaseURL()) {
+        self.databaseURL = databaseURL.standardizedFileURL
+    }
+
+    static func defaultDatabaseURL() -> URL {
+        let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.homeDirectoryForCurrentUser
+
+        return applicationSupport
+            .appendingPathComponent("MLXServerDemo", isDirectory: true)
+            .appendingPathComponent("Analytics.sqlite3")
+    }
+
+    func fetchSummary(
+        range: MLXServerAnalyticsRange = .allTime,
+        modelID: String? = nil
+    ) -> MLXServerHistoricalAnalyticsSummary {
+        guard let connection = try? SQLiteConnection(url: databaseURL) else {
+            return .empty
+        }
+
+        let sql = """
+            SELECT
+                COALESCE(SUM(requests_completed), 0),
+                COALESCE(SUM(requests_failed), 0),
+                COALESCE(SUM(prompt_tokens_total), 0),
+                COALESCE(SUM(completion_tokens_total), 0),
+                COALESCE(SUM(generated_tokens_total), 0),
+                COALESCE(SUM(request_elapsed_ms_total), 0),
+                COALESCE(SUM(decode_elapsed_ms_total), 0),
+                MAX(peak_memory_bytes_max),
+                MAX(updated_at)
+            FROM analytics_buckets
+            WHERE granularity = ?
+            \(range.rangeStartUnix == nil ? "" : "AND bucket_start >= ?")
+            \(normalizedModelID(modelID) == nil ? "" : "AND model_id = ?")
+            """
+
+        guard let statement = try? connection.prepare(sql) else {
+            return .empty
+        }
+
+        bindBucketFilters(statement: statement, range: range, modelID: modelID)
+
+        guard (try? statement.step()) == true else {
+            return .empty
+        }
+
+        return MLXServerHistoricalAnalyticsSummary(
+            requestsCompleted: Int(statement.int64(at: 0)),
+            requestsFailed: Int(statement.int64(at: 1)),
+            promptTokensTotal: Int(statement.int64(at: 2)),
+            completionTokensTotal: Int(statement.int64(at: 3)),
+            generatedTokensTotal: Int(statement.int64(at: 4)),
+            requestTimeTotalMilliseconds: statement.int64(at: 5),
+            decodeTimeTotalMilliseconds: statement.int64(at: 6),
+            peakMemoryBytesMax: statement.isNull(at: 7) ? nil : statement.int64(at: 7),
+            lastUpdatedAt: statement.isNull(at: 8)
+                ? nil
+                : Date(timeIntervalSince1970: statement.double(at: 8))
+        )
+    }
+
+    func fetchBuckets(
+        range: MLXServerAnalyticsRange,
+        modelID: String? = nil
+    ) -> [MLXServerAnalyticsBucketPoint] {
+        guard let connection = try? SQLiteConnection(url: databaseURL) else {
+            return []
+        }
+
+        let sql = """
+            SELECT
+                granularity,
+                bucket_start,
+                model_id,
+                requests_started,
+                requests_completed,
+                requests_failed,
+                streaming_requests,
+                prompt_tokens_total,
+                completion_tokens_total,
+                generated_tokens_total,
+                request_elapsed_ms_total,
+                decode_elapsed_ms_total,
+                peak_memory_bytes_max,
+                updated_at
+            FROM analytics_buckets
+            WHERE granularity = ?
+            \(range.rangeStartUnix == nil ? "" : "AND bucket_start >= ?")
+            \(normalizedModelID(modelID) == nil ? "" : "AND model_id = ?")
+            ORDER BY bucket_start ASC
+            """
+
+        guard let statement = try? connection.prepare(sql) else {
+            return []
+        }
+
+        bindBucketFilters(statement: statement, range: range, modelID: modelID)
+
+        var rows: [MLXServerAnalyticsBucketPoint] = []
+        while (try? statement.step()) == true {
+            guard let granularity = MLXServerAnalyticsGranularity(rawValue: statement.string(at: 0) ?? "") else {
+                continue
+            }
+
+            rows.append(
+                MLXServerAnalyticsBucketPoint(
+                    granularity: granularity,
+                    bucketStart: Date(timeIntervalSince1970: statement.double(at: 1)),
+                    modelID: statement.string(at: 2) ?? "Unknown",
+                    requestsStarted: Int(statement.int64(at: 3)),
+                    requestsCompleted: Int(statement.int64(at: 4)),
+                    requestsFailed: Int(statement.int64(at: 5)),
+                    streamingRequests: Int(statement.int64(at: 6)),
+                    promptTokensTotal: Int(statement.int64(at: 7)),
+                    completionTokensTotal: Int(statement.int64(at: 8)),
+                    generatedTokensTotal: Int(statement.int64(at: 9)),
+                    requestTimeTotalMilliseconds: statement.int64(at: 10),
+                    decodeTimeTotalMilliseconds: statement.int64(at: 11),
+                    peakMemoryBytesMax: statement.isNull(at: 12) ? nil : statement.int64(at: 12),
+                    updatedAt: statement.isNull(at: 13)
+                        ? nil
+                        : Date(timeIntervalSince1970: statement.double(at: 13))
+                )
+            )
+        }
+
+        return rows
+    }
+
+    func fetchKnownModelIDs() -> [String] {
+        guard let connection = try? SQLiteConnection(url: databaseURL) else {
+            return []
+        }
+
+        guard let statement = try? connection.prepare(
+            """
+            SELECT DISTINCT model_id
+            FROM request_events
+            ORDER BY model_id COLLATE NOCASE ASC
+            """
+        ) else {
+            return []
+        }
+
+        var modelIDs: [String] = []
+        while (try? statement.step()) == true {
+            if let modelID = statement.string(at: 0), !modelID.isEmpty {
+                modelIDs.append(modelID)
+            }
+        }
+
+        return modelIDs
+    }
+
+    private func bindBucketFilters(
+        statement: SQLiteStatement,
+        range: MLXServerAnalyticsRange,
+        modelID: String?
+    ) {
+        var parameterIndex: Int32 = 1
+        statement.bind(text: range.granularity.rawValue, at: parameterIndex)
+        parameterIndex += 1
+
+        if let rangeStartUnix = range.rangeStartUnix {
+            statement.bind(double: rangeStartUnix, at: parameterIndex)
+            parameterIndex += 1
+        }
+
+        if let modelID = normalizedModelID(modelID) {
+            statement.bind(text: modelID, at: parameterIndex)
+        }
+    }
+
+    private func normalizedModelID(_ modelID: String?) -> String? {
+        guard let trimmed = modelID?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed == "All" ? nil : trimmed
+    }
+}
+
+private final class SQLiteConnection {
+    private let handle: OpaquePointer
+
+    init(url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        var database: OpaquePointer?
+        let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
+        guard sqlite3_open_v2(url.path, &database, flags, nil) == SQLITE_OK, let database else {
+            let message = database.flatMap { sqlite3_errmsg($0) }.map(String.init(cString:)) ?? "Unable to open database"
+            sqlite3_close(database)
+            throw SQLiteConnectionError.openFailed(message)
+        }
+
+        handle = database
+        try execute("PRAGMA journal_mode = WAL;")
+        try execute("PRAGMA synchronous = NORMAL;")
+        try execute("PRAGMA busy_timeout = 3000;")
+        try execute(schemaSQL)
+    }
+
+    deinit {
+        sqlite3_close(handle)
+    }
+
+    func prepare(_ sql: String) throws -> SQLiteStatement {
+        try SQLiteStatement(handle: handle, sql: sql)
+    }
+
+    func execute(_ sql: String) throws {
+        guard sqlite3_exec(handle, sql, nil, nil, nil) == SQLITE_OK else {
+            throw SQLiteConnectionError.executionFailed(message)
+        }
+    }
+
+    private var message: String {
+        guard let rawMessage = sqlite3_errmsg(handle) else {
+            return "Unknown SQLite error"
+        }
+        return String(cString: rawMessage)
+    }
+}
+
+private final class SQLiteStatement {
+    private let handle: OpaquePointer
+
+    init(handle: OpaquePointer, sql: String) throws {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+            let message = sqlite3_errmsg(handle).map(String.init(cString:)) ?? "Unable to prepare SQLite statement"
+            throw SQLiteConnectionError.prepareFailed(message)
+        }
+        self.handle = statement
+    }
+
+    deinit {
+        sqlite3_finalize(handle)
+    }
+
+    func bind(text: String, at index: Int32) {
+        sqlite3_bind_text(handle, index, text, -1, sqliteTransientDestructor)
+    }
+
+    func bind(double: Double, at index: Int32) {
+        sqlite3_bind_double(handle, index, double)
+    }
+
+    func step() throws -> Bool {
+        switch sqlite3_step(handle) {
+        case SQLITE_ROW:
+            return true
+        case SQLITE_DONE:
+            return false
+        default:
+            throw SQLiteConnectionError.stepFailed
+        }
+    }
+
+    func int64(at index: Int32) -> Int64 {
+        sqlite3_column_int64(handle, index)
+    }
+
+    func double(at index: Int32) -> Double {
+        sqlite3_column_double(handle, index)
+    }
+
+    func string(at index: Int32) -> String? {
+        guard let rawValue = sqlite3_column_text(handle, index) else {
+            return nil
+        }
+        return String(cString: rawValue)
+    }
+
+    func isNull(at index: Int32) -> Bool {
+        sqlite3_column_type(handle, index) == SQLITE_NULL
+    }
+}
+
+private enum SQLiteConnectionError: Error {
+    case openFailed(String)
+    case executionFailed(String)
+    case prepareFailed(String)
+    case stepFailed
+}
+
+private let sqliteTransientDestructor = unsafeBitCast(
+    -1,
+    to: sqlite3_destructor_type.self
+)
+
+private let schemaSQL = """
+    CREATE TABLE IF NOT EXISTS request_events (
+        request_id TEXT PRIMARY KEY,
+        started_at REAL NOT NULL,
+        completed_at REAL NOT NULL,
+        model_id TEXT NOT NULL,
+        endpoint TEXT NOT NULL,
+        status TEXT NOT NULL,
+        streaming INTEGER NOT NULL,
+        prompt_tokens INTEGER NOT NULL,
+        completion_tokens INTEGER NOT NULL,
+        generated_tokens INTEGER NOT NULL,
+        request_elapsed_ms INTEGER,
+        decode_elapsed_ms INTEGER,
+        ttft_ms INTEGER,
+        peak_memory_bytes INTEGER,
+        prefill_tokens_per_second REAL,
+        decode_tokens_per_second REAL,
+        image_count INTEGER NOT NULL,
+        audio_count INTEGER NOT NULL,
+        structured_output INTEGER NOT NULL,
+        thinking_enabled INTEGER NOT NULL,
+        tool_calls INTEGER NOT NULL,
+        finish_reason TEXT,
+        backend TEXT,
+        created_at REAL NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS analytics_buckets (
+        granularity TEXT NOT NULL,
+        bucket_start REAL NOT NULL,
+        model_id TEXT NOT NULL,
+        requests_started INTEGER NOT NULL,
+        requests_completed INTEGER NOT NULL,
+        requests_failed INTEGER NOT NULL,
+        streaming_requests INTEGER NOT NULL,
+        prompt_tokens_total INTEGER NOT NULL,
+        completion_tokens_total INTEGER NOT NULL,
+        generated_tokens_total INTEGER NOT NULL,
+        request_elapsed_ms_total INTEGER NOT NULL,
+        decode_elapsed_ms_total INTEGER NOT NULL,
+        peak_memory_bytes_max INTEGER,
+        updated_at REAL NOT NULL,
+        PRIMARY KEY (granularity, bucket_start, model_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS server_sessions (
+        session_id TEXT PRIMARY KEY,
+        started_at REAL NOT NULL,
+        ended_at REAL,
+        last_seen_at REAL NOT NULL,
+        backend TEXT,
+        loaded_model TEXT,
+        loaded_adapter TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_request_events_completed_at
+        ON request_events (completed_at);
+    CREATE INDEX IF NOT EXISTS idx_request_events_model_completed_at
+        ON request_events (model_id, completed_at);
+    CREATE INDEX IF NOT EXISTS idx_request_events_status_completed_at
+        ON request_events (status, completed_at);
+    CREATE INDEX IF NOT EXISTS idx_analytics_buckets_granularity_bucket_start
+        ON analytics_buckets (granularity, bucket_start);
+    CREATE INDEX IF NOT EXISTS idx_analytics_buckets_granularity_model_bucket_start
+        ON analytics_buckets (granularity, model_id, bucket_start);
+"""

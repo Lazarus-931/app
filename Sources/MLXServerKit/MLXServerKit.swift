@@ -327,6 +327,7 @@ public struct MLXServerRuntimeSnapshot: Decodable {
     public let configuredContextLimit: Int?
     public let effectiveContextLimit: Int?
     public let loadedToolParser: String?
+    public let analyticsDatabasePath: String?
     public let continuousBatchingEnabled: Bool
     public let requestQueueDepth: Int
     public let apc: MLXServerAPCSnapshot
@@ -342,6 +343,7 @@ public struct MLXServerRuntimeSnapshot: Decodable {
         case configuredContextLimit = "configured_context_limit"
         case effectiveContextLimit = "effective_context_limit"
         case loadedToolParser = "loaded_tool_parser"
+        case analyticsDatabasePath = "analytics_db_path"
         case continuousBatchingEnabled = "continuous_batching_enabled"
         case requestQueueDepth = "request_queue_depth"
         case apc
@@ -354,6 +356,7 @@ public struct MLXServerRuntimeSnapshot: Decodable {
         configuredContextLimit = nil
         effectiveContextLimit = nil
         loadedToolParser = nil
+        analyticsDatabasePath = nil
         continuousBatchingEnabled = false
         requestQueueDepth = 0
         apc = MLXServerAPCSnapshot()
@@ -367,6 +370,7 @@ public struct MLXServerRuntimeSnapshot: Decodable {
         configuredContextLimit = try container.decodeIfPresent(Int.self, forKey: .configuredContextLimit)
         effectiveContextLimit = try container.decodeIfPresent(Int.self, forKey: .effectiveContextLimit)
         loadedToolParser = try container.decodeIfPresent(String.self, forKey: .loadedToolParser)
+        analyticsDatabasePath = try container.decodeIfPresent(String.self, forKey: .analyticsDatabasePath)
         continuousBatchingEnabled = container.decodeBoolIfPresent(forKey: .continuousBatchingEnabled)
         requestQueueDepth = container.decodeIntIfPresent(forKey: .requestQueueDepth)
         apc = (try? container.decode(MLXServerAPCSnapshot.self, forKey: .apc)) ?? MLXServerAPCSnapshot()

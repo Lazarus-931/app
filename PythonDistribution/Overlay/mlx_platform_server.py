@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import sqlite3
 import time
+import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from threading import Lock
 from typing import Any
 
@@ -24,6 +28,7 @@ TRACKED_PATHS = {
 
 @dataclass
 class RequestObservation:
+    request_id: str
     endpoint: str
     model: str | None
     stream: bool
@@ -31,6 +36,7 @@ class RequestObservation:
     audio_count: int
     structured_output: bool
     thinking_enabled: bool
+    started_at_unix: float
     start_time: float
     first_token_at: float | None = None
 
@@ -80,6 +86,322 @@ class ModelAggregate:
         }
 
 
+def analytics_db_path() -> str:
+    configured_path = os.environ.get("MLX_PLATFORM_ANALYTICS_DB_PATH")
+    if configured_path:
+        return os.path.expanduser(configured_path)
+
+    return os.path.expanduser(
+        "~/Library/Application Support/MLXServerDemo/Analytics.sqlite3"
+    )
+
+
+def bucket_start_unix(timestamp: float, granularity: str) -> float:
+    bucket_time = datetime.fromtimestamp(timestamp)
+    if granularity == "hour":
+        bucket_time = bucket_time.replace(minute=0, second=0, microsecond=0)
+    else:
+        bucket_time = bucket_time.replace(hour=0, minute=0, second=0, microsecond=0)
+    return bucket_time.timestamp()
+
+
+def seconds_to_milliseconds(value: float | None) -> int | None:
+    if value is None:
+        return None
+    return max(0, int(round(float(value) * 1000)))
+
+
+def gigabytes_to_bytes(value: float | None) -> int | None:
+    if value is None:
+        return None
+    return max(0, int(round(float(value) * (1024**3))))
+
+
+class AnalyticsStore:
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self.session_id = uuid.uuid4().hex
+        self._lock = Lock()
+        directory = os.path.dirname(self.path) or "."
+        os.makedirs(directory, exist_ok=True)
+        self._connection = sqlite3.connect(self.path, check_same_thread=False)
+        self._connection.execute("PRAGMA journal_mode = WAL")
+        self._connection.execute("PRAGMA synchronous = NORMAL")
+        self._connection.execute("PRAGMA busy_timeout = 3000")
+        self._ensure_schema()
+        self._start_session()
+        atexit.register(self.close_session)
+
+    def _ensure_schema(self) -> None:
+        self._connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS request_events (
+                request_id TEXT PRIMARY KEY,
+                started_at REAL NOT NULL,
+                completed_at REAL NOT NULL,
+                model_id TEXT NOT NULL,
+                endpoint TEXT NOT NULL,
+                status TEXT NOT NULL,
+                streaming INTEGER NOT NULL,
+                prompt_tokens INTEGER NOT NULL,
+                completion_tokens INTEGER NOT NULL,
+                generated_tokens INTEGER NOT NULL,
+                request_elapsed_ms INTEGER,
+                decode_elapsed_ms INTEGER,
+                ttft_ms INTEGER,
+                peak_memory_bytes INTEGER,
+                prefill_tokens_per_second REAL,
+                decode_tokens_per_second REAL,
+                image_count INTEGER NOT NULL,
+                audio_count INTEGER NOT NULL,
+                structured_output INTEGER NOT NULL,
+                thinking_enabled INTEGER NOT NULL,
+                tool_calls INTEGER NOT NULL,
+                finish_reason TEXT,
+                backend TEXT,
+                created_at REAL NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS analytics_buckets (
+                granularity TEXT NOT NULL,
+                bucket_start REAL NOT NULL,
+                model_id TEXT NOT NULL,
+                requests_started INTEGER NOT NULL,
+                requests_completed INTEGER NOT NULL,
+                requests_failed INTEGER NOT NULL,
+                streaming_requests INTEGER NOT NULL,
+                prompt_tokens_total INTEGER NOT NULL,
+                completion_tokens_total INTEGER NOT NULL,
+                generated_tokens_total INTEGER NOT NULL,
+                request_elapsed_ms_total INTEGER NOT NULL,
+                decode_elapsed_ms_total INTEGER NOT NULL,
+                peak_memory_bytes_max INTEGER,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (granularity, bucket_start, model_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS server_sessions (
+                session_id TEXT PRIMARY KEY,
+                started_at REAL NOT NULL,
+                ended_at REAL,
+                last_seen_at REAL NOT NULL,
+                backend TEXT,
+                loaded_model TEXT,
+                loaded_adapter TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_request_events_completed_at
+                ON request_events (completed_at);
+            CREATE INDEX IF NOT EXISTS idx_request_events_model_completed_at
+                ON request_events (model_id, completed_at);
+            CREATE INDEX IF NOT EXISTS idx_request_events_status_completed_at
+                ON request_events (status, completed_at);
+            CREATE INDEX IF NOT EXISTS idx_analytics_buckets_granularity_bucket_start
+                ON analytics_buckets (granularity, bucket_start);
+            CREATE INDEX IF NOT EXISTS idx_analytics_buckets_granularity_model_bucket_start
+                ON analytics_buckets (granularity, model_id, bucket_start);
+            """
+        )
+
+    def _start_session(self) -> None:
+        started_at = time.time()
+        with self._lock:
+            self._connection.execute(
+                """
+                INSERT OR REPLACE INTO server_sessions (
+                    session_id,
+                    started_at,
+                    last_seen_at,
+                    backend,
+                    loaded_model,
+                    loaded_adapter
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (self.session_id, started_at, started_at, BACKEND_NAME, None, None),
+            )
+            self._connection.commit()
+
+    def heartbeat(self, runtime: dict[str, Any] | None = None) -> None:
+        snapshot = runtime or {}
+        current_time = time.time()
+        with self._lock:
+            self._connection.execute(
+                """
+                UPDATE server_sessions
+                SET
+                    last_seen_at = ?,
+                    backend = COALESCE(?, backend),
+                    loaded_model = COALESCE(?, loaded_model),
+                    loaded_adapter = COALESCE(?, loaded_adapter)
+                WHERE session_id = ?
+                """,
+                (
+                    current_time,
+                    BACKEND_NAME,
+                    snapshot.get("loaded_model"),
+                    snapshot.get("loaded_adapter"),
+                    self.session_id,
+                ),
+            )
+            self._connection.commit()
+
+    def close_session(self) -> None:
+        ended_at = time.time()
+        with self._lock:
+            self._connection.execute(
+                """
+                UPDATE server_sessions
+                SET ended_at = ?, last_seen_at = ?
+                WHERE session_id = ? AND ended_at IS NULL
+                """,
+                (ended_at, ended_at, self.session_id),
+            )
+            self._connection.commit()
+
+    def record_event(self, event: dict[str, Any]) -> None:
+        model_id = str(event.get("model_id") or "Unknown")
+        completed_at = float(event["completed_at"])
+        status = str(event.get("status") or "completed")
+        is_completed = status == "completed"
+        updated_at = time.time()
+
+        record = (
+            str(event["request_id"]),
+            float(event["started_at"]),
+            completed_at,
+            model_id,
+            str(event.get("endpoint") or "unknown"),
+            status,
+            1 if event.get("streaming") else 0,
+            int(event.get("prompt_tokens") or 0),
+            int(event.get("completion_tokens") or 0),
+            int(event.get("generated_tokens") or 0),
+            event.get("request_elapsed_ms"),
+            event.get("decode_elapsed_ms"),
+            event.get("ttft_ms"),
+            event.get("peak_memory_bytes"),
+            event.get("prefill_tokens_per_second"),
+            event.get("decode_tokens_per_second"),
+            int(event.get("image_count") or 0),
+            int(event.get("audio_count") or 0),
+            1 if event.get("structured_output") else 0,
+            1 if event.get("thinking_enabled") else 0,
+            1 if event.get("tool_calls") else 0,
+            event.get("finish_reason"),
+            event.get("backend"),
+            updated_at,
+        )
+
+        with self._lock:
+            cursor = self._connection.execute(
+                """
+                INSERT OR IGNORE INTO request_events (
+                    request_id,
+                    started_at,
+                    completed_at,
+                    model_id,
+                    endpoint,
+                    status,
+                    streaming,
+                    prompt_tokens,
+                    completion_tokens,
+                    generated_tokens,
+                    request_elapsed_ms,
+                    decode_elapsed_ms,
+                    ttft_ms,
+                    peak_memory_bytes,
+                    prefill_tokens_per_second,
+                    decode_tokens_per_second,
+                    image_count,
+                    audio_count,
+                    structured_output,
+                    thinking_enabled,
+                    tool_calls,
+                    finish_reason,
+                    backend,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                record,
+            )
+            if cursor.rowcount == 0:
+                self._connection.commit()
+                return
+
+            request_elapsed_ms_total = int(event.get("request_elapsed_ms") or 0) if is_completed else 0
+            decode_elapsed_ms_total = int(event.get("decode_elapsed_ms") or 0) if is_completed else 0
+            peak_memory_bytes = event.get("peak_memory_bytes") if is_completed else None
+
+            for granularity in ("hour", "day"):
+                self._connection.execute(
+                    """
+                    INSERT INTO analytics_buckets (
+                        granularity,
+                        bucket_start,
+                        model_id,
+                        requests_started,
+                        requests_completed,
+                        requests_failed,
+                        streaming_requests,
+                        prompt_tokens_total,
+                        completion_tokens_total,
+                        generated_tokens_total,
+                        request_elapsed_ms_total,
+                        decode_elapsed_ms_total,
+                        peak_memory_bytes_max,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(granularity, bucket_start, model_id) DO UPDATE SET
+                        requests_started = analytics_buckets.requests_started + excluded.requests_started,
+                        requests_completed = analytics_buckets.requests_completed + excluded.requests_completed,
+                        requests_failed = analytics_buckets.requests_failed + excluded.requests_failed,
+                        streaming_requests = analytics_buckets.streaming_requests + excluded.streaming_requests,
+                        prompt_tokens_total = analytics_buckets.prompt_tokens_total + excluded.prompt_tokens_total,
+                        completion_tokens_total = analytics_buckets.completion_tokens_total + excluded.completion_tokens_total,
+                        generated_tokens_total = analytics_buckets.generated_tokens_total + excluded.generated_tokens_total,
+                        request_elapsed_ms_total = analytics_buckets.request_elapsed_ms_total + excluded.request_elapsed_ms_total,
+                        decode_elapsed_ms_total = analytics_buckets.decode_elapsed_ms_total + excluded.decode_elapsed_ms_total,
+                        peak_memory_bytes_max = CASE
+                            WHEN analytics_buckets.peak_memory_bytes_max IS NULL THEN excluded.peak_memory_bytes_max
+                            WHEN excluded.peak_memory_bytes_max IS NULL THEN analytics_buckets.peak_memory_bytes_max
+                            ELSE MAX(analytics_buckets.peak_memory_bytes_max, excluded.peak_memory_bytes_max)
+                        END,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        granularity,
+                        bucket_start_unix(completed_at, granularity),
+                        model_id,
+                        1,
+                        1 if is_completed else 0,
+                        0 if is_completed else 1,
+                        1 if event.get("streaming") else 0,
+                        int(event.get("prompt_tokens") or 0) if is_completed else 0,
+                        int(event.get("completion_tokens") or 0) if is_completed else 0,
+                        int(event.get("generated_tokens") or 0) if is_completed else 0,
+                        request_elapsed_ms_total,
+                        decode_elapsed_ms_total,
+                        peak_memory_bytes,
+                        updated_at,
+                    ),
+                )
+
+            self._connection.execute(
+                """
+                UPDATE server_sessions
+                SET
+                    last_seen_at = ?,
+                    backend = COALESCE(?, backend)
+                WHERE session_id = ?
+                """,
+                (updated_at, BACKEND_NAME, self.session_id),
+            )
+            self._connection.commit()
+
+
+ANALYTICS_STORE = AnalyticsStore(analytics_db_path())
+
+
 class MetricsTracker:
     def __init__(self) -> None:
         self._lock = Lock()
@@ -111,13 +433,51 @@ class MetricsTracker:
                 aggregate.streaming_requests += 1
 
     def record_failed(self, observation: RequestObservation) -> None:
+        completed_at = time.time()
+        event = {
+            "request_id": observation.request_id,
+            "started_at": observation.started_at_unix,
+            "completed_at": completed_at,
+            "model_id": observation.model or "Unknown",
+            "endpoint": observation.endpoint,
+            "status": "failed",
+            "streaming": observation.stream,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "generated_tokens": 0,
+            "request_elapsed_ms": seconds_to_milliseconds(
+                max(0.0, time.perf_counter() - observation.start_time)
+            ),
+            "decode_elapsed_ms": None,
+            "ttft_ms": seconds_to_milliseconds(
+                max(0.0, observation.first_token_at - observation.start_time)
+            )
+            if observation.first_token_at is not None
+            else None,
+            "peak_memory_bytes": None,
+            "prefill_tokens_per_second": None,
+            "decode_tokens_per_second": None,
+            "image_count": observation.image_count,
+            "audio_count": observation.audio_count,
+            "structured_output": observation.structured_output,
+            "thinking_enabled": observation.thinking_enabled,
+            "tool_calls": False,
+            "finish_reason": None,
+            "backend": BACKEND_NAME,
+        }
+
         with self._lock:
             self.requests_failed += 1
             self.in_flight = max(0, self.in_flight - 1)
             model_key = observation.model or "Unknown"
             aggregate = self.models.setdefault(model_key, ModelAggregate(model=model_key))
             aggregate.requests_failed += 1
-            aggregate.last_request_at = time.time()
+            aggregate.last_request_at = completed_at
+
+        try:
+            ANALYTICS_STORE.record_event(event)
+        except Exception as error:
+            base.logger.warning("analytics persistence failed for failed request: %s", error)
 
     def record_completed(
         self,
@@ -166,6 +526,36 @@ class MetricsTracker:
             "apc_enabled": base.apc_manager is not None,
         }
 
+        event = {
+            "request_id": observation.request_id,
+            "started_at": observation.started_at_unix,
+            "completed_at": completed_at,
+            "model_id": latest["model"] or observation.model or "Unknown",
+            "endpoint": observation.endpoint,
+            "status": "completed",
+            "streaming": observation.stream,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "generated_tokens": generated_tokens,
+            "request_elapsed_ms": seconds_to_milliseconds(
+                elapsed if elapsed > 0 else None
+            ),
+            "decode_elapsed_ms": seconds_to_milliseconds(
+                decode_time if decode_time > 0 else None
+            ),
+            "ttft_ms": seconds_to_milliseconds(completion.get("ttft_s")),
+            "peak_memory_bytes": gigabytes_to_bytes(completion.get("peak_memory_gb")),
+            "prefill_tokens_per_second": completion.get("prefill_tok_s"),
+            "decode_tokens_per_second": completion.get("decode_tok_s"),
+            "image_count": observation.image_count,
+            "audio_count": observation.audio_count,
+            "structured_output": observation.structured_output,
+            "thinking_enabled": observation.thinking_enabled,
+            "tool_calls": bool(completion.get("tool_calls")),
+            "finish_reason": completion.get("finish_reason"),
+            "backend": BACKEND_NAME,
+        }
+
         with self._lock:
             self.requests_completed += 1
             self.in_flight = max(0, self.in_flight - 1)
@@ -187,7 +577,18 @@ class MetricsTracker:
             aggregate.decode_time_total_seconds += max(0.0, decode_time)
             aggregate.last_request_at = completed_at
 
+        try:
+            ANALYTICS_STORE.record_event(event)
+        except Exception as error:
+            base.logger.warning("analytics persistence failed for completed request: %s", error)
+
     def snapshot(self) -> dict[str, Any]:
+        runtime = current_runtime_snapshot()
+        try:
+            ANALYTICS_STORE.heartbeat(runtime)
+        except Exception as error:
+            base.logger.warning("analytics session heartbeat failed: %s", error)
+
         with self._lock:
             avg_request_time = (
                 self.request_time_total_seconds / self.requests_completed
@@ -221,7 +622,7 @@ class MetricsTracker:
                     "avg_decode_tok_s": avg_decode_tok_s,
                     "last_request_at": self.last_request_at,
                 },
-                "server": current_runtime_snapshot(),
+                "server": runtime,
                 "models": [
                     aggregate.to_dict()
                     for aggregate in sorted(
@@ -254,6 +655,13 @@ def iter_message_media(messages: list[Any]) -> tuple[int, int]:
     return image_count, audio_count
 
 
+def resolve_thinking_enabled(payload: dict[str, Any]) -> bool:
+    value = payload.get("enable_thinking")
+    if isinstance(value, bool):
+        return value
+    return bool(base.get_server_enable_thinking())
+
+
 def parse_request_observation(request: Request, payload: dict[str, Any]) -> RequestObservation:
     image_count = 0
     audio_count = 0
@@ -265,15 +673,15 @@ def parse_request_observation(request: Request, payload: dict[str, Any]) -> Requ
             image_count, audio_count = iter_message_media(input_items)
 
     return RequestObservation(
+        request_id=uuid.uuid4().hex,
         endpoint=request.url.path.lstrip("/"),
         model=payload.get("model"),
         stream=bool(payload.get("stream")),
         image_count=image_count,
         audio_count=audio_count,
         structured_output=payload.get("response_format") is not None or payload.get("text") is not None,
-        thinking_enabled=payload.get("enable_thinking")
-        if isinstance(payload.get("enable_thinking"), bool)
-        else base.get_server_enable_thinking(),
+        thinking_enabled=resolve_thinking_enabled(payload),
+        started_at_unix=time.time(),
         start_time=time.perf_counter(),
     )
 
@@ -314,6 +722,7 @@ def current_runtime_snapshot() -> dict[str, Any]:
         "configured_context_limit": loaded_context_size,
         "effective_context_limit": loaded_context_size,
         "loaded_tool_parser": current_tool_parser(),
+        "analytics_db_path": ANALYTICS_STORE.path,
         "continuous_batching_enabled": getattr(base, "response_generator", None) is not None,
         "request_queue_depth": queue_depth,
         "apc": apc_snapshot,
