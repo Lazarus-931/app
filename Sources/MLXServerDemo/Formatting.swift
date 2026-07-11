@@ -20,6 +20,16 @@ enum MLXServerDemoFormatting {
         return formatter
     }()
 
+    private static let decimalFormatters: [Int: NumberFormatter] = {
+        Dictionary(uniqueKeysWithValues: (0...4).map { digits in
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.minimumFractionDigits = digits
+            formatter.maximumFractionDigits = digits
+            return (digits, formatter)
+        })
+    }()
+
     static func compactCount(_ value: Int) -> FormattedCount {
         let raw = integerFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
         let sign = value < 0 ? "-" : ""
@@ -50,6 +60,40 @@ enum MLXServerDemoFormatting {
             return "--"
         }
         return String(format: "%.1f tok/s", value)
+    }
+
+    static func decimal(_ value: Double?, fractionDigits: Int = 2) -> String {
+        guard let value, value.isFinite else {
+            return "--"
+        }
+
+        let digits = min(max(fractionDigits, 0), 4)
+        if let formatter = decimalFormatters[digits] {
+            return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        }
+        return "\(value)"
+    }
+
+    static func integer(_ value: Int?) -> String {
+        guard let value else {
+            return "--"
+        }
+        return integerFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    static func seconds(fromMilliseconds value: Int64?, fractionDigits: Int = 2) -> String {
+        guard let value, value >= 0 else {
+            return "--"
+        }
+        return decimal(Double(value) / 1_000, fractionDigits: fractionDigits)
+    }
+
+    static func gigabytes(fromBytes value: Int64?, fractionDigits: Int = 1) -> String {
+        guard let value, value >= 0 else {
+            return "--"
+        }
+        let gigabytes = Double(value) / Double(1024 * 1024 * 1024)
+        return "\(decimal(gigabytes, fractionDigits: fractionDigits)) GB"
     }
 
     static func duration(_ value: Double?) -> String {
@@ -108,6 +152,22 @@ enum MLXServerDemoFormatting {
             date: .abbreviated,
             time: .shortened
         )
+    }
+
+    static func titleizedIdentifier(_ value: String?) -> String {
+        guard let rawValue = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty
+        else {
+            return "--"
+        }
+
+        return rawValue
+            .replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { segment in
+                segment.prefix(1).uppercased() + segment.dropFirst().lowercased()
+            }
+            .joined(separator: " ")
     }
 }
 

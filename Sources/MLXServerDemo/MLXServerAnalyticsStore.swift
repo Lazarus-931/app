@@ -42,7 +42,7 @@ enum MLXServerAnalyticsGranularity: String {
     case day
 }
 
-struct MLXServerHistoricalAnalyticsSummary {
+struct MLXServerHistoricalAnalyticsSummary: Sendable {
     static let empty = MLXServerHistoricalAnalyticsSummary()
 
     var requestsCompleted: Int = 0
@@ -87,7 +87,7 @@ struct MLXServerHistoricalAnalyticsSummary {
     }
 }
 
-struct MLXServerAnalyticsBucketPoint: Identifiable {
+struct MLXServerAnalyticsBucketPoint: Identifiable, Sendable {
     let granularity: MLXServerAnalyticsGranularity
     let bucketStart: Date
     let modelID: String
@@ -112,6 +112,44 @@ struct MLXServerAnalyticsBucketPoint: Identifiable {
     }
 }
 
+struct MLXServerAnalyticsRequestEvent: Identifiable, Sendable {
+    let requestID: String
+    let completedAt: Date
+    let modelID: String
+    let status: String
+    let endpoint: String
+    let streaming: Bool
+    let promptTokens: Int
+    let completionTokens: Int
+    let generatedTokens: Int
+    let requestElapsedMilliseconds: Int64?
+    let decodeElapsedMilliseconds: Int64?
+    let ttftMilliseconds: Int64?
+    let peakMemoryBytes: Int64?
+    let prefillTokensPerSecond: Double?
+    let decodeTokensPerSecond: Double?
+    let imageCount: Int
+    let audioCount: Int
+    let structuredOutput: Bool
+    let thinkingEnabled: Bool
+    let toolCalls: Bool
+    let finishReason: String?
+    let backend: String?
+
+    var id: String { requestID }
+
+    var requestTokensPerSecond: Double? {
+        guard completionTokens > 0,
+              let requestElapsedMilliseconds,
+              requestElapsedMilliseconds > 0
+        else {
+            return nil
+        }
+
+        return Double(completionTokens) / (Double(requestElapsedMilliseconds) / 1_000)
+    }
+}
+
 final class MLXServerAnalyticsStore {
     private let databaseURL: URL
 
@@ -132,11 +170,14 @@ final class MLXServerAnalyticsStore {
 
     func fetchSummary(
         range: MLXServerAnalyticsRange = .allTime,
-        modelID: String? = nil
+        modelID: String? = nil,
+        granularityOverride: MLXServerAnalyticsGranularity? = nil
     ) -> MLXServerHistoricalAnalyticsSummary {
         guard let connection = try? SQLiteConnection(url: databaseURL) else {
             return .empty
         }
+
+        let granularity = granularityOverride ?? range.granularity
 
         let sql = """
             SELECT
@@ -159,7 +200,12 @@ final class MLXServerAnalyticsStore {
             return .empty
         }
 
-        bindBucketFilters(statement: statement, range: range, modelID: modelID)
+        bindBucketFilters(
+            statement: statement,
+            granularity: granularity,
+            rangeStartUnix: range.rangeStartUnix,
+            modelID: modelID
+        )
 
         guard (try? statement.step()) == true else {
             return .empty
@@ -182,11 +228,14 @@ final class MLXServerAnalyticsStore {
 
     func fetchBuckets(
         range: MLXServerAnalyticsRange,
-        modelID: String? = nil
+        modelID: String? = nil,
+        granularityOverride: MLXServerAnalyticsGranularity? = nil
     ) -> [MLXServerAnalyticsBucketPoint] {
         guard let connection = try? SQLiteConnection(url: databaseURL) else {
             return []
         }
+
+        let granularity = granularityOverride ?? range.granularity
 
         let sql = """
             SELECT
@@ -215,7 +264,12 @@ final class MLXServerAnalyticsStore {
             return []
         }
 
-        bindBucketFilters(statement: statement, range: range, modelID: modelID)
+        bindBucketFilters(
+            statement: statement,
+            granularity: granularity,
+            rangeStartUnix: range.rangeStartUnix,
+            modelID: modelID
+        )
 
         var rows: [MLXServerAnalyticsBucketPoint] = []
         while (try? statement.step()) == true {
@@ -241,6 +295,136 @@ final class MLXServerAnalyticsStore {
                     updatedAt: statement.isNull(at: 13)
                         ? nil
                         : Date(timeIntervalSince1970: statement.double(at: 13))
+                )
+            )
+        }
+
+        return rows
+    }
+
+    func fetchBucketDateBounds(
+        granularity: MLXServerAnalyticsGranularity,
+        modelID: String? = nil
+    ) -> (start: Date, end: Date)? {
+        guard let connection = try? SQLiteConnection(url: databaseURL) else {
+            return nil
+        }
+
+        let sql = """
+            SELECT
+                MIN(bucket_start),
+                MAX(bucket_start)
+            FROM analytics_buckets
+            WHERE granularity = ?
+            \(normalizedModelID(modelID) == nil ? "" : "AND model_id = ?")
+            """
+
+        guard let statement = try? connection.prepare(sql) else {
+            return nil
+        }
+
+        statement.bind(text: granularity.rawValue, at: 1)
+        if let modelID = normalizedModelID(modelID) {
+            statement.bind(text: modelID, at: 2)
+        }
+
+        guard (try? statement.step()) == true,
+              !statement.isNull(at: 0),
+              !statement.isNull(at: 1)
+        else {
+            return nil
+        }
+
+        return (
+            start: Date(timeIntervalSince1970: statement.double(at: 0)),
+            end: Date(timeIntervalSince1970: statement.double(at: 1))
+        )
+    }
+
+    func fetchRecentRequestEvents(
+        range: MLXServerAnalyticsRange = .allTime,
+        modelID: String? = nil,
+        limit: Int = 10
+    ) -> [MLXServerAnalyticsRequestEvent] {
+        guard let connection = try? SQLiteConnection(url: databaseURL) else {
+            return []
+        }
+
+        let sql = """
+            SELECT
+                request_id,
+                completed_at,
+                model_id,
+                status,
+                endpoint,
+                streaming,
+                prompt_tokens,
+                completion_tokens,
+                generated_tokens,
+                request_elapsed_ms,
+                decode_elapsed_ms,
+                ttft_ms,
+                peak_memory_bytes,
+                prefill_tokens_per_second,
+                decode_tokens_per_second,
+                image_count,
+                audio_count,
+                structured_output,
+                thinking_enabled,
+                tool_calls,
+                finish_reason,
+                backend
+            FROM request_events
+            WHERE 1 = 1
+            \(range.rangeStartUnix == nil ? "" : "AND completed_at >= ?")
+            \(normalizedModelID(modelID) == nil ? "" : "AND model_id = ?")
+            ORDER BY completed_at DESC, created_at DESC
+            LIMIT ?
+            """
+
+        guard let statement = try? connection.prepare(sql) else {
+            return []
+        }
+
+        var parameterIndex: Int32 = 1
+        if let rangeStartUnix = range.rangeStartUnix {
+            statement.bind(double: rangeStartUnix, at: parameterIndex)
+            parameterIndex += 1
+        }
+
+        if let modelID = normalizedModelID(modelID) {
+            statement.bind(text: modelID, at: parameterIndex)
+            parameterIndex += 1
+        }
+
+        statement.bind(int64: Int64(limit), at: parameterIndex)
+
+        var rows: [MLXServerAnalyticsRequestEvent] = []
+        while (try? statement.step()) == true {
+            rows.append(
+                MLXServerAnalyticsRequestEvent(
+                    requestID: statement.string(at: 0) ?? UUID().uuidString,
+                    completedAt: Date(timeIntervalSince1970: statement.double(at: 1)),
+                    modelID: statement.string(at: 2) ?? "Unknown",
+                    status: statement.string(at: 3) ?? "unknown",
+                    endpoint: statement.string(at: 4) ?? "unknown",
+                    streaming: statement.int64(at: 5) != 0,
+                    promptTokens: Int(statement.int64(at: 6)),
+                    completionTokens: Int(statement.int64(at: 7)),
+                    generatedTokens: Int(statement.int64(at: 8)),
+                    requestElapsedMilliseconds: statement.isNull(at: 9) ? nil : statement.int64(at: 9),
+                    decodeElapsedMilliseconds: statement.isNull(at: 10) ? nil : statement.int64(at: 10),
+                    ttftMilliseconds: statement.isNull(at: 11) ? nil : statement.int64(at: 11),
+                    peakMemoryBytes: statement.isNull(at: 12) ? nil : statement.int64(at: 12),
+                    prefillTokensPerSecond: statement.isNull(at: 13) ? nil : statement.double(at: 13),
+                    decodeTokensPerSecond: statement.isNull(at: 14) ? nil : statement.double(at: 14),
+                    imageCount: Int(statement.int64(at: 15)),
+                    audioCount: Int(statement.int64(at: 16)),
+                    structuredOutput: statement.int64(at: 17) != 0,
+                    thinkingEnabled: statement.int64(at: 18) != 0,
+                    toolCalls: statement.int64(at: 19) != 0,
+                    finishReason: statement.string(at: 20),
+                    backend: statement.string(at: 21)
                 )
             )
         }
@@ -275,14 +459,15 @@ final class MLXServerAnalyticsStore {
 
     private func bindBucketFilters(
         statement: SQLiteStatement,
-        range: MLXServerAnalyticsRange,
+        granularity: MLXServerAnalyticsGranularity,
+        rangeStartUnix: Double?,
         modelID: String?
     ) {
         var parameterIndex: Int32 = 1
-        statement.bind(text: range.granularity.rawValue, at: parameterIndex)
+        statement.bind(text: granularity.rawValue, at: parameterIndex)
         parameterIndex += 1
 
-        if let rangeStartUnix = range.rangeStartUnix {
+        if let rangeStartUnix {
             statement.bind(double: rangeStartUnix, at: parameterIndex)
             parameterIndex += 1
         }
@@ -368,6 +553,10 @@ private final class SQLiteStatement {
 
     func bind(double: Double, at index: Int32) {
         sqlite3_bind_double(handle, index, double)
+    }
+
+    func bind(int64: Int64, at index: Int32) {
+        sqlite3_bind_int64(handle, index, int64)
     }
 
     func step() throws -> Bool {

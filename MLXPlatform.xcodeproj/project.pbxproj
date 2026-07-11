@@ -18,6 +18,7 @@
 		690C9D518D413F04B23658CB /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E79C616B1499AB84D9C0C73 /* SettingsView.swift */; };
 		6BAF9797FB49E6C792EDCA3D /* MLXServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D1EB0EEA882E66FB200B81 /* MLXServerSettings.swift */; };
 		6E0E1F734A9D47A48A54D22D /* MLXServerAnalyticsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E05D72C9A804E4C9E7B9F83 /* MLXServerAnalyticsStore.swift */; };
+		72E445A0615F4A0EAAA3E063 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D7B4EB36624849814B34D0 /* DashboardViewModel.swift */; };
 		78E5B5ECF19EA010DF623E71 /* LocalModelDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */; };
 		9C9B78EFB56C0CCBD9269F93 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D906FE8C8AC46CC3A5B45200 /* ChatView.swift */; };
 		A841AE69F144D09E71807127 /* MLXServerKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; };
@@ -61,6 +62,7 @@
 		4C7902FB9F159500C5939C27 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
 		5C167745187A4892E26BA3BC /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		8E05D72C9A804E4C9E7B9F83 /* MLXServerAnalyticsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerAnalyticsStore.swift; sourceTree = "<group>"; };
+		E4D7B4EB36624849814B34D0 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		6776FF6417E520723AB5D793 /* MLXServerKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerKit.swift; sourceTree = "<group>"; };
 		6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationViewModel.swift; sourceTree = "<group>"; };
@@ -119,6 +121,7 @@
 				6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */,
 				D906FE8C8AC46CC3A5B45200 /* ChatView.swift */,
 				C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */,
+				E4D7B4EB36624849814B34D0 /* DashboardViewModel.swift */,
 				08C732254F6B490DC7013A27 /* Formatting.swift */,
 				9C31C8C37F38184423C71293 /* ImageGenerationView.swift */,
 				8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */,
@@ -245,6 +248,7 @@
 				65518C3B8CFFCB021938B536 /* AppDelegate.swift in Sources */,
 				9C9B78EFB56C0CCBD9269F93 /* ChatView.swift in Sources */,
 				0F1DC5A03D5852A5D9334D85 /* ControlPanelView.swift in Sources */,
+				72E445A0615F4A0EAAA3E063 /* DashboardViewModel.swift in Sources */,
 				D63EB8DC9FD1B889B779EB78 /* Formatting.swift in Sources */,
 				0A5BF495C93AFBBD50AD6C69 /* ImageGenerationView.swift in Sources */,
 				68EC2E304EA347E685D0EA44 /* ImageGenerationViewModel.swift in Sources */,

@@ -46,6 +46,10 @@ final class MLXServerDemoModel: ObservableObject {
         metrics?.server.displayLoadedModel ?? "None"
     }
 
+    var analyticsDatabaseURL: URL {
+        currentAnalyticsDatabaseURL(runtimePath: metrics?.server.analyticsDatabasePath)
+    }
+
     var unavailableMetricsText: String {
         lastMetricsError == nil ? "Waiting for server..." : "Metrics unavailable"
     }
