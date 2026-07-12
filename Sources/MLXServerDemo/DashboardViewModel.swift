@@ -88,9 +88,30 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    struct ModelPerformance: Identifiable, Hashable, Sendable {
+        let modelID: String
+        let processedTokens: Int
+        let requestsCompleted: Int
+        let requestsFailed: Int
+        let averageDecodeTokensPerSecond: Double?
+        let peakMemoryBytes: Int64?
+
+        var id: String { modelID }
+
+        var totalRequests: Int {
+            requestsCompleted + requestsFailed
+        }
+
+        var successRate: Double? {
+            guard totalRequests > 0 else { return nil }
+            return Double(requestsCompleted) / Double(totalRequests)
+        }
+    }
+
     @Published private(set) var availableModels: [ModelOption] = [.all]
     @Published private(set) var historicalSummary = MLXServerHistoricalAnalyticsSummary.empty
     @Published private(set) var bucketPoints: [BucketPoint] = []
+    @Published private(set) var modelPerformance: [ModelPerformance] = []
     @Published private(set) var recentRequestEvents: [MLXServerAnalyticsRequestEvent] = []
     @Published private(set) var isLoadingHistory = false
     @Published private(set) var localModelError: String?
@@ -110,6 +131,8 @@ final class DashboardViewModel: ObservableObject {
     private var analyticsDatabaseURL: URL
     private var preferredModelID: String?
     private var hasAppliedPreferredSelection = false
+    private var scannedModelOptions: [ModelOption] = []
+    private var historicalModelIDs: [String] = []
     private var modelScanTask: Task<Void, Never>?
     private var historyLoadTask: Task<DashboardSnapshot, Never>?
     private var historyLoadGeneration = 0
@@ -154,9 +177,10 @@ final class DashboardViewModel: ObservableObject {
                 guard !Task.isCancelled else {
                     return
                 }
-                availableModels = [.all]
+                scannedModelOptions = []
+                rebuildAvailableModels()
                 localModelError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                if selectedModelID != ModelOption.allID {
+                if !availableModels.contains(where: { $0.id == selectedModelID }) {
                     selectedModelID = ModelOption.allID
                 }
             }
@@ -191,18 +215,22 @@ final class DashboardViewModel: ObservableObject {
                 granularityOverride: displayGranularity
             )
             let recentRequestEvents = store.fetchRecentRequestEvents(
-                range: .allTime,
+                range: range.analyticsRange,
                 modelID: selectedModelID,
                 limit: 10
             )
+            let knownModelIDs = store.fetchKnownModelIDs()
             let points = Self.bucketPoints(
                 from: rawBuckets,
                 range: range,
                 granularity: displayGranularity
             )
+            let modelPerformance = Self.modelPerformance(from: rawBuckets)
             return DashboardSnapshot(
                 summary: summary,
                 points: points,
+                modelPerformance: modelPerformance,
+                knownModelIDs: knownModelIDs,
                 recentRequestEvents: recentRequestEvents
             )
         }
@@ -215,16 +243,19 @@ final class DashboardViewModel: ObservableObject {
             guard historyLoadGeneration == generation else { return }
             historicalSummary = snapshot.summary
             bucketPoints = snapshot.points
+            modelPerformance = snapshot.modelPerformance
+            historicalModelIDs = snapshot.knownModelIDs
+            rebuildAvailableModels()
             recentRequestEvents = snapshot.recentRequestEvents
             isLoadingHistory = false
         }
     }
 
     private func applyScannedModels(_ models: [LocalModel]) {
-        let options = [.all] + models.map {
+        scannedModelOptions = models.map {
             ModelOption(id: $0.repoID, modelID: $0.repoID, title: $0.repoID)
         }
-        availableModels = options
+        rebuildAvailableModels()
         localModelError = nil
         applyPreferredSelectionIfPossible()
 
@@ -232,6 +263,17 @@ final class DashboardViewModel: ObservableObject {
             selectedModelID = ModelOption.allID
             return
         }
+    }
+
+    private func rebuildAvailableModels() {
+        var optionsByID = Dictionary(uniqueKeysWithValues: scannedModelOptions.map { ($0.id, $0) })
+        for modelID in historicalModelIDs where optionsByID[modelID] == nil {
+            optionsByID[modelID] = ModelOption(id: modelID, modelID: modelID, title: modelID)
+        }
+        availableModels = [.all] + optionsByID.values.sorted {
+            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+        applyPreferredSelectionIfPossible()
     }
 
     private func applyPreferredSelectionIfPossible() {
@@ -267,7 +309,37 @@ private extension DashboardViewModel {
     struct DashboardSnapshot: Sendable {
         let summary: MLXServerHistoricalAnalyticsSummary
         let points: [BucketPoint]
+        let modelPerformance: [ModelPerformance]
+        let knownModelIDs: [String]
         let recentRequestEvents: [MLXServerAnalyticsRequestEvent]
+    }
+
+    nonisolated static func modelPerformance(
+        from buckets: [MLXServerAnalyticsBucketPoint]
+    ) -> [ModelPerformance] {
+        Dictionary(grouping: buckets, by: \.modelID)
+            .map { modelID, rows in
+                let generatedTokens = rows.reduce(0) { $0 + $1.generatedTokensTotal }
+                let decodeMilliseconds = rows.reduce(Int64.zero) { $0 + $1.decodeTimeTotalMilliseconds }
+                let decodeRate: Double? = generatedTokens > 0 && decodeMilliseconds > 0
+                    ? Double(generatedTokens) / (Double(decodeMilliseconds) / 1_000)
+                    : nil
+
+                return ModelPerformance(
+                    modelID: modelID,
+                    processedTokens: rows.reduce(0) { $0 + $1.totalProcessedTokens },
+                    requestsCompleted: rows.reduce(0) { $0 + $1.requestsCompleted },
+                    requestsFailed: rows.reduce(0) { $0 + $1.requestsFailed },
+                    averageDecodeTokensPerSecond: decodeRate,
+                    peakMemoryBytes: rows.compactMap(\.peakMemoryBytesMax).max()
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.processedTokens == rhs.processedTokens {
+                    return lhs.modelID.localizedCaseInsensitiveCompare(rhs.modelID) == .orderedAscending
+                }
+                return lhs.processedTokens > rhs.processedTokens
+            }
     }
 
     nonisolated static func bucketPoints(

@@ -8,11 +8,18 @@ struct StatsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                sessionAnalyticsSection
-                historicalAnalyticsSection
+            VStack(alignment: .leading, spacing: 24) {
+                pageHeader
+                filterBar
+                overviewCards
+                analyticsGrid
+                modelPerformanceSection
+                recentRequestsSection
             }
-            .padding(22)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 26)
+            .frame(maxWidth: 1500, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
@@ -32,175 +39,198 @@ struct StatsView: View {
         }
     }
 
-    private var sessionAnalyticsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Session analytics")
-                .font(.title2.weight(.semibold))
-
-            if let subtitle = sessionSubtitle {
-                Text(subtitle)
+    private var pageHeader: some View {
+        HStack(alignment: .top, spacing: 20) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Analytics")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                Text("Monitor token consumption, request volume, and model performance across this workspace.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 160), spacing: 12)],
-                alignment: .leading,
-                spacing: 12
-            ) {
-                ForEach(sessionCards) { card in
-                    SessionMetricCard(card: card)
+            Spacer(minLength: 20)
+
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(model.isRunning ? DashboardPalette.positive : Color.secondary)
+                    .frame(width: 7, height: 7)
+                Text(model.isRunning ? "Live" : "Offline")
+                    .font(.caption.weight(.semibold))
+
+                Button {
+                    dashboard.reloadHistorical()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .frame(width: 26, height: 26)
                 }
+                .buttonStyle(.borderless)
+                .help("Refresh analytics")
+                .disabled(dashboard.isLoadingHistory)
             }
         }
     }
 
-    private var historicalAnalyticsSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("All time analytics")
-                .font(.title2.weight(.semibold))
-
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 12) {
-                    filtersRow
-                    Spacer(minLength: 16)
-                    summaryPillsRow
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    filtersRow
-                    summaryPillsRow
-                }
+    private var filterBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                filtersRow
+                Spacer(minLength: 16)
+                Text(lastUpdatedLabel)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
+
+            VStack(alignment: .leading, spacing: 10) {
+                filtersRow
+                Text(lastUpdatedLabel)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(12)
+        .dashboardPanelStyle(cornerRadius: 12)
+    }
+
+    private var overviewCards: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 205), spacing: 14)],
+            alignment: .leading,
+            spacing: 14
+        ) {
+            AnalyticsMetricCard(
+                title: "Total tokens",
+                value: compact(dashboard.historicalSummary.totalProcessedTokens),
+                detail: "\(compact(dashboard.historicalSummary.promptTokensTotal)) input · \(compact(dashboard.historicalSummary.generatedTokensTotal)) output",
+                icon: "number",
+                tint: DashboardPalette.accent
+            )
+            AnalyticsMetricCard(
+                title: "Requests",
+                value: compact(totalRequests),
+                detail: "\(compact(dashboard.historicalSummary.requestsCompleted)) completed",
+                icon: "arrow.up.arrow.down",
+                tint: DashboardPalette.indigo
+            )
+            AnalyticsMetricCard(
+                title: "Success rate",
+                value: successRateLabel,
+                detail: dashboard.historicalSummary.requestsFailed == 0
+                    ? "No failed requests"
+                    : "\(compact(dashboard.historicalSummary.requestsFailed)) failed",
+                icon: "checkmark.circle",
+                tint: DashboardPalette.positive
+            )
+            AnalyticsMetricCard(
+                title: "Decode speed",
+                value: MLXServerDemoFormatting.rate(
+                    dashboard.historicalSummary.averageDecodeTokensPerSecond
+                ),
+                detail: "Average across requests",
+                icon: "gauge.with.dots.needle.67percent",
+                tint: DashboardPalette.orange
+            )
+        }
+    }
+
+    private var analyticsGrid: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                TokenUsagePanel(points: dashboard.bucketPoints, range: dashboard.selectedRange)
+                    .frame(maxWidth: .infinity)
+                RequestHealthPanel(
+                    points: dashboard.bucketPoints,
+                    completed: dashboard.historicalSummary.requestsCompleted,
+                    failed: dashboard.historicalSummary.requestsFailed
+                )
+                .frame(width: 330)
+            }
+
+            VStack(spacing: 16) {
+                TokenUsagePanel(points: dashboard.bucketPoints, range: dashboard.selectedRange)
+                RequestHealthPanel(
+                    points: dashboard.bucketPoints,
+                    completed: dashboard.historicalSummary.requestsCompleted,
+                    failed: dashboard.historicalSummary.requestsFailed
+                )
+            }
+        }
+    }
+
+    private var modelPerformanceSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            AnalyticsSectionHeader(
+                title: "Model performance",
+                subtitle: "Usage and throughput by model for the selected period"
+            )
+
+            ModelPerformanceTable(rows: dashboard.modelPerformance)
 
             if let localModelError = dashboard.localModelError {
                 Text(localModelError)
-                    .font(.callout)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            ViewThatFits(in: .horizontal) {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(minimum: 280), spacing: 16, alignment: .top),
-                        GridItem(.flexible(minimum: 280), spacing: 16, alignment: .top),
-                    ],
-                    alignment: .leading,
-                    spacing: 16
-                ) {
-                    historicalCharts
-                }
-
-                LazyVGrid(
-                    columns: [GridItem(.flexible(minimum: 280), spacing: 16, alignment: .top)],
-                    alignment: .leading,
-                    spacing: 16
-                ) {
-                    historicalCharts
-                }
-            }
-
-            recentRequestsSection
         }
     }
 
-    @ViewBuilder
-    private var historicalCharts: some View {
-        HistoricalChartCard(
-            title: "Processed tokens",
-            help: "Prompt and generated tokens combined over the selected time range."
-        ) {
-            DashboardTokenChart(
-                points: dashboard.bucketPoints,
-                range: dashboard.selectedRange,
-                metric: .processed
+    private var recentRequestsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            AnalyticsSectionHeader(
+                title: "Recent requests",
+                subtitle: "Select a request to inspect latency, throughput, and memory details"
             )
-        }
 
-        HistoricalChartCard(
-            title: "Generated tokens",
-            help: "Model output tokens over the selected time range."
-        ) {
-            DashboardTokenChart(
-                points: dashboard.bucketPoints,
-                range: dashboard.selectedRange,
-                metric: .generated
-            )
+            DashboardRecentRequestsTable(requests: dashboard.recentRequestEvents)
         }
+    }
 
-        HistoricalChartCard(
-            title: "Prompt tokens",
-            help: "Input tokens sent to the model over the selected time range."
-        ) {
-            DashboardTokenChart(
-                points: dashboard.bucketPoints,
-                range: dashboard.selectedRange,
-                metric: .prompt
-            )
-        }
+    private var totalRequests: Int {
+        dashboard.historicalSummary.requestsCompleted + dashboard.historicalSummary.requestsFailed
+    }
 
-        HistoricalChartCard(
-            title: "Total requests",
-            help: "Successful requests are shown in blue. Failed requests are shown in red."
-        ) {
-            DashboardRequestChart(
-                points: dashboard.bucketPoints,
-                range: dashboard.selectedRange
-            )
+    private var successRateLabel: String {
+        guard totalRequests > 0 else { return "--" }
+        return MLXServerDemoFormatting.percent(
+            Double(dashboard.historicalSummary.requestsCompleted) / Double(totalRequests)
+        )
+    }
+
+    private var lastUpdatedLabel: String {
+        guard let date = dashboard.historicalSummary.lastUpdatedAt else {
+            return dashboard.isLoadingHistory ? "Refreshing…" : "Waiting for analytics data"
         }
+        return "Updated \(date.formatted(date: .abbreviated, time: .shortened))"
+    }
+
+    private func compact(_ value: Int) -> String {
+        MLXServerDemoFormatting.compactCount(value).display
     }
 
     private var filtersRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             DashboardPickerContainer(title: "Model") {
                 Picker("Model", selection: $dashboard.selectedModelID) {
                     ForEach(dashboard.availableModels) { option in
-                        Text(option.title).tag(option.id)
+                        Text(option.displayTitle).tag(option.id)
                     }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: 360)
+            .frame(maxWidth: 340)
 
-            DashboardPickerContainer(title: "Range") {
-                Picker("Range", selection: $dashboard.selectedRange) {
+            DashboardPickerContainer(title: "Period") {
+                Picker("Period", selection: $dashboard.selectedRange) {
                     ForEach(DashboardViewModel.RangeOption.allCases) { option in
                         Text(option.title).tag(option)
                     }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(width: 180)
-        }
-    }
-
-    private var recentRequestsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Rolling request completion")
-                .font(.title2.weight(.semibold))
-
-            DashboardRecentRequestsTable(requests: dashboard.recentRequestEvents)
-        }
-    }
-
-    private var summaryPillsRow: some View {
-        HStack(spacing: 10) {
-            SummaryPill(
-                title: "Avg request speed",
-                value: MLXServerDemoFormatting.rate(
-                    dashboard.historicalSummary.averageRequestTokensPerSecond
-                )
-            )
-            SummaryPill(
-                title: "Avg decode speed",
-                value: MLXServerDemoFormatting.rate(
-                    dashboard.historicalSummary.averageDecodeTokensPerSecond
-                )
-            )
+            .frame(width: 165)
         }
     }
 
@@ -277,6 +307,324 @@ struct StatsView: View {
         if reloadHistory {
             dashboard.reloadHistorical()
         }
+    }
+}
+
+private struct AnalyticsSectionHeader: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.title3.weight(.semibold))
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct AnalyticsMetricCard: View {
+    let title: String
+    let value: String
+    let detail: String
+    let icon: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 30, height: 30)
+                    .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.system(size: 25, weight: .semibold, design: .rounded).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(16)
+        .dashboardPanelStyle(cornerRadius: 14)
+    }
+}
+
+private struct TokenUsagePanel: View {
+    let points: [DashboardViewModel.BucketPoint]
+    let range: DashboardViewModel.RangeOption
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top) {
+                AnalyticsSectionHeader(
+                    title: "Token usage",
+                    subtitle: "Input and output tokens over time"
+                )
+                Spacer()
+                HStack(spacing: 14) {
+                    ChartLegendDot(color: DashboardPalette.accent, title: "Input")
+                    ChartLegendDot(color: DashboardPalette.indigo, title: "Output")
+                }
+            }
+
+            if points.isEmpty {
+                DashboardEmptyChart()
+                    .frame(minHeight: 230)
+            } else {
+                Chart {
+                    ForEach(points) { point in
+                        AreaMark(
+                            x: .value("Time", point.bucketStart),
+                            y: .value("Input tokens", point.promptTokensTotal)
+                        )
+                        .foregroundStyle(
+                            .linearGradient(
+                                colors: [DashboardPalette.accent.opacity(0.28), DashboardPalette.accent.opacity(0.02)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+
+                        LineMark(
+                            x: .value("Time", point.bucketStart),
+                            y: .value("Input tokens", point.promptTokensTotal),
+                            series: .value("Series", "Input")
+                        )
+                        .foregroundStyle(DashboardPalette.accent)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                        .interpolationMethod(.catmullRom)
+
+                        LineMark(
+                            x: .value("Time", point.bucketStart),
+                            y: .value("Output tokens", point.generatedTokensTotal),
+                            series: .value("Series", "Output")
+                        )
+                        .foregroundStyle(DashboardPalette.indigo)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                        .interpolationMethod(.catmullRom)
+                    }
+                }
+                .chartLegend(.hidden)
+                .chartXAxis {
+                    AxisMarks(values: axisDates) { value in
+                        AxisGridLine().foregroundStyle(DashboardPalette.panelStroke.opacity(0.5))
+                        AxisTick().foregroundStyle(Color.clear)
+                        if let date = value.as(Date.self) {
+                            AxisValueLabel(axisLabel(for: date))
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
+                        AxisGridLine().foregroundStyle(DashboardPalette.panelStroke.opacity(0.55))
+                        AxisTick().foregroundStyle(Color.clear)
+                        if let raw = value.as(Int.self) {
+                            AxisValueLabel(MLXServerDemoFormatting.compactCount(raw).display)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .frame(height: 250)
+            }
+        }
+        .padding(18)
+        .dashboardPanelStyle(cornerRadius: 14)
+    }
+
+    private var granularity: MLXServerAnalyticsGranularity {
+        points.first?.granularity ?? (range == .last24Hours ? .hour : .day)
+    }
+
+    private var axisDates: [Date] {
+        DashboardChartAxis.markDates(from: points.map(\.bucketStart), maximumCount: 6)
+    }
+
+    private func axisLabel(for date: Date) -> String {
+        granularity == .hour
+            ? DashboardFormatters.hourLabel.string(from: date).lowercased()
+            : DashboardFormatters.dayLabel.string(from: date)
+    }
+}
+
+private struct ChartLegendDot: View {
+    let color: Color
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct RequestHealthPanel: View {
+    let points: [DashboardViewModel.BucketPoint]
+    let completed: Int
+    let failed: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            AnalyticsSectionHeader(
+                title: "Request health",
+                subtitle: "Completion volume and reliability"
+            )
+
+            HStack(alignment: .firstTextBaseline) {
+                Text(total == 0 ? "--" : MLXServerDemoFormatting.percent(Double(completed) / Double(total)))
+                    .font(.system(size: 29, weight: .semibold, design: .rounded).monospacedDigit())
+                Text("successful")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if points.isEmpty {
+                DashboardEmptyChart()
+                    .frame(minHeight: 120)
+            } else {
+                Chart(points) { point in
+                    BarMark(
+                        x: .value("Time", point.bucketStart),
+                        y: .value("Completed", point.requestsCompleted)
+                    )
+                    .foregroundStyle(DashboardPalette.positive.gradient)
+                    .cornerRadius(2)
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .frame(height: 118)
+            }
+
+            Divider()
+
+            HStack {
+                RequestHealthStat(title: "Completed", value: completed, color: DashboardPalette.positive)
+                Spacer()
+                RequestHealthStat(title: "Failed", value: failed, color: DashboardPalette.negative)
+            }
+        }
+        .padding(18)
+        .dashboardPanelStyle(cornerRadius: 14)
+    }
+
+    private var total: Int { completed + failed }
+}
+
+private struct RequestHealthStat: View {
+    let title: String
+    let value: Int
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Circle().fill(color).frame(width: 6, height: 6)
+                Text(title).font(.caption2).foregroundStyle(.secondary)
+            }
+            Text(MLXServerDemoFormatting.compactCount(value).display)
+                .font(.callout.weight(.semibold).monospacedDigit())
+        }
+    }
+}
+
+private struct ModelPerformanceTable: View {
+    let rows: [DashboardViewModel.ModelPerformance]
+
+    var body: some View {
+        Group {
+            if rows.isEmpty {
+                ContentUnavailableView(
+                    "No model activity",
+                    systemImage: "cpu",
+                    description: Text("Model performance will appear after requests are processed.")
+                )
+                .frame(maxWidth: .infinity, minHeight: 180)
+            } else {
+                VStack(spacing: 0) {
+                    modelRowHeader
+                    ForEach(rows) { row in
+                        Divider().overlay(DashboardPalette.panelStroke)
+                        modelRow(row)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .dashboardPanelStyle(cornerRadius: 14)
+    }
+
+    private var modelRowHeader: some View {
+        HStack(spacing: 18) {
+            tableHeader("Model", width: nil, alignment: .leading)
+            tableHeader("Tokens", width: 105, alignment: .trailing)
+            tableHeader("Requests", width: 90, alignment: .trailing)
+            tableHeader("Success", width: 85, alignment: .trailing)
+            tableHeader("Decode", width: 105, alignment: .trailing)
+            tableHeader("Peak memory", width: 105, alignment: .trailing)
+        }
+        .padding(.vertical, 12)
+    }
+
+    private func modelRow(_ row: DashboardViewModel.ModelPerformance) -> some View {
+        HStack(spacing: 18) {
+            HStack(spacing: 10) {
+                Image(systemName: "cpu")
+                    .foregroundStyle(DashboardPalette.accent)
+                    .frame(width: 28, height: 28)
+                    .background(DashboardPalette.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+                Text(row.modelID)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(row.modelID)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            tableValue(MLXServerDemoFormatting.compactCount(row.processedTokens).display, width: 105)
+            tableValue(MLXServerDemoFormatting.integer(row.totalRequests), width: 90)
+            tableValue(row.successRate.map(MLXServerDemoFormatting.percent) ?? "--", width: 85)
+            tableValue(MLXServerDemoFormatting.rate(row.averageDecodeTokensPerSecond), width: 105)
+            tableValue(MLXServerDemoFormatting.gigabytes(fromBytes: row.peakMemoryBytes), width: 105)
+        }
+        .padding(.vertical, 13)
+    }
+
+    private func tableHeader(_ title: String, width: CGFloat?, alignment: Alignment) -> some View {
+        Group {
+            if let width {
+                Text(title).frame(width: width, alignment: alignment)
+            } else {
+                Text(title).frame(maxWidth: .infinity, alignment: alignment)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private func tableValue(_ value: String, width: CGFloat) -> some View {
+        Text(value)
+            .font(.callout.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(width: width, alignment: .trailing)
     }
 }
 
@@ -419,6 +767,7 @@ private struct DashboardInfoPopover: View {
 
 private struct DashboardRecentRequestsTable: View {
     let requests: [MLXServerAnalyticsRequestEvent]
+    @State private var selectedRequest: MLXServerAnalyticsRequestEvent?
 
     var body: some View {
         Group {
@@ -438,8 +787,14 @@ private struct DashboardRecentRequestsTable: View {
                             Divider()
                                 .overlay(DashboardPalette.panelStroke)
 
-                            DashboardRecentRequestsDataRow(request: request)
-                                .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.01))
+                            Button {
+                                selectedRequest = request
+                            } label: {
+                                DashboardRecentRequestsDataRow(request: request)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.01))
                         }
                     }
                     .frame(
@@ -451,6 +806,89 @@ private struct DashboardRecentRequestsTable: View {
         }
         .padding(16)
         .dashboardPanelStyle(cornerRadius: 14)
+        .sheet(item: $selectedRequest) { request in
+            RequestDetailView(request: request)
+        }
+    }
+}
+
+private struct RequestDetailView: View {
+    let request: MLXServerAnalyticsRequestEvent
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Request details")
+                        .font(.title2.weight(.semibold))
+                    Text(request.completedAt.formatted(date: .abbreviated, time: .standard))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(request.modelID)
+                    .font(.headline)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                Text(request.requestID)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
+                spacing: 12
+            ) {
+                RequestDetailMetric(title: "Prompt tokens", value: MLXServerDemoFormatting.integer(request.promptTokens))
+                RequestDetailMetric(title: "Output tokens", value: MLXServerDemoFormatting.integer(request.generatedTokens))
+                RequestDetailMetric(title: "Elapsed", value: "\(MLXServerDemoFormatting.seconds(fromMilliseconds: request.requestElapsedMilliseconds))s")
+                RequestDetailMetric(title: "Prefill", value: "\(MLXServerDemoFormatting.decimal(request.resolvedPrefillTokensPerSecond)) tok/s")
+                RequestDetailMetric(title: "Decode", value: "\(MLXServerDemoFormatting.decimal(request.resolvedDecodeTokensPerSecond)) tok/s")
+                RequestDetailMetric(title: "Peak memory", value: MLXServerDemoFormatting.gigabytes(fromBytes: request.peakMemoryBytes))
+            }
+
+            HStack(spacing: 10) {
+                DashboardRequestBadge(
+                    text: request.status == "completed" ? "Completed" : "Failed",
+                    style: request.status == "completed" ? .finish : .failure
+                )
+                DashboardRequestBadge(
+                    text: request.streaming ? "Streaming" : "Standard",
+                    style: .text
+                )
+                Text(request.endpoint)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(24)
+        .frame(width: 620)
+    }
+}
+
+private struct RequestDetailMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.monospacedDigit())
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .dashboardPanelStyle(cornerRadius: 10)
     }
 }
 
@@ -487,6 +925,9 @@ private struct DashboardRecentRequestsDataRow: View {
     @ViewBuilder
     private func cell(for column: DashboardRecentRequestsColumn) -> some View {
         switch column {
+        case .time:
+            Text(request.completedAt.formatted(date: .omitted, time: .shortened))
+                .foregroundStyle(.secondary)
         case .model:
             Text(request.modelID)
                 .font(.body)
@@ -605,6 +1046,7 @@ private struct DashboardRequestBadgeStyle {
 }
 
 private enum DashboardRecentRequestsColumn: CaseIterable {
+    case time
     case model
     case finish
     case mode
@@ -620,6 +1062,8 @@ private enum DashboardRecentRequestsColumn: CaseIterable {
 
     var title: String {
         switch self {
+        case .time:
+            "Time"
         case .model:
             "Model"
         case .finish:
@@ -645,6 +1089,8 @@ private enum DashboardRecentRequestsColumn: CaseIterable {
 
     var width: CGFloat {
         switch self {
+        case .time:
+            130
         case .model:
             210
         case .finish:
@@ -666,7 +1112,7 @@ private enum DashboardRecentRequestsColumn: CaseIterable {
 
     var alignment: Alignment {
         switch self {
-        case .model:
+        case .time, .model:
             .leading
         case .finish, .mode:
             .center
@@ -931,6 +1377,11 @@ private struct DashboardEmptyChart: View {
 }
 
 private enum DashboardPalette {
+    static let accent = Color(red: 71 / 255, green: 151 / 255, blue: 232 / 255)
+    static let indigo = Color(red: 119 / 255, green: 105 / 255, blue: 234 / 255)
+    static let positive = Color(red: 62 / 255, green: 179 / 255, blue: 131 / 255)
+    static let negative = Color(red: 225 / 255, green: 91 / 255, blue: 101 / 255)
+    static let orange = Color(red: 232 / 255, green: 151 / 255, blue: 65 / 255)
     static let primaryBar = Color(red: 73 / 255, green: 163 / 255, blue: 176 / 255)
     static let successBar = Color(red: 68 / 255, green: 157 / 255, blue: 187 / 255)
     static let failureBar = Color(red: 181 / 255, green: 51 / 255, blue: 63 / 255)
