@@ -25,6 +25,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         false
     }
 
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        showMainWindow()
+        return true
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         model.applicationWillTerminate()
     }
@@ -83,10 +91,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.titlebarSeparatorStyle = .none
         window.styleMask.insert(.fullSizeContentView)
         window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
         window.center()
         window.contentView = NSHostingView(rootView: ControlPanelView(model: model))
         window.makeKeyAndOrderFront(nil)
         self.window = window
+    }
+
+    private func showMainWindow() {
+        guard let window else {
+            configureWindow()
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            return
+        }
+
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
     private func configureStatusItem() {
