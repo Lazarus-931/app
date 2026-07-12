@@ -401,7 +401,7 @@ private struct TokenUsagePanel: View {
                                 endPoint: .bottom
                             )
                         )
-                        .interpolationMethod(.catmullRom)
+                        .interpolationMethod(.monotone)
 
                         LineMark(
                             x: .value("Time", point.bucketStart),
@@ -410,7 +410,7 @@ private struct TokenUsagePanel: View {
                         )
                         .foregroundStyle(DashboardPalette.accent)
                         .lineStyle(StrokeStyle(lineWidth: 2))
-                        .interpolationMethod(.catmullRom)
+                        .interpolationMethod(.monotone)
 
                         LineMark(
                             x: .value("Time", point.bucketStart),
@@ -419,7 +419,7 @@ private struct TokenUsagePanel: View {
                         )
                         .foregroundStyle(DashboardPalette.indigo)
                         .lineStyle(StrokeStyle(lineWidth: 2))
-                        .interpolationMethod(.catmullRom)
+                        .interpolationMethod(.monotone)
                     }
 
                     if let hoveredPoint {
