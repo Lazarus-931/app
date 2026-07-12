@@ -111,17 +111,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         menu.removeAllItems()
 
-        let statusMenuItem = NSMenuItem(
-            title: model.isRunning ? "Status: MLX Server is Running" : "Status: MLX Server is Not Running",
-            action: nil,
-            keyEquivalent: ""
-        )
-        statusMenuItem.isEnabled = false
-        menu.addItem(statusMenuItem)
-
-        if model.isRunning {
-            menu.addItem(makeStatsSummaryMenuItem())
+        let statusMenuItem: NSMenuItem
+        if model.isRunning, let metrics = model.metrics {
+            statusMenuItem = makeSessionStatsMenuItem(metrics)
+        } else {
+            statusMenuItem = NSMenuItem(
+                title: model.isRunning ? model.unavailableMetricsText : "MLX Server is Not Running",
+                action: nil,
+                keyEquivalent: ""
+            )
+            statusMenuItem.isEnabled = false
         }
+        menu.addItem(statusMenuItem)
 
         menu.addItem(.separator())
         menu.addItem(makeServingStatsMenuItem())
@@ -150,19 +151,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.serverActionMenuItem = serverActionMenuItem
     }
 
-    private func makeStatsSummaryMenuItem() -> NSMenuItem {
-        let title: String
-        if let metrics = model.metrics {
-            let tokenCount = MLXServerDemoFormatting.compactCount(metrics.summary.totalProcessedTokens).display
-            let requestCount = MLXServerDemoFormatting.compactCount(metrics.summary.requestsCompleted).display
-            let rate = MLXServerDemoFormatting.rate(metrics.summary.averageDecodeTokensPerSecond)
-            title = "Stats: \(tokenCount) tokens | \(requestCount) requests | \(rate)"
-        } else {
-            title = model.lastMetricsError == nil ? "Stats: Waiting for server..." : "Stats: Metrics unavailable"
-        }
-
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
+    private func makeSessionStatsMenuItem(_ metrics: MLXServerMetrics) -> NSMenuItem {
+        let item = NSMenuItem(title: "Session Stats", action: nil, keyEquivalent: "")
+        let hostingView = NSHostingView(rootView: SessionStatsMenuView(
+            metrics: metrics,
+            updatedAt: model.lastMetricsFetchAt
+        ))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 350, height: 360)
+        item.view = hostingView
         return item
     }
 
@@ -282,4 +278,215 @@ private enum StatsMenuLayout {
     static let rowHeight: CGFloat = 22
     static let horizontalPadding: CGFloat = 14
     static let minimumColumnGap: CGFloat = 24
+}
+
+private struct SessionStatsMenuView: View {
+    let metrics: MLXServerMetrics
+    let updatedAt: Date?
+
+    private let accent = Color(red: 0.31, green: 0.72, blue: 0.77)
+    private let generatedAccent = Color(red: 0.45, green: 0.55, blue: 0.92)
+    private let failedAccent = Color(red: 0.93, green: 0.36, blue: 0.43)
+
+    private var totalTokens: Int {
+        metrics.summary.totalProcessedTokens
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+                .padding(.vertical, 10)
+
+            Text("Session")
+                .font(.title3.weight(.semibold))
+
+            sessionPlots
+                .padding(.top, 10)
+
+            Divider()
+                .padding(.vertical, 10)
+
+            metricsGrid
+
+            if let latest = metrics.latest {
+                Divider()
+                    .padding(.vertical, 10)
+                latestRequest(latest)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(width: 350, height: 360, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("MLX Server session statistics")
+    }
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("MLX Server")
+                    .font(.headline)
+                Text(updatedText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 16)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("Running")
+                    .font(.headline)
+                Text(MLXServerDemoFormatting.truncateModelName(
+                    metrics.server.displayLoadedModel,
+                    maxLength: 20
+                ))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+        }
+    }
+
+    private var sessionPlots: some View {
+        HStack(alignment: .top, spacing: 14) {
+            SessionBarPlot(
+                title: "Tokens · \(formatted(totalTokens))",
+                bars: [
+                    SessionBar(label: "Prompt", value: metrics.summary.promptTokensTotal, color: accent),
+                    SessionBar(label: "Generated", value: metrics.summary.generatedTokensTotal, color: generatedAccent),
+                ]
+            )
+
+            Divider()
+                .frame(height: 88)
+
+            SessionBarPlot(
+                title: "Requests",
+                bars: [
+                    SessionBar(label: "Done", value: metrics.summary.requestsCompleted, color: accent),
+                    SessionBar(label: "Failed", value: metrics.summary.requestsFailed, color: failedAccent),
+                    SessionBar(label: "Active", value: metrics.summary.inFlight, color: generatedAccent),
+                ]
+            )
+        }
+        .frame(height: 92)
+    }
+
+    private var metricsGrid: some View {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
+            alignment: .leading,
+            spacing: 12
+        ) {
+            metric("Completed requests", formatted(metrics.summary.requestsCompleted))
+            metric("Average decode", MLXServerDemoFormatting.rate(metrics.summary.averageDecodeTokensPerSecond))
+            metric("In flight", MLXServerDemoFormatting.integer(metrics.summary.inFlight))
+            metric("Uptime", MLXServerDemoFormatting.duration(metrics.summary.uptimeSeconds))
+        }
+    }
+
+    private func latestRequest(_ latest: MLXServerLatestRequest) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            metric(
+                "Latest request",
+                "\(formatted(latest.promptTokens + latest.generatedTokens)) tokens"
+            )
+            Spacer()
+            metric(
+                "Decode speed",
+                MLXServerDemoFormatting.rate(latest.decodeTokensPerSecond),
+                alignment: .trailing
+            )
+        }
+    }
+
+    private func metric(
+        _ label: String,
+        _ value: String,
+        alignment: HorizontalAlignment = .leading
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.body.weight(.semibold))
+        }
+    }
+
+    private var updatedText: String {
+        guard let updatedAt else {
+            return "Waiting for metrics"
+        }
+
+        let elapsed = max(0, Int(Date().timeIntervalSince(updatedAt)))
+        if elapsed < 10 {
+            return "Updated just now"
+        }
+        if elapsed < 60 {
+            return "Updated \(elapsed)s ago"
+        }
+        return "Updated \(elapsed / 60)m ago"
+    }
+
+    private func formatted(_ value: Int) -> String {
+        MLXServerDemoFormatting.compactCount(value).display
+    }
+}
+
+private struct SessionBar: Identifiable {
+    let label: String
+    let value: Int
+    let color: Color
+
+    var id: String {
+        label
+    }
+}
+
+private struct SessionBarPlot: View {
+    let title: String
+    let bars: [SessionBar]
+
+    private var maximumValue: CGFloat {
+        CGFloat(max(bars.map(\.value).max() ?? 0, 1))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .bottom, spacing: 8) {
+                ForEach(bars) { bar in
+                    VStack(spacing: 3) {
+                        Text(MLXServerDemoFormatting.compactCount(bar.value).display)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(bar.color.opacity(bar.value == 0 ? 0.25 : 1))
+                            .frame(
+                                height: bar.value == 0
+                                    ? 3
+                                    : max(5, 42 * CGFloat(bar.value) / maximumValue)
+                            )
+
+                        Text(bar.label)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(bar.label)
+                    .accessibilityValue("\(bar.value)")
+                }
+            }
+            .frame(height: 68, alignment: .bottom)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
