@@ -14,8 +14,7 @@ struct ChatView: View {
                 isRunning: model.isRunning,
                 selectedModelID: selectedModelID,
                 loadedModel: model.loadedModelDisplay,
-                settingsRequireRestart: model.settingsRequireRestart,
-                inFlight: model.metrics?.summary.inFlight
+                settingsRequireRestart: model.settingsRequireRestart
             )
 
             Divider()
@@ -102,6 +101,7 @@ final class ChatViewModel: ObservableObject {
 
     init() {
         storedSessions = sessionStore.loadSessions()
+        pruneRedundantEmptySessions()
         if let latestSession = storedSessions.sorted(by: ChatSession.recencySort).first {
             applyCurrentSession(latestSession)
         } else {
@@ -139,6 +139,13 @@ final class ChatViewModel: ObservableObject {
             return
         }
 
+        if canReuseCurrentEmptySession {
+            if let currentSession {
+                applyCurrentSession(currentSession)
+            }
+            return
+        }
+
         let createdAt = Date()
         let session = ChatSession(
             id: UUID(),
@@ -149,6 +156,7 @@ final class ChatViewModel: ObservableObject {
         )
 
         storedSessions.append(session)
+        pruneRedundantEmptySessions()
         sessionStore.saveSession(session)
         draft = ""
         pendingImageAttachments.removeAll()
@@ -168,7 +176,7 @@ final class ChatViewModel: ObservableObject {
         }
 
         if let session = sessionStore.loadSession(id: sessionID) {
-            storedSessions.append(session)
+            upsertStoredSession(session)
             draft = ""
             pendingImageAttachments.removeAll()
             applyCurrentSession(session)
@@ -182,6 +190,7 @@ final class ChatViewModel: ObservableObject {
 
         storedSessions.removeAll { $0.id == sessionID }
         sessionStore.deleteSession(id: sessionID)
+        pruneRedundantEmptySessions()
 
         guard sessionID == currentSessionID else {
             refreshSessionList()
@@ -263,6 +272,7 @@ final class ChatViewModel: ObservableObject {
                 finishAssistantMessage(
                     assistantID,
                     fallbackContent: completion.content,
+                    responseMetrics: ChatResponseMetrics(completion: completion),
                     isCancelled: false
                 )
                 appModel?.refreshMetricsIfRunning(force: true)
@@ -270,6 +280,7 @@ final class ChatViewModel: ObservableObject {
                 finishAssistantMessage(
                     assistantID,
                     fallbackContent: "Response cancelled.",
+                    responseMetrics: nil,
                     isCancelled: true
                 )
             } catch {
@@ -335,7 +346,12 @@ final class ChatViewModel: ObservableObject {
         bumpScroll()
     }
 
-    private func finishAssistantMessage(_ id: UUID, fallbackContent: String, isCancelled: Bool) {
+    private func finishAssistantMessage(
+        _ id: UUID,
+        fallbackContent: String,
+        responseMetrics: ChatResponseMetrics?,
+        isCancelled: Bool
+    ) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else {
             return
         }
@@ -347,6 +363,9 @@ final class ChatViewModel: ObservableObject {
         if isCancelled && messages[index].content == fallbackContent {
             messages[index].role = .error
         }
+        messages[index].responseMetrics = responseMetrics?.hasVisibleValues == true
+            ? responseMetrics
+            : nil
         persistCurrentSession(updateTimestamp: true)
     }
 
@@ -401,17 +420,49 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func refreshSessionList() {
-        let summaries = storedSessions.map(\.summary)
-        let sortedSessions = summaries.sorted(by: ChatSessionSummary.recencySort)
+        sessions = storedSessions
+            .map(\.summary)
+            .sorted(by: ChatSessionSummary.recencySort)
+    }
 
-        guard let currentSessionID,
-              let current = sortedSessions.first(where: { $0.id == currentSessionID })
-        else {
-            sessions = sortedSessions
-            return
+    private var canReuseCurrentEmptySession: Bool {
+        guard let currentSession else {
+            return false
         }
 
-        sessions = [current] + sortedSessions.filter { $0.id != currentSessionID }
+        return currentSession.messages.isEmpty
+            && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && pendingImageAttachments.isEmpty
+    }
+
+    private func pruneRedundantEmptySessions() {
+        let sortedSessions = storedSessions.sorted(by: ChatSession.recencySort)
+        var seenIDs = Set<UUID>()
+        var keptSessions: [ChatSession] = []
+        var keptEmptySession = false
+        var removedSessionIDs: [UUID] = []
+
+        for session in sortedSessions {
+            guard seenIDs.insert(session.id).inserted else {
+                removedSessionIDs.append(session.id)
+                continue
+            }
+
+            if session.messages.isEmpty {
+                if keptEmptySession {
+                    removedSessionIDs.append(session.id)
+                    continue
+                }
+                keptEmptySession = true
+            }
+
+            keptSessions.append(session)
+        }
+
+        storedSessions = keptSessions
+        for sessionID in removedSessionIDs {
+            sessionStore.deleteSession(id: sessionID)
+        }
     }
 }
 
@@ -528,6 +579,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
     var createdAt: Date
     var isStreaming: Bool
     var imageAttachments: [ChatImageAttachment]
+    var responseMetrics: ChatResponseMetrics?
 
     init(
         id: UUID = UUID(),
@@ -536,7 +588,8 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         modelID: String? = nil,
         createdAt: Date = Date(),
         isStreaming: Bool = false,
-        imageAttachments: [ChatImageAttachment] = []
+        imageAttachments: [ChatImageAttachment] = [],
+        responseMetrics: ChatResponseMetrics? = nil
     ) {
         self.id = id
         self.role = role
@@ -545,6 +598,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         self.createdAt = createdAt
         self.isStreaming = isStreaming
         self.imageAttachments = imageAttachments
+        self.responseMetrics = responseMetrics
     }
 
     enum CodingKeys: String, CodingKey {
@@ -555,6 +609,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         case createdAt
         case isStreaming
         case imageAttachments
+        case responseMetrics
     }
 
     init(from decoder: Decoder) throws {
@@ -566,6 +621,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         isStreaming = false
         imageAttachments = try container.decodeIfPresent([ChatImageAttachment].self, forKey: .imageAttachments) ?? []
+        responseMetrics = try container.decodeIfPresent(ChatResponseMetrics.self, forKey: .responseMetrics)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -577,6 +633,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(false, forKey: .isStreaming)
         try container.encode(imageAttachments, forKey: .imageAttachments)
+        try container.encodeIfPresent(responseMetrics, forKey: .responseMetrics)
     }
 
     var apiMessage: MLXChatMessage? {
@@ -600,6 +657,34 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         case .error:
             return nil
         }
+    }
+}
+
+struct ChatResponseMetrics: Equatable, Codable {
+    let totalTokens: Int?
+    let decodeTokensPerSecond: Double?
+    let peakMemoryGB: Double?
+
+    var hasVisibleValues: Bool {
+        totalTokens != nil || decodeTokensPerSecond != nil || peakMemoryGB != nil
+    }
+
+    init(
+        totalTokens: Int? = nil,
+        decodeTokensPerSecond: Double? = nil,
+        peakMemoryGB: Double? = nil
+    ) {
+        self.totalTokens = totalTokens
+        self.decodeTokensPerSecond = decodeTokensPerSecond
+        self.peakMemoryGB = peakMemoryGB
+    }
+
+    init(completion: MLXChatCompletion) {
+        self.init(
+            totalTokens: completion.usage?.resolvedTotalTokens,
+            decodeTokensPerSecond: completion.resolvedDecodeTokensPerSecond,
+            peakMemoryGB: completion.usage?.peakMemoryGB
+        )
     }
 }
 
@@ -879,7 +964,6 @@ private struct ChatStatusBar: View {
     let selectedModelID: String?
     let loadedModel: String
     let settingsRequireRestart: Bool
-    let inFlight: Int?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -898,10 +982,6 @@ private struct ChatStatusBar: View {
                 value: loadedModel,
                 systemImage: "memorychip"
             )
-
-            if let inFlight {
-                ChatStatusPill(label: "In flight", value: "\(inFlight)", systemImage: "arrow.triangle.2.circlepath")
-            }
 
             if settingsRequireRestart {
                 ChatStatusPill(label: "Settings", value: "Pending restart", systemImage: "arrow.clockwise")
@@ -1017,6 +1097,10 @@ private struct ChatMessageRow: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(borderColor, lineWidth: message.role == .error ? 1 : 0.5)
                 )
+
+                if let responseMetrics {
+                    ChatResponseMetricsRow(metrics: responseMetrics)
+                }
             }
 
             if message.role != .user {
@@ -1095,6 +1179,79 @@ private struct ChatMessageRow: View {
         case .error:
             return Color(nsColor: .systemRed).opacity(0.45)
         }
+    }
+
+    private var responseMetrics: ChatResponseMetrics? {
+        guard message.role == .assistant,
+              !message.isStreaming,
+              let responseMetrics = message.responseMetrics,
+              responseMetrics.hasVisibleValues
+        else {
+            return nil
+        }
+
+        return responseMetrics
+    }
+}
+
+private struct ChatResponseMetricsRow: View {
+    let metrics: ChatResponseMetrics
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                metricPills
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                metricPills
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    @ViewBuilder
+    private var metricPills: some View {
+        ChatResponseMetricPill(
+            label: "Total tokens",
+            value: MLXServerDemoFormatting.integer(metrics.totalTokens)
+        )
+        ChatResponseMetricPill(
+            label: "Decode tok/s",
+            value: MLXServerDemoFormatting.rate(metrics.decodeTokensPerSecond)
+        )
+        ChatResponseMetricPill(
+            label: "Peak memory",
+            value: metrics.peakMemoryGB.map(MLXServerDemoFormatting.gigabytes) ?? "--"
+        )
+    }
+}
+
+private struct ChatResponseMetricPill: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .fontWeight(.medium)
+                .monospacedDigit()
+        }
+        .font(.caption)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
+        .help("\(label): \(value)")
     }
 }
 

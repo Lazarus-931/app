@@ -118,11 +118,48 @@ public struct MLXChatUsage: Decodable, Equatable, Sendable {
     public let promptTokens: Int?
     public let completionTokens: Int?
     public let totalTokens: Int?
+    public let promptTokensPerSecond: Double?
+    public let decodeTokensPerSecond: Double?
+    public let peakMemoryGB: Double?
+
+    public var resolvedTotalTokens: Int? {
+        if let totalTokens {
+            return totalTokens
+        }
+        if let promptTokens, let completionTokens {
+            return promptTokens + completionTokens
+        }
+        return completionTokens
+    }
+
+    public func resolvedDecodeTokensPerSecond(
+        requestElapsedSeconds: Double?
+    ) -> Double? {
+        if let decodeTokensPerSecond,
+           decodeTokensPerSecond > 0,
+           decodeTokensPerSecond.isFinite {
+            return decodeTokensPerSecond
+        }
+
+        guard let completionTokens,
+              completionTokens > 0,
+              let requestElapsedSeconds,
+              requestElapsedSeconds > 0,
+              requestElapsedSeconds.isFinite
+        else {
+            return nil
+        }
+
+        return Double(completionTokens) / requestElapsedSeconds
+    }
 
     enum CodingKeys: String, CodingKey {
         case promptTokens = "prompt_tokens"
         case completionTokens = "completion_tokens"
         case totalTokens = "total_tokens"
+        case promptTokensPerSecond = "prompt_tps"
+        case decodeTokensPerSecond = "generation_tps"
+        case peakMemoryGB = "peak_memory"
     }
 }
 
@@ -131,6 +168,13 @@ public struct MLXChatCompletion: Equatable, Sendable {
     public let content: String
     public let finishReason: String?
     public let usage: MLXChatUsage?
+    public let requestElapsedSeconds: Double?
+
+    public var resolvedDecodeTokensPerSecond: Double? {
+        usage?.resolvedDecodeTokensPerSecond(
+            requestElapsedSeconds: requestElapsedSeconds
+        )
+    }
 }
 
 public struct MLXChatStreamOptions: Encodable, Equatable, Sendable {
@@ -221,6 +265,7 @@ public final class MLXServerChatClient {
         payload.stream = false
         payload.streamOptions = nil
 
+        let requestStartedAt = Date()
         let urlRequest = try makeURLRequest(payload: payload, accepts: "application/json")
         let (data, response) = try await session.data(for: urlRequest)
 
@@ -243,7 +288,8 @@ public final class MLXServerChatClient {
             model: decoded.model,
             content: content,
             finishReason: choice.finishReason,
-            usage: decoded.usage
+            usage: decoded.usage,
+            requestElapsedSeconds: Date().timeIntervalSince(requestStartedAt)
         )
     }
 
@@ -255,6 +301,7 @@ public final class MLXServerChatClient {
         payload.stream = true
         payload.streamOptions = MLXChatStreamOptions(includeUsage: true)
 
+        let requestStartedAt = Date()
         let urlRequest = try makeURLRequest(payload: payload, accepts: "text/event-stream")
         let (bytes, response) = try await session.bytes(for: urlRequest)
 
@@ -310,7 +357,8 @@ public final class MLXServerChatClient {
             model: responseModel,
             content: content,
             finishReason: finishReason,
-            usage: usage
+            usage: usage,
+            requestElapsedSeconds: Date().timeIntervalSince(requestStartedAt)
         )
     }
 

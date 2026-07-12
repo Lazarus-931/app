@@ -510,9 +510,9 @@ private struct DashboardRecentRequestsDataRow: View {
         case .completion:
             Text(MLXServerDemoFormatting.integer(request.completionTokens))
         case .prefill:
-            Text(MLXServerDemoFormatting.decimal(request.prefillTokensPerSecond))
+            Text(MLXServerDemoFormatting.decimal(request.resolvedPrefillTokensPerSecond))
         case .decode:
-            Text(MLXServerDemoFormatting.decimal(request.decodeTokensPerSecond))
+            Text(MLXServerDemoFormatting.decimal(request.resolvedDecodeTokensPerSecond))
         case .request:
             Text(MLXServerDemoFormatting.decimal(request.requestTokensPerSecond))
         case .elapsed:

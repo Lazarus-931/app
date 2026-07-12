@@ -148,6 +148,48 @@ struct MLXServerAnalyticsRequestEvent: Identifiable, Sendable {
 
         return Double(completionTokens) / (Double(requestElapsedMilliseconds) / 1_000)
     }
+
+    var resolvedPrefillTokensPerSecond: Double? {
+        if let prefillTokensPerSecond,
+           prefillTokensPerSecond > 0,
+           prefillTokensPerSecond.isFinite {
+            return prefillTokensPerSecond
+        }
+
+        guard promptTokens > 0,
+              let ttftMilliseconds,
+              ttftMilliseconds > 0
+        else {
+            return nil
+        }
+
+        return Double(promptTokens) / (Double(ttftMilliseconds) / 1_000)
+    }
+
+    var resolvedDecodeTokensPerSecond: Double? {
+        if let decodeTokensPerSecond,
+           decodeTokensPerSecond > 0,
+           decodeTokensPerSecond.isFinite {
+            return decodeTokensPerSecond
+        }
+
+        let decodeTokenCount = generatedTokens > 0 ? generatedTokens : completionTokens
+        guard decodeTokenCount > 0 else {
+            return nil
+        }
+
+        if let decodeElapsedMilliseconds,
+           decodeElapsedMilliseconds > 0 {
+            return Double(decodeTokenCount) / (Double(decodeElapsedMilliseconds) / 1_000)
+        }
+
+        if let requestElapsedMilliseconds,
+           requestElapsedMilliseconds > 0 {
+            return Double(decodeTokenCount) / (Double(requestElapsedMilliseconds) / 1_000)
+        }
+
+        return nil
+    }
 }
 
 final class MLXServerAnalyticsStore {

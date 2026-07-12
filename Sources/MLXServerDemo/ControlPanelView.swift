@@ -69,46 +69,43 @@ struct ControlPanelView: View {
             }
 
             Section {
-                ForEach(recentSessions) { recent in
-                    let selection = recent.selection
-                    let isDisabled = isRecentDisabled(recent)
-                    Button {
-                        applySidebarSelection(selection)
-                    } label: {
-                        ControlPanelRecentSessionRow(
-                            recent: recent,
-                            isCurrent: isCurrentRecent(recent),
-                            isDisabled: isDisabled,
-                            onDelete: {
-                                deleteRecentSession(recent)
-                            }
-                        )
+                Button {
+                    withAnimation(.snappy(duration: 0.2)) {
+                        createRecentSession()
+                    }
+                } label: {
+                    Label("New chat", systemImage: "plus")
+                        .font(.callout.weight(.semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.accentColor.opacity(0.16))
+                        )
                         .contentShape(.rect)
-                    }
-                    .sidebarRowSelectionStyle(isSelected: sidebarSelection == selection)
-                    .buttonStyle(.plain)
-                    .disabled(isDisabled)
-                    .opacity(isDisabled && !isCurrentRecent(recent) ? 0.55 : 1)
-                    .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                 }
-            } header: {
-                HStack(spacing: 8) {
-                    Text("Recents")
+                .buttonStyle(.plain)
+                .disabled(isNewRecentDisabled)
+                .help(newRecentHelp)
+                .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 8, trailing: 8))
+            }
 
-                    Spacer(minLength: 0)
-
-                    Button {
-                        withAnimation(.snappy(duration: 0.2)) {
-                            createRecentSession()
+            Section("Recents") {
+                ForEach(recentSessions) { recent in
+                    ControlPanelRecentSessionRow(
+                        recent: recent,
+                        isSelected: sidebarSelection == recent.selection,
+                        isCurrent: isCurrentRecent(recent),
+                        isDisabled: isRecentDisabled(recent),
+                        onSelect: {
+                            applySidebarSelection(recent.selection)
+                        },
+                        onDelete: {
+                            deleteRecentSession(recent)
                         }
-                    } label: {
-                        Image(systemName: "plus")
-                            .imageScale(.small)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(isNewRecentDisabled)
-                    .help(newRecentHelp)
+                    )
+                    .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                 }
             }
         }
@@ -176,15 +173,6 @@ struct ControlPanelView: View {
     }
 
     private func createRecentSession() {
-        if selectedTab == .imageGeneration {
-            imageGeneration.createSession()
-            applySidebarSelection(
-                imageGeneration.currentSessionID.map(ControlPanelSidebarSelection.imageGeneration)
-                    ?? .tab(.imageGeneration)
-            )
-            return
-        }
-
         chat.createSession()
         applySidebarSelection(chat.currentSessionID.map(ControlPanelSidebarSelection.chat) ?? .tab(.chat))
     }
@@ -234,11 +222,11 @@ struct ControlPanelView: View {
     }
 
     private var isNewRecentDisabled: Bool {
-        selectedTab == .imageGeneration ? imageGeneration.isGenerating : chat.isSending
+        chat.isSending
     }
 
     private var newRecentHelp: String {
-        selectedTab == .imageGeneration ? "New image session" : "New chat"
+        "Create a new chat"
     }
 
     private var header: some View {
@@ -350,46 +338,83 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
 
 private struct ControlPanelRecentSessionRow: View {
     let recent: ControlPanelRecentSession
+    let isSelected: Bool
     let isCurrent: Bool
     let isDisabled: Bool
+    let onSelect: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(recent.title)
-                    .font(.callout.weight(isCurrent ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            Button(action: onSelect) {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(recent.title)
+                            .font(.callout.weight(isCurrent ? .semibold : .regular))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
-                HStack(spacing: 6) {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
 
-                    Text(recent.modelKind.badgeTitle)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(
-                            Capsule()
-                                .fill(Color.secondary.opacity(0.12))
-                        )
+                            Text(recent.modelKind.badgeTitle)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.secondary.opacity(0.12))
+                                )
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if isCurrent {
+                        Image(systemName: "checkmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+                )
+                .contentShape(.rect)
             }
+            .buttonStyle(.plain)
+            .disabled(isDisabled)
+            .help(recent.title)
 
-            Spacer(minLength: 0)
-
-            if isCurrent {
-                Image(systemName: "checkmark")
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.secondary.opacity(0.12))
+                    )
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .disabled(isDisabled)
+            .help("Delete \(recent.title)")
         }
-        .help(recent.title)
+        .opacity(isDisabled && !isCurrent ? 0.55 : 1)
         .contextMenu {
+            Button {
+                onSelect()
+            } label: {
+                Label("Open", systemImage: "arrow.up.right.square")
+            }
+
             Button(role: .destructive) {
                 onDelete()
             } label: {
