@@ -50,6 +50,7 @@ public enum MLXServer {
         var processEnvironment = ProcessInfo.processInfo.environment
         processEnvironment.merge(environment) { _, newValue in newValue }
         processEnvironment["PYTHONNOUSERSITE"] = "1"
+        processEnvironment["PYTHONUNBUFFERED"] = "1"
         process.environment = processEnvironment
         return process
     }
