@@ -10,6 +10,7 @@ final class MLXServerDemoModel: ObservableObject {
     @Published private(set) var lastMetricsError: String?
     @Published private(set) var lastMetricsFetchAt: Date?
     @Published private(set) var allTimeStats = MLXServerAllTimeStats()
+    @Published private(set) var sessionTokenActivity: [Int] = []
     @Published var settings = MLXServerSettings.load() {
         didSet {
             settings.save()
@@ -25,8 +26,10 @@ final class MLXServerDemoModel: ObservableObject {
     private var metricsTimer: Timer?
     private var metricsStartupGraceUntil: Date?
     private var settingsAppliedAtServerStart: MLXServerSettings?
+    private var previousSessionTokenCount: Int?
 
     private let maxLogCharacters = 250_000
+    private let maxSessionActivitySamples = 24
 
     init() {
         MLXServerAllTimeStats.removeLegacyStorage()
@@ -181,6 +184,8 @@ final class MLXServerDemoModel: ObservableObject {
     private func startMetricsPolling() {
         lastMetricsError = nil
         metrics = nil
+        sessionTokenActivity = []
+        previousSessionTokenCount = nil
         metricsStartupGraceUntil = Date().addingTimeInterval(20)
 
         if metricsTimer == nil {
@@ -210,6 +215,8 @@ final class MLXServerDemoModel: ObservableObject {
 
         if clearSession {
             metrics = nil
+            sessionTokenActivity = []
+            previousSessionTokenCount = nil
         }
     }
 
@@ -227,6 +234,7 @@ final class MLXServerDemoModel: ObservableObject {
         isRunning = true
         lastMetricsError = nil
         metricsStartupGraceUntil = nil
+        recordSessionActivity(fetchedMetrics.summary.totalProcessedTokens)
         metrics = fetchedMetrics
         refreshAllTimeStats(runtimePath: fetchedMetrics.server.analyticsDatabasePath)
 
@@ -267,6 +275,21 @@ final class MLXServerDemoModel: ObservableObject {
         if logText.count > maxLogCharacters {
             logText.removeFirst(logText.count - maxLogCharacters)
         }
+    }
+
+    private func recordSessionActivity(_ totalTokenCount: Int) {
+        let tokenDelta: Int
+        if let previousSessionTokenCount, totalTokenCount >= previousSessionTokenCount {
+            tokenDelta = totalTokenCount - previousSessionTokenCount
+        } else {
+            tokenDelta = 0
+        }
+
+        sessionTokenActivity.append(tokenDelta)
+        if sessionTokenActivity.count > maxSessionActivitySamples {
+            sessionTokenActivity.removeFirst(sessionTokenActivity.count - maxSessionActivitySamples)
+        }
+        previousSessionTokenCount = totalTokenCount
     }
 
     private func refreshAllTimeStats(runtimePath: String? = nil) {

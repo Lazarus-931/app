@@ -155,7 +155,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem(title: "Session Stats", action: nil, keyEquivalent: "")
         let hostingView = NSHostingView(rootView: SessionStatsMenuView(
             metrics: metrics,
-            updatedAt: model.lastMetricsFetchAt
+            updatedAt: model.lastMetricsFetchAt,
+            tokenActivity: model.sessionTokenActivity
         ))
         hostingView.frame = NSRect(x: 0, y: 0, width: 350, height: 360)
         item.view = hostingView
@@ -283,10 +284,10 @@ private enum StatsMenuLayout {
 private struct SessionStatsMenuView: View {
     let metrics: MLXServerMetrics
     let updatedAt: Date?
+    let tokenActivity: [Int]
 
     private let accent = Color(red: 0.31, green: 0.72, blue: 0.77)
     private let generatedAccent = Color(red: 0.45, green: 0.55, blue: 0.92)
-    private let failedAccent = Color(red: 0.93, green: 0.36, blue: 0.43)
 
     private var totalTokens: Int {
         metrics.summary.totalProcessedTokens
@@ -298,11 +299,10 @@ private struct SessionStatsMenuView: View {
             Divider()
                 .padding(.vertical, 10)
 
-            Text("Session")
-                .font(.title3.weight(.semibold))
+            sessionOverview
 
-            sessionPlots
-                .padding(.top, 10)
+            SessionActivityPlot(values: tokenActivity, accent: accent)
+                .padding(.top, 12)
 
             Divider()
                 .padding(.vertical, 10)
@@ -348,29 +348,39 @@ private struct SessionStatsMenuView: View {
         }
     }
 
-    private var sessionPlots: some View {
-        HStack(alignment: .top, spacing: 14) {
-            SessionBarPlot(
-                title: "Tokens · \(formatted(totalTokens))",
-                bars: [
-                    SessionBar(label: "Prompt", value: metrics.summary.promptTokensTotal, color: accent),
-                    SessionBar(label: "Generated", value: metrics.summary.generatedTokensTotal, color: generatedAccent),
-                ]
-            )
+    private var sessionOverview: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Processed tokens")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(formatted(totalTokens))
+                        .font(.title2.weight(.semibold).monospacedDigit())
+                }
 
-            Divider()
-                .frame(height: 88)
+                Spacer()
 
-            SessionBarPlot(
-                title: "Requests",
-                bars: [
-                    SessionBar(label: "Done", value: metrics.summary.requestsCompleted, color: accent),
-                    SessionBar(label: "Failed", value: metrics.summary.requestsFailed, color: failedAccent),
-                    SessionBar(label: "Active", value: metrics.summary.inFlight, color: generatedAccent),
-                ]
-            )
+                metric(
+                    "Average decode",
+                    MLXServerDemoFormatting.rate(metrics.summary.averageDecodeTokensPerSecond),
+                    alignment: .trailing
+                )
+            }
+
+            HStack(spacing: 16) {
+                tokenBreakdown(
+                    "Prompt",
+                    value: metrics.summary.promptTokensTotal,
+                    color: accent
+                )
+                tokenBreakdown(
+                    "Generated",
+                    value: metrics.summary.generatedTokensTotal,
+                    color: generatedAccent
+                )
+            }
         }
-        .frame(height: 92)
     }
 
     private var metricsGrid: some View {
@@ -380,9 +390,20 @@ private struct SessionStatsMenuView: View {
             spacing: 12
         ) {
             metric("Completed requests", formatted(metrics.summary.requestsCompleted))
-            metric("Average decode", MLXServerDemoFormatting.rate(metrics.summary.averageDecodeTokensPerSecond))
+            metric("Failed requests", formatted(metrics.summary.requestsFailed))
             metric("In flight", MLXServerDemoFormatting.integer(metrics.summary.inFlight))
             metric("Uptime", MLXServerDemoFormatting.duration(metrics.summary.uptimeSeconds))
+        }
+    }
+
+    private func tokenBreakdown(_ label: String, value: Int, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+            Text("\(label) \(formatted(value))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -435,58 +456,49 @@ private struct SessionStatsMenuView: View {
     }
 }
 
-private struct SessionBar: Identifiable {
-    let label: String
-    let value: Int
-    let color: Color
+private struct SessionActivityPlot: View {
+    let values: [Int]
+    let accent: Color
 
-    var id: String {
-        label
+    private let sampleCount = 24
+
+    private var plottedValues: [Int] {
+        Array(repeating: 0, count: max(0, sampleCount - values.count))
+            + Array(values.suffix(sampleCount))
     }
-}
-
-private struct SessionBarPlot: View {
-    let title: String
-    let bars: [SessionBar]
 
     private var maximumValue: CGFloat {
-        CGFloat(max(bars.map(\.value).max() ?? 0, 1))
+        CGFloat(max(plottedValues.max() ?? 0, 1))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Recent token activity")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text("Last ~2 min")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                ForEach(bars) { bar in
-                    VStack(spacing: 3) {
-                        Text(MLXServerDemoFormatting.compactCount(bar.value).display)
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
-
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(bar.color.opacity(bar.value == 0 ? 0.25 : 1))
-                            .frame(
-                                height: bar.value == 0
-                                    ? 3
-                                    : max(5, 42 * CGFloat(bar.value) / maximumValue)
-                            )
-
-                        Text(bar.label)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(bar.label)
-                    .accessibilityValue("\(bar.value)")
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(Array(plottedValues.enumerated()), id: \.offset) { _, value in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(accent.opacity(value == 0 ? 0.18 : 0.9))
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: value == 0 ? 2 : 4,
+                            maxHeight: value == 0
+                                ? 2
+                                : max(4, 44 * CGFloat(value) / maximumValue)
+                        )
                 }
             }
-            .frame(height: 68, alignment: .bottom)
+            .frame(height: 46, alignment: .bottom)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Recent token activity")
+        .accessibilityValue("\(values.reduce(0, +)) tokens across \(values.count) samples")
     }
 }
