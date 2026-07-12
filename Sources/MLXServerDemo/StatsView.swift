@@ -368,6 +368,7 @@ private struct AnalyticsMetricCard: View {
 private struct TokenUsagePanel: View {
     let points: [DashboardViewModel.BucketPoint]
     let range: DashboardViewModel.RangeOption
+    @State private var hoveredPointID: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -420,6 +421,26 @@ private struct TokenUsagePanel: View {
                         .lineStyle(StrokeStyle(lineWidth: 2))
                         .interpolationMethod(.catmullRom)
                     }
+
+                    if let hoveredPoint {
+                        RuleMark(x: .value("Selected time", hoveredPoint.bucketStart))
+                            .foregroundStyle(DashboardPalette.axisLabel.opacity(0.8))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+                        PointMark(
+                            x: .value("Selected time", hoveredPoint.bucketStart),
+                            y: .value("Input tokens", hoveredPoint.promptTokensTotal)
+                        )
+                        .foregroundStyle(DashboardPalette.accent)
+                        .symbolSize(48)
+
+                        PointMark(
+                            x: .value("Selected time", hoveredPoint.bucketStart),
+                            y: .value("Output tokens", hoveredPoint.generatedTokensTotal)
+                        )
+                        .foregroundStyle(DashboardPalette.indigo)
+                        .symbolSize(48)
+                    }
                 }
                 .chartLegend(.hidden)
                 .chartXAxis {
@@ -445,10 +466,57 @@ private struct TokenUsagePanel: View {
                     }
                 }
                 .frame(height: 250)
+                .chartOverlay { proxy in
+                    GeometryReader { geometry in
+                        ZStack(alignment: .topLeading) {
+                            Rectangle()
+                                .fill(.clear)
+                                .contentShape(Rectangle())
+                                .onContinuousHover { phase in
+                                    switch phase {
+                                    case .active(let location):
+                                        updateHoveredPoint(
+                                            at: location,
+                                            proxy: proxy,
+                                            geometry: geometry
+                                        )
+                                    case .ended:
+                                        hoveredPointID = nil
+                                    }
+                                }
+
+                            if let hoveredPoint,
+                               let tooltipCenter = tooltipCenter(
+                                   for: hoveredPoint,
+                                   proxy: proxy,
+                                   geometry: geometry
+                               ) {
+                                TokenUsageTooltip(point: hoveredPoint, granularity: granularity)
+                                    .position(tooltipCenter)
+                                    .allowsHitTesting(false)
+                                    .transition(.identity)
+                            }
+                        }
+                        .transaction { transaction in
+                            transaction.animation = nil
+                        }
+                    }
+                }
+                .onChange(of: points) { _, newPoints in
+                    if let hoveredPointID,
+                       !newPoints.contains(where: { $0.id == hoveredPointID }) {
+                        self.hoveredPointID = nil
+                    }
+                }
             }
         }
         .padding(18)
         .dashboardPanelStyle(cornerRadius: 14)
+    }
+
+    private var hoveredPoint: DashboardViewModel.BucketPoint? {
+        guard let hoveredPointID else { return nil }
+        return points.first { $0.id == hoveredPointID }
     }
 
     private var granularity: MLXServerAnalyticsGranularity {
@@ -463,6 +531,133 @@ private struct TokenUsagePanel: View {
         granularity == .hour
             ? DashboardFormatters.hourLabel.string(from: date).lowercased()
             : DashboardFormatters.dayLabel.string(from: date)
+    }
+
+    private func updateHoveredPoint(
+        at location: CGPoint,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) {
+        guard let plotFrameAnchor = proxy.plotFrame else {
+            hoveredPointID = nil
+            return
+        }
+
+        let plotFrame = geometry[plotFrameAnchor]
+        guard plotFrame.contains(location) else {
+            hoveredPointID = nil
+            return
+        }
+
+        let plotX = location.x - plotFrame.minX
+        guard let hoveredDate: Date = proxy.value(atX: plotX) else {
+            hoveredPointID = nil
+            return
+        }
+
+        let nextPoint = points.min {
+            abs($0.bucketStart.timeIntervalSince(hoveredDate))
+                < abs($1.bucketStart.timeIntervalSince(hoveredDate))
+        }
+        guard hoveredPointID != nextPoint?.id else { return }
+        hoveredPointID = nextPoint?.id
+    }
+
+    private func tooltipCenter(
+        for point: DashboardViewModel.BucketPoint,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) -> CGPoint? {
+        guard let plotFrameAnchor = proxy.plotFrame,
+              let plotX = proxy.position(forX: point.bucketStart),
+              let plotY = proxy.position(forY: point.generatedTokensTotal) else {
+            return nil
+        }
+
+        let plotFrame = geometry[plotFrameAnchor]
+        let anchor = CGPoint(x: plotFrame.minX + plotX, y: plotFrame.minY + plotY)
+        let tooltipSize = CGSize(width: 174, height: 142)
+        let spacing: CGFloat = 12
+        let showOnLeft = anchor.x > plotFrame.midX
+        let desiredX = showOnLeft
+            ? anchor.x - spacing - tooltipSize.width / 2
+            : anchor.x + spacing + tooltipSize.width / 2
+        let desiredY = anchor.y - spacing - tooltipSize.height / 2
+
+        return CGPoint(
+            x: min(max(desiredX, tooltipSize.width / 2), geometry.size.width - tooltipSize.width / 2),
+            y: min(max(desiredY, tooltipSize.height / 2), geometry.size.height - tooltipSize.height / 2)
+        )
+    }
+}
+
+private struct TokenUsageTooltip: View {
+    let point: DashboardViewModel.BucketPoint
+    let granularity: MLXServerAnalyticsGranularity
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(dateLabel)
+                .font(.caption.weight(.semibold))
+
+            TokenUsageTooltipRow(
+                title: "Input",
+                value: point.promptTokensTotal,
+                color: DashboardPalette.accent
+            )
+            TokenUsageTooltipRow(
+                title: "Output",
+                value: point.generatedTokensTotal,
+                color: DashboardPalette.indigo
+            )
+
+            Divider()
+
+            HStack {
+                Text("Total")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 22)
+                Text(MLXServerDemoFormatting.integer(point.processedTokensTotal))
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+            }
+            .font(.caption)
+        }
+        .padding(12)
+        .frame(width: 174)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(DashboardPalette.panelStroke, lineWidth: 0.75)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
+
+    private var dateLabel: String {
+        if granularity == .hour {
+            return point.bucketStart.formatted(date: .abbreviated, time: .shortened)
+        }
+        return point.bucketStart.formatted(date: .long, time: .omitted)
+    }
+}
+
+private struct TokenUsageTooltipRow: View {
+    let title: String
+    let value: Int
+    let color: Color
+
+    var body: some View {
+        HStack {
+            HStack(spacing: 6) {
+                Circle().fill(color).frame(width: 7, height: 7)
+                Text(title).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 22)
+            Text(MLXServerDemoFormatting.integer(value))
+                .fontWeight(.medium)
+                .monospacedDigit()
+        }
+        .font(.caption)
     }
 }
 
