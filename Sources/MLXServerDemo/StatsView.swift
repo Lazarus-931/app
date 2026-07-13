@@ -449,25 +449,29 @@ private struct TokenUsagePanel: View {
                     hoverMarks
                 }
                 .chartLegend(showsAllModels ? .visible : .hidden)
+                .chartForegroundStyleScale(
+                    domain: modelColorDomain,
+                    range: DashboardModelColorScale.colors(for: modelColorDomain)
+                )
                 .chartXAxis {
                     AxisMarks(values: axisDates) { value in
-                        AxisGridLine().foregroundStyle(DashboardPalette.panelStroke.opacity(0.5))
-                        AxisTick().foregroundStyle(Color.clear)
+                        AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
+                        AxisTick().foregroundStyle(DashboardPalette.axisTick)
                         if let date = value.as(Date.self) {
                             AxisValueLabel(axisLabel(for: date))
                                 .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(DashboardPalette.axisText)
                         }
                     }
                 }
                 .chartYAxis {
                     AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
-                        AxisGridLine().foregroundStyle(DashboardPalette.panelStroke.opacity(0.55))
-                        AxisTick().foregroundStyle(Color.clear)
+                        AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
+                        AxisTick().foregroundStyle(DashboardPalette.axisTick)
                         if let raw = value.as(Int.self) {
                             AxisValueLabel(MLXServerDemoFormatting.compactCount(raw).display)
                                 .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(DashboardPalette.axisText)
                         }
                     }
                 }
@@ -647,6 +651,10 @@ private struct TokenUsagePanel: View {
 
     private var axisDates: [Date] {
         DashboardChartAxis.markDates(from: points.map(\.bucketStart), maximumCount: 6)
+    }
+
+    private var modelColorDomain: [String] {
+        DashboardModelColorScale.domain(for: modelPoints.map(\.modelID))
     }
 
     private func modelValues(at date: Date) -> [DashboardViewModel.ModelTokenPoint] {
@@ -1022,6 +1030,11 @@ private struct ModelPerformanceTable: View {
                     .foregroundStyle(DashboardPalette.accent)
                     .frame(width: 28, height: 28)
                     .background(DashboardPalette.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(DashboardModelColorScale.color(for: row.modelID, in: modelColorDomain))
+                    .frame(width: 3, height: 24)
+
                 Text(row.modelID)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -1055,6 +1068,10 @@ private struct ModelPerformanceTable: View {
             .font(.callout.monospacedDigit())
             .foregroundStyle(.secondary)
             .frame(width: width, alignment: .trailing)
+    }
+
+    private var modelColorDomain: [String] {
+        DashboardModelColorScale.domain(for: rows.map(\.modelID))
     }
 }
 
@@ -1818,6 +1835,9 @@ private enum DashboardPalette {
     static let panelFill = Color(nsColor: .controlBackgroundColor)
     static let panelStroke = Color(nsColor: .separatorColor).opacity(0.6)
     static let axisLabel = Color(nsColor: .tertiaryLabelColor)
+    static let axisText = Color(nsColor: .secondaryLabelColor)
+    static let axisTick = Color(nsColor: .secondaryLabelColor).opacity(0.78)
+    static let axisGrid = Color(nsColor: .separatorColor).opacity(0.72)
     static let finishBadgeForeground = Color(red: 150 / 255, green: 188 / 255, blue: 245 / 255)
     static let finishBadgeBackground = Color(red: 34 / 255, green: 58 / 255, blue: 100 / 255)
     static let failureBadgeForeground = Color(red: 245 / 255, green: 183 / 255, blue: 188 / 255)
@@ -1828,6 +1848,36 @@ private enum DashboardPalette {
     static let toolsBadgeBackground = Color(red: 112 / 255, green: 76 / 255, blue: 18 / 255)
     static let textBadgeForeground = Color(nsColor: .secondaryLabelColor)
     static let textBadgeBackground = Color(nsColor: .quaternaryLabelColor).opacity(0.28)
+}
+
+private enum DashboardModelColorScale {
+    static let palette: [Color] = [
+        .blue,
+        .green,
+        .orange,
+        .purple,
+        .pink,
+        .cyan,
+        .yellow,
+        .mint,
+    ]
+
+    static func domain(for modelIDs: [String]) -> [String] {
+        Array(Set(modelIDs)).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    static func colors(for domain: [String]) -> [Color] {
+        domain.indices.map { palette[$0 % palette.count] }
+    }
+
+    static func color(for modelID: String, in domain: [String]) -> Color {
+        guard let index = domain.firstIndex(of: modelID) else {
+            return .secondary
+        }
+        return palette[index % palette.count]
+    }
 }
 
 private enum DashboardFormatters {
