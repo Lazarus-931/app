@@ -76,6 +76,7 @@ private final class ModelMenuIconView: NSView {
 @MainActor
 private final class ModelMenuRowView: NSView {
     private let onSelect: () -> Void
+    private let isSelected: Bool
     private var trackingArea: NSTrackingArea?
     private var isHovered = false {
         didSet {
@@ -93,13 +94,14 @@ private final class ModelMenuRowView: NSView {
         onSelect: @escaping () -> Void
     ) {
         self.onSelect = onSelect
+        self.isSelected = isSelected
         super.init(frame: NSRect(x: 0, y: 0, width: 340, height: 44))
 
         let iconView = ModelMenuIconView(provider: provider, isSelected: isSelected)
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
         let nameLabel = NSTextField(labelWithString: name)
-        nameLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        nameLabel.font = .systemFont(ofSize: 12, weight: isSelected ? .semibold : .medium)
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -192,11 +194,26 @@ private final class ModelMenuRowView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        guard isHovered else {
-            return
+
+        let rowRect = bounds.insetBy(dx: 5, dy: 1)
+        if isSelected {
+            NSColor.controlAccentColor
+                .withAlphaComponent(isHovered ? 0.18 : 0.10)
+                .setFill()
+            NSBezierPath(roundedRect: rowRect, xRadius: 6, yRadius: 6).fill()
+
+            NSColor.controlAccentColor.setFill()
+            let indicatorRect = NSRect(
+                x: rowRect.minX,
+                y: rowRect.minY + 8,
+                width: 3,
+                height: rowRect.height - 16
+            )
+            NSBezierPath(roundedRect: indicatorRect, xRadius: 1.5, yRadius: 1.5).fill()
+        } else if isHovered {
+            NSColor.selectedContentBackgroundColor.withAlphaComponent(0.14).setFill()
+            NSBezierPath(roundedRect: rowRect, xRadius: 5, yRadius: 5).fill()
         }
-        NSColor.selectedContentBackgroundColor.withAlphaComponent(0.14).setFill()
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 1), xRadius: 5, yRadius: 5).fill()
     }
 
     override func updateTrackingAreas() {
