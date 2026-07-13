@@ -1078,14 +1078,33 @@ private struct SessionActivityPlot: View {
     let promptAccent: Color
     let generatedAccent: Color
 
-    private let sampleCount = 24
+    private struct Bucket {
+        var promptTokens = 0
+        var generatedTokens = 0
 
-    private var plottedValues: [SessionTokenActivitySample] {
-        Array(
-            repeating: SessionTokenActivitySample(promptTokens: 0, generatedTokens: 0),
-            count: max(0, sampleCount - values.count)
-        )
-            + Array(values.suffix(sampleCount))
+        var totalTokens: Int {
+            promptTokens + generatedTokens
+        }
+    }
+
+    private let bucketCount = 30
+    private let bucketDuration: TimeInterval = 20
+
+    private var plottedValues: [Bucket] {
+        var buckets = Array(repeating: Bucket(), count: bucketCount)
+        let currentBucketStart = floor(Date().timeIntervalSince1970 / bucketDuration) * bucketDuration
+        let windowStart = currentBucketStart - (Double(bucketCount - 1) * bucketDuration)
+
+        for sample in values {
+            let elapsed = sample.recordedAt.timeIntervalSince1970 - windowStart
+            let index = Int(floor(elapsed / bucketDuration))
+            guard buckets.indices.contains(index) else {
+                continue
+            }
+            buckets[index].promptTokens += sample.promptTokens
+            buckets[index].generatedTokens += sample.generatedTokens
+        }
+        return buckets
     }
 
     private var maximumValue: CGFloat {
@@ -1098,7 +1117,7 @@ private struct SessionActivityPlot: View {
                 Text("Recent token activity")
                     .font(.caption.weight(.semibold))
                 Spacer()
-                Text("Last ~2 min")
+                Text("Last ~10 min")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1116,7 +1135,7 @@ private struct SessionActivityPlot: View {
     }
 
     @ViewBuilder
-    private func activityBar(_ sample: SessionTokenActivitySample) -> some View {
+    private func activityBar(_ sample: Bucket) -> some View {
         let total = sample.totalTokens
         if total == 0 {
             RoundedRectangle(cornerRadius: 2)
@@ -1172,8 +1191,8 @@ private struct SessionActivityPlot: View {
     }
 
     private var accessibilityValue: String {
-        let promptTokens = values.reduce(0) { $0 + $1.promptTokens }
-        let generatedTokens = values.reduce(0) { $0 + $1.generatedTokens }
-        return "\(promptTokens) prompt and \(generatedTokens) generated tokens across \(values.count) samples"
+        let promptTokens = plottedValues.reduce(0) { $0 + $1.promptTokens }
+        let generatedTokens = plottedValues.reduce(0) { $0 + $1.generatedTokens }
+        return "\(promptTokens) prompt and \(generatedTokens) generated tokens over the last 10 minutes"
     }
 }

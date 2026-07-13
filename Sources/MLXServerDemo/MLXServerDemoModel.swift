@@ -3,6 +3,7 @@ import Foundation
 import MLXServerKit
 
 struct SessionTokenActivitySample: Equatable, Sendable {
+    let recordedAt: Date
     let promptTokens: Int
     let generatedTokens: Int
 
@@ -44,7 +45,7 @@ final class MLXServerDemoModel: ObservableObject {
     private var isStoppingForModelSwitch = false
 
     private let maxLogCharacters = 250_000
-    private let maxSessionActivitySamples = 24
+    private let maxSessionActivitySamples = 120
 
     init() {
         MLXServerAllTimeStats.removeLegacyStorage()
@@ -390,6 +391,7 @@ final class MLXServerDemoModel: ObservableObject {
         )
 
         sessionTokenActivity.append(SessionTokenActivitySample(
+            recordedAt: Date(),
             promptTokens: promptDelta,
             generatedTokens: generatedDelta
         ))
