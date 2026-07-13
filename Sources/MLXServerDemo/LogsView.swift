@@ -6,6 +6,8 @@ import SwiftUI
 struct LogsView: View {
     @ObservedObject var model: MLXServerDemoModel
     @ObservedObject var runtime: SystemRuntimeMonitor
+    @State private var logQuery = ""
+    @State private var logLevelFilter: LogLevelFilter = .all
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -82,7 +84,13 @@ struct LogsView: View {
     }
 
     private var logPanel: some View {
-        VStack(spacing: 0) {
+        let output = LogOutput.filtered(
+            model.logText,
+            query: logQuery,
+            level: logLevelFilter
+        )
+
+        return VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: "terminal")
                     .foregroundStyle(.secondary)
@@ -90,7 +98,7 @@ struct LogsView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Server output")
                         .font(.callout.weight(.semibold))
-                    Text(model.logText.isEmpty ? "No output yet" : "Following new output")
+                    Text(logSummary(output))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -98,12 +106,13 @@ struct LogsView: View {
                 Spacer()
 
                 Button {
-                    copyLogs()
+                    copyLogs(output.text)
                 } label: {
                     Label("Copy", systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.bordered)
-                .disabled(model.logText.isEmpty)
+                .disabled(output.visibleLineCount == 0)
+                .help("Copy visible logs")
 
                 Button {
                     model.clearLogs()
@@ -118,14 +127,24 @@ struct LogsView: View {
 
             Divider()
 
+            logFilterBar(output)
+
+            Divider()
+
             ZStack {
-                LogTextView(text: model.logText)
+                LogTextView(text: output.text, searchQuery: logQuery)
 
                 if model.logText.isEmpty {
                     ContentUnavailableView(
                         "No server output",
                         systemImage: "terminal",
                         description: Text("Server logs will appear here as they arrive.")
+                    )
+                } else if output.visibleLineCount == 0 {
+                    ContentUnavailableView(
+                        "No matching logs",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("Try another search or severity filter.")
                     )
                 }
             }
@@ -137,6 +156,59 @@ struct LogsView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         )
+    }
+
+    private func logFilterBar(_ output: LogOutput) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                LogSearchField(text: $logQuery)
+                    .frame(maxWidth: 360)
+
+                severityPicker
+
+                Spacer(minLength: 8)
+
+                Text("\(output.visibleLineCount) shown")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize()
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                LogSearchField(text: $logQuery)
+
+                HStack {
+                    severityPicker
+                    Spacer()
+                    Text("\(output.visibleLineCount) shown")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var severityPicker: some View {
+        Picker("Severity", selection: $logLevelFilter) {
+            ForEach(LogLevelFilter.allCases) { level in
+                Text(level.rawValue).tag(level)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(width: 270)
+    }
+
+    private func logSummary(_ output: LogOutput) -> String {
+        if model.logText.isEmpty {
+            return "No output yet"
+        }
+        if !logQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || logLevelFilter != .all {
+            return "\(output.visibleLineCount) of \(output.totalLineCount) lines"
+        }
+        return "Following new output"
     }
 
     private var memoryUsagePercent: Int {
@@ -155,10 +227,122 @@ struct LogsView: View {
         ByteCountFormatter.string(fromByteCount: Int64(clamping: value), countStyle: .memory)
     }
 
-    private func copyLogs() {
+    private func copyLogs(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(model.logText, forType: .string)
+        pasteboard.setString(text, forType: .string)
+    }
+}
+
+private enum LogSeverity {
+    case info
+    case warning
+    case error
+    case other
+
+    static func classify(_ line: String) -> LogSeverity {
+        let uppercased = line.uppercased()
+        if uppercased.contains("ERROR")
+            || uppercased.contains("FATAL")
+            || uppercased.contains("TRACEBACK")
+            || uppercased.contains("EXCEPTION")
+            || uppercased.contains("FAILED TO")
+        {
+            return .error
+        }
+        if uppercased.contains("WARNING") || uppercased.contains("WARN:") {
+            return .warning
+        }
+        if uppercased.contains("INFO") || uppercased.contains("DEBUG") {
+            return .info
+        }
+        return .other
+    }
+}
+
+private enum LogLevelFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case info = "Info"
+    case warnings = "Warnings"
+    case errors = "Errors"
+
+    var id: String { rawValue }
+
+    func includes(_ severity: LogSeverity) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .info:
+            severity == .info
+        case .warnings:
+            severity == .warning
+        case .errors:
+            severity == .error
+        }
+    }
+}
+
+private struct LogOutput {
+    let text: String
+    let totalLineCount: Int
+    let visibleLineCount: Int
+
+    static func filtered(_ text: String, query: String, level: LogLevelFilter) -> LogOutput {
+        guard !text.isEmpty else {
+            return LogOutput(text: "", totalLineCount: 0, visibleLineCount: 0)
+        }
+
+        let lines = text.components(separatedBy: .newlines)
+        let totalLineCount = lines.lazy.filter { !$0.isEmpty }.count
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let visibleLines = lines.filter { line in
+            guard !line.isEmpty else {
+                return level == .all && query.isEmpty
+            }
+            return level.includes(LogSeverity.classify(line))
+                && (query.isEmpty || line.localizedCaseInsensitiveContains(query))
+        }
+
+        return LogOutput(
+            text: visibleLines.joined(separator: "\n"),
+            totalLineCount: totalLineCount,
+            visibleLineCount: visibleLines.lazy.filter { !$0.isEmpty }.count
+        )
+    }
+}
+
+private struct LogSearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Search logs", text: $text)
+                .textFieldStyle(.plain)
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear search")
+            }
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 28)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color(nsColor: .textBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
     }
 }
 
@@ -356,6 +540,16 @@ private enum SystemRuntimeInfo {
 
 private struct LogTextView: NSViewRepresentable {
     let text: String
+    let searchQuery: String
+
+    final class Coordinator {
+        var renderedText = ""
+        var renderedQuery = ""
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -368,11 +562,11 @@ private struct LogTextView: NSViewRepresentable {
         textView.isRichText = false
         textView.importsGraphics = false
         textView.usesFindPanel = true
-        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        textView.textColor = NSColor.labelColor
         textView.backgroundColor = NSColor.textBackgroundColor
         textView.textContainerInset = NSSize(width: 12, height: 12)
-        textView.string = text
+        render(text, searchQuery: searchQuery, in: textView)
+        context.coordinator.renderedText = text
+        context.coordinator.renderedQuery = searchQuery
 
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
@@ -389,15 +583,25 @@ private struct LogTextView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView else {
             return
         }
-        guard textView.string != text else {
+        guard context.coordinator.renderedText != text
+            || context.coordinator.renderedQuery != searchQuery
+        else {
             return
         }
 
         let shouldFollowOutput = isNearBottom(scrollView)
-        textView.string = text
+        render(text, searchQuery: searchQuery, in: textView)
+        context.coordinator.renderedText = text
+        context.coordinator.renderedQuery = searchQuery
         if shouldFollowOutput {
             textView.scrollToEndOfDocument(nil)
         }
+    }
+
+    private func render(_ text: String, searchQuery: String, in textView: NSTextView) {
+        textView.textStorage?.setAttributedString(
+            LogTextStyler.attributedString(text, searchQuery: searchQuery)
+        )
     }
 
     private func isNearBottom(_ scrollView: NSScrollView) -> Bool {
@@ -406,6 +610,101 @@ private struct LogTextView: NSViewRepresentable {
         }
         let distance = documentView.bounds.maxY - scrollView.contentView.bounds.maxY
         return distance <= 24
+    }
+}
+
+private enum LogTextStyler {
+    private static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+
+    static func attributedString(_ text: String, searchQuery: String) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        let lines = text.components(separatedBy: "\n")
+
+        for (index, line) in lines.enumerated() {
+            let attributedLine = NSMutableAttributedString(
+                string: line,
+                attributes: [
+                    .font: font,
+                    .foregroundColor: NSColor.labelColor,
+                ]
+            )
+            styleSeverity(in: attributedLine, line: line)
+            styleHTTPStatus(in: attributedLine)
+            result.append(attributedLine)
+            if index < lines.count - 1 {
+                result.append(NSAttributedString(string: "\n", attributes: [.font: font]))
+            }
+        }
+
+        highlightSearch(in: result, query: searchQuery)
+        return result
+    }
+
+    private static func styleSeverity(in text: NSMutableAttributedString, line: String) {
+        let fullRange = NSRange(location: 0, length: text.length)
+        switch LogSeverity.classify(line) {
+        case .error:
+            text.addAttribute(.foregroundColor, value: NSColor.systemRed, range: fullRange)
+        case .warning:
+            text.addAttribute(.foregroundColor, value: NSColor.systemOrange, range: fullRange)
+        case .info:
+            colorOccurrences(of: "INFO", in: text, color: .systemBlue)
+            colorOccurrences(of: "DEBUG", in: text, color: .systemPurple)
+        case .other:
+            if line.localizedCaseInsensitiveContains("started")
+                || line.localizedCaseInsensitiveContains("ready")
+            {
+                text.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: fullRange)
+            }
+        }
+    }
+
+    private static func styleHTTPStatus(in text: NSMutableAttributedString) {
+        colorOccurrences(of: "200 OK", in: text, color: .systemGreen)
+        colorOccurrences(of: "201 Created", in: text, color: .systemGreen)
+        colorOccurrences(of: "307 Temporary Redirect", in: text, color: .systemOrange)
+        colorOccurrences(of: "400 Bad Request", in: text, color: .systemRed)
+        colorOccurrences(of: "401 Unauthorized", in: text, color: .systemRed)
+        colorOccurrences(of: "403 Forbidden", in: text, color: .systemRed)
+        colorOccurrences(of: "404 Not Found", in: text, color: .systemRed)
+        colorOccurrences(of: "500 Internal Server Error", in: text, color: .systemRed)
+    }
+
+    private static func colorOccurrences(
+        of token: String,
+        in text: NSMutableAttributedString,
+        color: NSColor
+    ) {
+        let string = text.string as NSString
+        var searchRange = NSRange(location: 0, length: string.length)
+        while searchRange.length > 0 {
+            let match = string.range(of: token, options: .caseInsensitive, range: searchRange)
+            guard match.location != NSNotFound else { break }
+            text.addAttribute(.foregroundColor, value: color, range: match)
+            let nextLocation = NSMaxRange(match)
+            searchRange = NSRange(location: nextLocation, length: string.length - nextLocation)
+        }
+    }
+
+    private static func highlightSearch(in text: NSMutableAttributedString, query: String) {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+
+        let string = text.string as NSString
+        var searchRange = NSRange(location: 0, length: string.length)
+        while searchRange.length > 0 {
+            let match = string.range(of: query, options: .caseInsensitive, range: searchRange)
+            guard match.location != NSNotFound else { break }
+            text.addAttributes(
+                [
+                    .backgroundColor: NSColor.systemYellow.withAlphaComponent(0.45),
+                    .foregroundColor: NSColor.labelColor,
+                ],
+                range: match
+            )
+            let nextLocation = NSMaxRange(match)
+            searchRange = NSRange(location: nextLocation, length: string.length - nextLocation)
+        }
     }
 }
 
