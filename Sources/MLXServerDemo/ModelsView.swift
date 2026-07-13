@@ -8,24 +8,6 @@ private enum ModelsPageSection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-private enum HubCapabilityFilter: String, CaseIterable, Identifiable {
-    case all = "All capabilities"
-    case vision = "Vision"
-    case audio = "Audio"
-    case tools = "Tool calling"
-
-    var id: String { rawValue }
-
-    var capability: LocalModelCapability? {
-        switch self {
-        case .all: nil
-        case .vision: .vision
-        case .audio: .audio
-        case .tools: .tools
-        }
-    }
-}
-
 private enum HubAccessFilter: String, CaseIterable, Identifiable {
     case all = "All access"
     case open = "Open models"
@@ -43,7 +25,7 @@ struct ModelsView: View {
     @State private var localQuery = ""
     @State private var hubQuery = ""
     @State private var hubSort: HuggingFaceModelSort = .downloads
-    @State private var hubCapabilityFilter: HubCapabilityFilter = .all
+    @State private var hubCapabilityFilters = Set<LocalModelCapability>()
     @State private var hubAccessFilter: HubAccessFilter = .all
     @State private var showsConfiguration = false
 
@@ -373,13 +355,61 @@ struct ModelsView: View {
     }
 
     private var hubCapabilityPicker: some View {
-        Picker("Capability", selection: $hubCapabilityFilter) {
-            ForEach(HubCapabilityFilter.allCases) { filter in
-                Text(filter.rawValue).tag(filter)
+        HStack(spacing: 8) {
+            Text("Capability")
+
+            Menu {
+                Button {
+                    hubCapabilityFilters.removeAll()
+                } label: {
+                    if hubCapabilityFilters.isEmpty {
+                        Label("All capabilities", systemImage: "checkmark")
+                    } else {
+                        Text("All capabilities")
+                    }
+                }
+
+                Divider()
+
+                ForEach(LocalModelCapability.allCases, id: \.self) { capability in
+                    Toggle(
+                        capability.displayName,
+                        isOn: capabilitySelectionBinding(for: capability)
+                    )
+                }
+            } label: {
+                Text(capabilityFilterTitle)
+                    .frame(minWidth: 130, alignment: .leading)
             }
+            .menuStyle(.button)
         }
-        .pickerStyle(.menu)
         .fixedSize()
+    }
+
+    private var capabilityFilterTitle: String {
+        switch hubCapabilityFilters.count {
+        case 0:
+            "All capabilities"
+        case 1:
+            hubCapabilityFilters.first?.displayName ?? "All capabilities"
+        default:
+            "\(hubCapabilityFilters.count) selected"
+        }
+    }
+
+    private func capabilitySelectionBinding(
+        for capability: LocalModelCapability
+    ) -> Binding<Bool> {
+        Binding(
+            get: { hubCapabilityFilters.contains(capability) },
+            set: { isSelected in
+                if isSelected {
+                    hubCapabilityFilters.insert(capability)
+                } else {
+                    hubCapabilityFilters.remove(capability)
+                }
+            }
+        )
     }
 
     private var hubAccessPicker: some View {
@@ -443,9 +473,9 @@ struct ModelsView: View {
 
     private var filteredHubModels: [HuggingFaceModel] {
         hubLibrary.models.filter { hubModel in
-            let matchesCapability = hubCapabilityFilter.capability.map {
+            let matchesCapability = hubCapabilityFilters.allSatisfy {
                 hubModel.capabilities.contains($0)
-            } ?? true
+            }
             let matchesAccess: Bool
             switch hubAccessFilter {
             case .all:
