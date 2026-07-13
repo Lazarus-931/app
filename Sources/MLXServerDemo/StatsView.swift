@@ -140,7 +140,7 @@ struct StatsView: View {
                     points: dashboard.bucketPoints,
                     modelPoints: dashboard.modelTokenPoints,
                     range: dashboard.selectedRange,
-                    showsAllModels: dashboard.selectedModelID == DashboardViewModel.ModelOption.allID
+                    showsAllModels: dashboard.appliedModelID == DashboardViewModel.ModelOption.allID
                 )
                     .frame(maxWidth: .infinity)
                 RequestHealthPanel(
@@ -156,7 +156,7 @@ struct StatsView: View {
                     points: dashboard.bucketPoints,
                     modelPoints: dashboard.modelTokenPoints,
                     range: dashboard.selectedRange,
-                    showsAllModels: dashboard.selectedModelID == DashboardViewModel.ModelOption.allID
+                    showsAllModels: dashboard.appliedModelID == DashboardViewModel.ModelOption.allID
                 )
                 RequestHealthPanel(
                     points: dashboard.bucketPoints,

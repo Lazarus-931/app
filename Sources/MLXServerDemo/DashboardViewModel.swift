@@ -133,10 +133,11 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var recentRequestEvents: [MLXServerAnalyticsRequestEvent] = []
     @Published private(set) var isLoadingHistory = false
     @Published private(set) var localModelError: String?
+    @Published private(set) var appliedModelID: String = ModelOption.allID
     @Published var selectedModelID: String = ModelOption.allID {
         didSet {
             guard oldValue != selectedModelID else { return }
-            reloadHistorical()
+            scheduleModelSelectionReload()
         }
     }
     @Published var selectedRange: RangeOption = .last24Hours {
@@ -152,6 +153,7 @@ final class DashboardViewModel: ObservableObject {
     private var scannedModelOptions: [ModelOption] = []
     private var historicalModelIDs: [String] = []
     private var modelScanTask: Task<Void, Never>?
+    private var modelSelectionReloadTask: Task<Void, Never>?
     private var historyLoadTask: Task<DashboardSnapshot, Never>?
     private var historyLoadGeneration = 0
 
@@ -161,6 +163,7 @@ final class DashboardViewModel: ObservableObject {
 
     deinit {
         modelScanTask?.cancel()
+        modelSelectionReloadTask?.cancel()
         historyLoadTask?.cancel()
     }
 
@@ -268,10 +271,29 @@ final class DashboardViewModel: ObservableObject {
             bucketPoints = snapshot.points
             modelPerformance = snapshot.modelPerformance
             modelTokenPoints = snapshot.modelTokenPoints
+            appliedModelID = selectedModelID ?? ModelOption.allID
             historicalModelIDs = snapshot.knownModelIDs
             rebuildAvailableModels()
             recentRequestEvents = snapshot.recentRequestEvents
             isLoadingHistory = false
+        }
+    }
+
+    private func scheduleModelSelectionReload() {
+        modelSelectionReloadTask?.cancel()
+
+        modelSelectionReloadTask = Task { @MainActor [weak self] in
+            do {
+                // Let AppKit finish dismissing the model menu before invalidating
+                // the chart hierarchy and starting the filtered analytics load.
+                try await Task.sleep(nanoseconds: 200_000_000)
+            } catch {
+                return
+            }
+
+            guard let self, !Task.isCancelled else { return }
+            modelSelectionReloadTask = nil
+            reloadHistorical()
         }
     }
 
