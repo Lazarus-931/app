@@ -1,5 +1,10 @@
 import Foundation
 
+enum LocalModelCapability: String, CaseIterable, Hashable, Sendable {
+    case vision
+    case audio
+}
+
 struct LocalModel: Identifiable, Equatable, Sendable {
     var id: String { repoID }
 
@@ -8,6 +13,7 @@ struct LocalModel: Identifiable, Equatable, Sendable {
     let modifiedAt: Date?
     let sizeBytes: Int64?
     let contextSize: Int?
+    let capabilities: Set<LocalModelCapability>
 }
 
 enum LocalModelDiscovery {
@@ -62,7 +68,8 @@ enum LocalModelDiscovery {
                 snapshotURL: snapshotURL,
                 modifiedAt: modifiedAt,
                 sizeBytes: snapshotSize(at: snapshotURL, fileManager: fileManager),
-                contextSize: contextSize(at: snapshotURL, fileManager: fileManager)
+                contextSize: contextSize(at: snapshotURL, fileManager: fileManager),
+                capabilities: modelCapabilities(at: snapshotURL, fileManager: fileManager)
             )
         }
 
@@ -202,6 +209,80 @@ enum LocalModelDiscovery {
             return contextSize
         }
         return nil
+    }
+
+    private static func modelCapabilities(
+        at snapshotURL: URL,
+        fileManager: FileManager
+    ) -> Set<LocalModelCapability> {
+        let configURL = snapshotURL.appendingPathComponent("config.json")
+        guard fileManager.fileExists(atPath: configURL.path),
+              let data = try? Data(contentsOf: configURL),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return []
+        }
+
+        let keys = recursiveKeys(in: config)
+        let descriptors = modelDescriptors(in: config)
+        var capabilities = Set<LocalModelCapability>()
+
+        let visionKeys: Set<String> = [
+            "vision_config",
+            "vision_tower",
+            "vit_config",
+            "img_processor",
+            "image_token_id",
+            "image_start_token_id"
+        ]
+        let visionDescriptors = [
+            "vision", "llava", "pixtral", "minicpmv", "molmo", "phi3_v", "omni"
+        ]
+        if !keys.isDisjoint(with: visionKeys)
+            || visionDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.vision)
+        }
+
+        let audioKeys: Set<String> = [
+            "audio_config",
+            "audio_tower",
+            "audio_token_id",
+            "speech_config",
+            "max_audio_clip_s",
+            "sample_rate",
+            "code2wav_config",
+            "speaker_encoder_config",
+            "tts_model_type"
+        ]
+        let audioDescriptors = [
+            "audio", "speech", "whisper", "asr", "tts", "transcribe", "omni"
+        ]
+        if !keys.isDisjoint(with: audioKeys)
+            || audioDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.audio)
+        }
+
+        return capabilities
+    }
+
+    private static func recursiveKeys(in value: Any) -> Set<String> {
+        if let dictionary = value as? [String: Any] {
+            return dictionary.reduce(into: Set(dictionary.keys)) { result, entry in
+                result.formUnion(recursiveKeys(in: entry.value))
+            }
+        }
+        if let array = value as? [Any] {
+            return array.reduce(into: Set<String>()) { result, entry in
+                result.formUnion(recursiveKeys(in: entry))
+            }
+        }
+        return []
+    }
+
+    private static func modelDescriptors(in config: [String: Any]) -> String {
+        let modelType = config["model_type"] as? String ?? ""
+        let architectures = config["architectures"] as? [String] ?? []
+        return ([modelType] + architectures).joined(separator: " ").lowercased()
     }
 
     private static func contextSize(in config: [String: Any]) -> Int? {

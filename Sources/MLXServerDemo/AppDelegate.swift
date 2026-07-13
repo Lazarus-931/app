@@ -64,6 +64,7 @@ private final class ModelMenuRowView: NSView {
         name: String,
         details: String,
         tooltip: String,
+        capabilities: Set<LocalModelCapability>,
         isSelected: Bool,
         onSelect: @escaping () -> Void
     ) {
@@ -76,13 +77,46 @@ private final class ModelMenuRowView: NSView {
         let nameLabel = NSTextField(labelWithString: name)
         nameLabel.font = .systemFont(ofSize: 12, weight: .medium)
         nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let titleRow = NSStackView()
+        titleRow.orientation = .horizontal
+        titleRow.alignment = .centerY
+        titleRow.spacing = 4
+        titleRow.addArrangedSubview(nameLabel)
+
+        for capability in LocalModelCapability.allCases where capabilities.contains(capability) {
+            let capabilityImage = NSImageView()
+            let symbolName: String
+            let description: String
+            switch capability {
+            case .vision:
+                symbolName = "eye.fill"
+                description = "Vision"
+            case .audio:
+                symbolName = "waveform"
+                description = "Audio"
+            }
+            let configuration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+            capabilityImage.image = NSImage(
+                systemSymbolName: symbolName,
+                accessibilityDescription: description
+            )?.withSymbolConfiguration(configuration)
+            capabilityImage.contentTintColor = .secondaryLabelColor
+            capabilityImage.imageScaling = .scaleProportionallyDown
+            capabilityImage.toolTip = description
+            capabilityImage.setContentCompressionResistancePriority(.required, for: .horizontal)
+            capabilityImage.widthAnchor.constraint(equalToConstant: 13).isActive = true
+            capabilityImage.heightAnchor.constraint(equalToConstant: 13).isActive = true
+            titleRow.addArrangedSubview(capabilityImage)
+        }
 
         let detailsLabel = NSTextField(labelWithString: details)
         detailsLabel.font = .systemFont(ofSize: 10)
         detailsLabel.textColor = .secondaryLabelColor
         detailsLabel.lineBreakMode = .byTruncatingTail
 
-        let labels = NSStackView(views: [nameLabel, detailsLabel])
+        let labels = NSStackView(views: [titleRow, detailsLabel])
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 0
@@ -118,7 +152,12 @@ private final class ModelMenuRowView: NSView {
 
         self.toolTip = tooltip
         setAccessibilityRole(.button)
-        setAccessibilityLabel("\(name), \(details)")
+        let capabilityDescription = capabilities
+            .map(\.rawValue.capitalized)
+            .sorted()
+            .joined(separator: ", ")
+        let accessibilitySuffix = capabilityDescription.isEmpty ? "" : ", \(capabilityDescription)"
+        setAccessibilityLabel("\(name), \(details)\(accessibilitySuffix)")
     }
 
     @available(*, unavailable)
@@ -507,6 +546,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: modelDisplayName(localModel.repoID),
             details: modelDetails(localModel),
             tooltip: modelMenuTooltip(localModel),
+            capabilities: localModel.capabilities,
             isSelected: model.settings.normalized().languageModelID == localModel.repoID,
             onSelect: { [weak self] in
                 self?.model.switchLanguageModel(to: localModel.repoID)
@@ -552,6 +592,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let contextSize = localModel.contextSize {
             let formatted = NumberFormatter.localizedString(from: NSNumber(value: contextSize), number: .decimal)
             lines.append("Context: \(formatted) tokens")
+        }
+        if !localModel.capabilities.isEmpty {
+            let capabilities = localModel.capabilities
+                .map(\.rawValue.capitalized)
+                .sorted()
+                .joined(separator: ", ")
+            lines.append("Capabilities: \(capabilities)")
         }
         return lines.joined(separator: "\n")
     }
