@@ -266,9 +266,9 @@ struct ControlPanelView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("MLX Server")
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
                 Text(statusSubtitle)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
