@@ -2,11 +2,13 @@ import AppKit
 import Foundation
 import MLXServerKit
 import SwiftUI
+import Textual
 import UniformTypeIdentifiers
 
 struct ChatView: View {
     @ObservedObject var model: MLXServerDemoModel
     @ObservedObject var chat: ChatViewModel
+    @State private var transcriptScrollPosition = ScrollPosition(edge: .bottom)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,43 +50,36 @@ struct ChatView: View {
     }
 
     private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    if chat.messages.isEmpty {
-                        ChatEmptyTranscriptView(
-                            isRunning: model.isRunning,
-                            selectedModelID: selectedModelID
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 120)
-                    } else {
-                        ForEach(chat.messages) { message in
-                            ChatMessageRow(message: message)
-                                .id(message.id)
-                        }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 12) {
+                if chat.messages.isEmpty {
+                    ChatEmptyTranscriptView(
+                        isRunning: model.isRunning,
+                        selectedModelID: selectedModelID
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 120)
+                } else {
+                    ForEach(chat.messages) { message in
+                        ChatMessageRow(message: message)
+                            .id(message.id)
                     }
-
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .id(ChatViewModel.bottomAnchorID)
                 }
-                .padding(18)
             }
-            .onChange(of: chat.scrollToken) { _, _ in
-                proxy.scrollTo(ChatViewModel.bottomAnchorID, anchor: .bottom)
-            }
-            .onAppear {
-                proxy.scrollTo(ChatViewModel.bottomAnchorID, anchor: .bottom)
-            }
+            .padding(18)
+        }
+        .scrollPosition($transcriptScrollPosition)
+        .onChange(of: chat.scrollToken) { _, _ in
+            transcriptScrollPosition.scrollTo(edge: .bottom)
+        }
+        .onAppear {
+            transcriptScrollPosition.scrollTo(edge: .bottom)
         }
     }
 }
 
 @MainActor
 final class ChatViewModel: ObservableObject {
-    static let bottomAnchorID = "chat-bottom-anchor"
-
     @Published private(set) var sessions: [ChatSessionSummary] = []
     @Published private(set) var currentSessionID: UUID?
     @Published private(set) var messages: [ChatTranscriptMessage] = []
@@ -1088,14 +1083,16 @@ private struct ChatMessageRow: View {
             if usesCompactBubble {
                 ChatMessageText(
                     content: displayContent,
-                    rendersMarkdown: rendersMarkdown
+                    rendersMarkdown: rendersMarkdown,
+                    isStreaming: message.isStreaming
                 )
                 .lineSpacing(2)
                 .fixedSize(horizontal: true, vertical: false)
             } else {
                 ChatMessageText(
                     content: displayContent,
-                    rendersMarkdown: rendersMarkdown
+                    rendersMarkdown: rendersMarkdown,
+                    isStreaming: message.isStreaming
                 )
                 .lineSpacing(2)
                 .multilineTextAlignment(textAlignment)
@@ -1373,10 +1370,21 @@ private struct ChatImageThumbnail: View {
 private struct ChatMessageText: View {
     let content: String
     let rendersMarkdown: Bool
+    let isStreaming: Bool
 
+    @ViewBuilder
     var body: some View {
-        renderedText
-            .textSelection(.enabled)
+        if rendersMarkdown && !isStreaming {
+            StructuredText(
+                markdown: MLXServerDemoMarkdownFormatting.normalizedMathDelimiters(in: content),
+                syntaxExtensions: [.math]
+            )
+            .textual.structuredTextStyle(.gitHub)
+            .textual.textSelection(.enabled)
+        } else {
+            renderedText
+                .textSelection(.enabled)
+        }
     }
 
     private var renderedText: Text {

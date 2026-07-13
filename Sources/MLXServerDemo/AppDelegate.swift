@@ -312,11 +312,11 @@ private final class ModelMenuSectionHeaderView: NSView {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
-    private var window: NSWindow?
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let model = MLXServerDemoModel()
     private let controlPanelNavigation = ControlPanelNavigation()
     private let runtime = SystemRuntimeMonitor()
+    private var mainWindowOpener: (() -> Void)?
     private var statusItem: NSStatusItem?
     private var serverActionMenuItem: NSMenuItem?
     private var modelMenuItem: NSMenuItem?
@@ -340,9 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             }
         }
 
-        configureMainMenu()
         configureStatusItem()
-        configureWindow()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(localModelLibraryDidChange(_:)),
@@ -369,34 +367,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         modelScanTask?.cancel()
         runtime.stop()
         model.applicationWillTerminate()
-    }
-
-    func windowWillEnterFullScreen(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === self.window else {
-            return
-        }
-        window.toolbar?.isVisible = false
-    }
-
-    func windowDidEnterFullScreen(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === self.window else {
-            return
-        }
-        window.toolbar?.isVisible = false
-    }
-
-    func windowWillExitFullScreen(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === self.window else {
-            return
-        }
-        window.toolbar?.isVisible = true
-    }
-
-    func windowDidExitFullScreen(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === self.window else {
-            return
-        }
-        window.toolbar?.isVisible = true
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -443,8 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc private func openModelsFromMenu(_ sender: Any?) {
-        controlPanelNavigation.open(.models)
-        showMainWindow()
+        openSettings()
     }
 
     @objc private func localModelLibraryDidChange(_ notification: Notification) {
@@ -455,62 +424,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         NSApplication.shared.terminate(sender)
     }
 
-    private func configureMainMenu() {
-        let mainMenu = NSMenu()
-        let appMenuItem = NSMenuItem()
-        mainMenu.addItem(appMenuItem)
-
-        let appMenu = NSMenu()
-        let appName = ProcessInfo.processInfo.processName
-        let quitMenuItem = NSMenuItem(
-            title: "Quit \(appName)",
-            action: #selector(quit(_:)),
-            keyEquivalent: "q"
-        )
-        quitMenuItem.target = self
-        quitMenuItem.keyEquivalentModifierMask = [.command]
-        appMenu.addItem(quitMenuItem)
-
-        appMenuItem.submenu = appMenu
-        NSApplication.shared.mainMenu = mainMenu
-    }
-
-    private func configureWindow() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 920, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "MLX Server"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.titlebarSeparatorStyle = .none
-        window.styleMask.insert(.fullSizeContentView)
-        window.isMovableByWindowBackground = true
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.center()
-        window.contentView = NSHostingView(rootView: ControlPanelView(
+    var rootView: some View {
+        ControlPanelView(
             model: model,
             navigation: controlPanelNavigation,
             runtime: runtime
-        ))
-        window.makeKeyAndOrderFront(nil)
-        self.window = window
+        )
+    }
+
+    func registerMainWindowOpener(_ opener: @escaping () -> Void) {
+        mainWindowOpener = opener
+    }
+
+    func openSettings() {
+        controlPanelNavigation.open(.models)
+        showMainWindow()
+    }
+
+    func createNewChat() {
+        controlPanelNavigation.createChat()
+        showMainWindow()
     }
 
     private func showMainWindow() {
-        guard let window else {
-            configureWindow()
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            return
-        }
-
-        if window.isMiniaturized {
-            window.deminiaturize(nil)
-        }
-        window.makeKeyAndOrderFront(nil)
+        mainWindowOpener?()
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 

@@ -9,6 +9,10 @@ settings:
     SWIFT_VERSION: "5.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     ARCHS: arm64
+packages:
+  textual:
+    url: https://github.com/gonzalezreal/textual.git
+    exactVersion: 0.5.0
 targets:
   MLXServerKit:
     type: framework
@@ -36,12 +40,20 @@ targets:
     platform: macOS
     sources:
       - path: Sources/MLXServerDemo
+        excludes:
+          - ModelProviderIcons
+      - path: Sources/MLXServerDemo/ModelProviderIcons
+        type: folder
+        buildPhase: resources
     dependencies:
       - target: MLXServerKit
+      - package: textual
+        product: Textual
     settings:
       base:
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerDemo
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: MLX Server
         INFOPLIST_KEY_NSPrincipalClass: NSApplication
         INFOPLIST_KEY_NSHighResolutionCapable: YES
