@@ -2,6 +2,15 @@ import Combine
 import Foundation
 import MLXServerKit
 
+struct SessionTokenActivitySample: Equatable, Sendable {
+    let promptTokens: Int
+    let generatedTokens: Int
+
+    var totalTokens: Int {
+        promptTokens + generatedTokens
+    }
+}
+
 @MainActor
 final class MLXServerDemoModel: ObservableObject {
     @Published private(set) var isRunning = false
@@ -10,7 +19,7 @@ final class MLXServerDemoModel: ObservableObject {
     @Published private(set) var lastMetricsError: String?
     @Published private(set) var lastMetricsFetchAt: Date?
     @Published private(set) var allTimeStats = MLXServerAllTimeStats()
-    @Published private(set) var sessionTokenActivity: [Int] = []
+    @Published private(set) var sessionTokenActivity: [SessionTokenActivitySample] = []
     @Published private(set) var modelSwitchInProgress = false
     @Published var settings = MLXServerSettings.load() {
         didSet {
@@ -27,7 +36,8 @@ final class MLXServerDemoModel: ObservableObject {
     private var metricsTimer: Timer?
     private var metricsStartupGraceUntil: Date?
     private var settingsAppliedAtServerStart: MLXServerSettings?
-    private var previousSessionTokenCount: Int?
+    private var previousSessionPromptTokenCount: Int?
+    private var previousSessionGeneratedTokenCount: Int?
 
     private let maxLogCharacters = 250_000
     private let maxSessionActivitySamples = 24
@@ -227,7 +237,8 @@ final class MLXServerDemoModel: ObservableObject {
         lastMetricsError = nil
         metrics = nil
         sessionTokenActivity = []
-        previousSessionTokenCount = nil
+        previousSessionPromptTokenCount = nil
+        previousSessionGeneratedTokenCount = nil
         metricsStartupGraceUntil = Date().addingTimeInterval(20)
 
         if metricsTimer == nil {
@@ -258,7 +269,8 @@ final class MLXServerDemoModel: ObservableObject {
         if clearSession {
             metrics = nil
             sessionTokenActivity = []
-            previousSessionTokenCount = nil
+            previousSessionPromptTokenCount = nil
+            previousSessionGeneratedTokenCount = nil
         }
     }
 
@@ -276,7 +288,10 @@ final class MLXServerDemoModel: ObservableObject {
         isRunning = true
         lastMetricsError = nil
         metricsStartupGraceUntil = nil
-        recordSessionActivity(fetchedMetrics.summary.totalProcessedTokens)
+        recordSessionActivity(
+            promptTokenCount: fetchedMetrics.summary.promptTokensTotal,
+            generatedTokenCount: fetchedMetrics.summary.generatedTokensTotal
+        )
         metrics = fetchedMetrics
         refreshAllTimeStats(runtimePath: fetchedMetrics.server.analyticsDatabasePath)
 
@@ -319,19 +334,32 @@ final class MLXServerDemoModel: ObservableObject {
         }
     }
 
-    private func recordSessionActivity(_ totalTokenCount: Int) {
-        let tokenDelta: Int
-        if let previousSessionTokenCount, totalTokenCount >= previousSessionTokenCount {
-            tokenDelta = totalTokenCount - previousSessionTokenCount
-        } else {
-            tokenDelta = 0
-        }
+    private func recordSessionActivity(promptTokenCount: Int, generatedTokenCount: Int) {
+        let promptDelta = tokenDelta(
+            current: promptTokenCount,
+            previous: previousSessionPromptTokenCount
+        )
+        let generatedDelta = tokenDelta(
+            current: generatedTokenCount,
+            previous: previousSessionGeneratedTokenCount
+        )
 
-        sessionTokenActivity.append(tokenDelta)
+        sessionTokenActivity.append(SessionTokenActivitySample(
+            promptTokens: promptDelta,
+            generatedTokens: generatedDelta
+        ))
         if sessionTokenActivity.count > maxSessionActivitySamples {
             sessionTokenActivity.removeFirst(sessionTokenActivity.count - maxSessionActivitySamples)
         }
-        previousSessionTokenCount = totalTokenCount
+        previousSessionPromptTokenCount = promptTokenCount
+        previousSessionGeneratedTokenCount = generatedTokenCount
+    }
+
+    private func tokenDelta(current: Int, previous: Int?) -> Int {
+        guard let previous, current >= previous else {
+            return 0
+        }
+        return current - previous
     }
 
     private func refreshAllTimeStats(runtimePath: String? = nil) {

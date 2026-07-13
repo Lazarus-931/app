@@ -783,7 +783,7 @@ private enum StatsMenuLayout {
 private struct SessionStatsMenuView: View {
     let metrics: MLXServerMetrics
     let updatedAt: Date?
-    let tokenActivity: [Int]
+    let tokenActivity: [SessionTokenActivitySample]
 
     private let accent = Color(red: 0.31, green: 0.72, blue: 0.77)
     private let generatedAccent = Color(red: 0.45, green: 0.55, blue: 0.92)
@@ -800,7 +800,11 @@ private struct SessionStatsMenuView: View {
 
             sessionOverview
 
-            SessionActivityPlot(values: tokenActivity, accent: accent)
+            SessionActivityPlot(
+                values: tokenActivity,
+                promptAccent: accent,
+                generatedAccent: generatedAccent
+            )
                 .padding(.top, 12)
 
             Divider()
@@ -956,18 +960,22 @@ private struct SessionStatsMenuView: View {
 }
 
 private struct SessionActivityPlot: View {
-    let values: [Int]
-    let accent: Color
+    let values: [SessionTokenActivitySample]
+    let promptAccent: Color
+    let generatedAccent: Color
 
     private let sampleCount = 24
 
-    private var plottedValues: [Int] {
-        Array(repeating: 0, count: max(0, sampleCount - values.count))
+    private var plottedValues: [SessionTokenActivitySample] {
+        Array(
+            repeating: SessionTokenActivitySample(promptTokens: 0, generatedTokens: 0),
+            count: max(0, sampleCount - values.count)
+        )
             + Array(values.suffix(sampleCount))
     }
 
     private var maximumValue: CGFloat {
-        CGFloat(max(plottedValues.max() ?? 0, 1))
+        CGFloat(max(plottedValues.map(\.totalTokens).max() ?? 0, 1))
     }
 
     var body: some View {
@@ -982,22 +990,76 @@ private struct SessionActivityPlot: View {
             }
 
             HStack(alignment: .bottom, spacing: 3) {
-                ForEach(Array(plottedValues.enumerated()), id: \.offset) { _, value in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(accent.opacity(value == 0 ? 0.18 : 0.9))
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: value == 0 ? 2 : 4,
-                            maxHeight: value == 0
-                                ? 2
-                                : max(4, 44 * CGFloat(value) / maximumValue)
-                        )
+                ForEach(Array(plottedValues.enumerated()), id: \.offset) { _, sample in
+                    activityBar(sample)
                 }
             }
             .frame(height: 46, alignment: .bottom)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Recent token activity")
-        .accessibilityValue("\(values.reduce(0, +)) tokens across \(values.count) samples")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    @ViewBuilder
+    private func activityBar(_ sample: SessionTokenActivitySample) -> some View {
+        let total = sample.totalTokens
+        if total == 0 {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(promptAccent.opacity(0.18))
+                .frame(maxWidth: .infinity)
+                .frame(height: 2)
+        } else {
+            let hasBothSegments = sample.promptTokens > 0 && sample.generatedTokens > 0
+            let barHeight = max(
+                hasBothSegments ? 6 : 4,
+                44 * CGFloat(total) / maximumValue
+            )
+            let promptHeight = segmentHeight(
+                value: sample.promptTokens,
+                total: total,
+                barHeight: barHeight,
+                hasBothSegments: hasBothSegments
+            )
+            let generatedHeight = barHeight - promptHeight
+
+            VStack(spacing: 0) {
+                if generatedHeight > 0 {
+                    Rectangle()
+                        .fill(generatedAccent.opacity(0.95))
+                        .frame(height: generatedHeight)
+                }
+                if promptHeight > 0 {
+                    Rectangle()
+                        .fill(promptAccent.opacity(0.95))
+                        .frame(height: promptHeight)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: barHeight, alignment: .bottom)
+            .clipShape(RoundedRectangle(cornerRadius: 2))
+        }
+    }
+
+    private func segmentHeight(
+        value: Int,
+        total: Int,
+        barHeight: CGFloat,
+        hasBothSegments: Bool
+    ) -> CGFloat {
+        guard value > 0 else {
+            return 0
+        }
+        guard hasBothSegments else {
+            return barHeight
+        }
+        let proportionalHeight = barHeight * CGFloat(value) / CGFloat(total)
+        return min(max(proportionalHeight, 2), barHeight - 2)
+    }
+
+    private var accessibilityValue: String {
+        let promptTokens = values.reduce(0) { $0 + $1.promptTokens }
+        let generatedTokens = values.reduce(0) { $0 + $1.generatedTokens }
+        return "\(promptTokens) prompt and \(generatedTokens) generated tokens across \(values.count) samples"
     }
 }
