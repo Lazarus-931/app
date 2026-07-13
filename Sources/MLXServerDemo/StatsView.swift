@@ -136,7 +136,12 @@ struct StatsView: View {
     private var analyticsGrid: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 16) {
-                TokenUsagePanel(points: dashboard.bucketPoints, range: dashboard.selectedRange)
+                TokenUsagePanel(
+                    points: dashboard.bucketPoints,
+                    modelPoints: dashboard.modelTokenPoints,
+                    range: dashboard.selectedRange,
+                    showsAllModels: dashboard.selectedModelID == DashboardViewModel.ModelOption.allID
+                )
                     .frame(maxWidth: .infinity)
                 RequestHealthPanel(
                     points: dashboard.bucketPoints,
@@ -147,7 +152,12 @@ struct StatsView: View {
             }
 
             VStack(spacing: 16) {
-                TokenUsagePanel(points: dashboard.bucketPoints, range: dashboard.selectedRange)
+                TokenUsagePanel(
+                    points: dashboard.bucketPoints,
+                    modelPoints: dashboard.modelTokenPoints,
+                    range: dashboard.selectedRange,
+                    showsAllModels: dashboard.selectedModelID == DashboardViewModel.ModelOption.allID
+                )
                 RequestHealthPanel(
                     points: dashboard.bucketPoints,
                     completed: dashboard.historicalSummary.requestsCompleted,
@@ -366,21 +376,53 @@ private struct AnalyticsMetricCard: View {
 }
 
 private struct TokenUsagePanel: View {
+    struct HistogramSegment: Identifiable {
+        let modelID: String
+        let bucketStart: Date
+        let yStart: Int
+        let yEnd: Int
+
+        var id: String { "\(modelID):\(bucketStart.timeIntervalSince1970)" }
+    }
+
+    enum AllModelsDisplay: String, CaseIterable, Identifiable {
+        case lines = "Lines"
+        case stacked = "Histogram"
+
+        var id: String { rawValue }
+    }
+
     let points: [DashboardViewModel.BucketPoint]
+    let modelPoints: [DashboardViewModel.ModelTokenPoint]
     let range: DashboardViewModel.RangeOption
+    let showsAllModels: Bool
     @State private var hoveredPointID: Date?
+    @State private var allModelsDisplay: AllModelsDisplay = .lines
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 AnalyticsSectionHeader(
                     title: "Token usage",
-                    subtitle: "Input and output tokens over time"
+                    subtitle: showsAllModels
+                        ? "Total tokens by model over time"
+                        : "Input and output tokens over time"
                 )
                 Spacer()
-                HStack(spacing: 14) {
-                    ChartLegendDot(color: DashboardPalette.accent, title: "Input")
-                    ChartLegendDot(color: DashboardPalette.indigo, title: "Output")
+                if showsAllModels {
+                    Picker("Chart display", selection: $allModelsDisplay) {
+                        ForEach(AllModelsDisplay.allCases) { display in
+                            Text(display.rawValue).tag(display)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 190)
+                } else {
+                    HStack(spacing: 14) {
+                        ChartLegendDot(color: DashboardPalette.accent, title: "Input")
+                        ChartLegendDot(color: DashboardPalette.indigo, title: "Output")
+                    }
                 }
             }
 
@@ -389,60 +431,10 @@ private struct TokenUsagePanel: View {
                     .frame(minHeight: 230)
             } else {
                 Chart {
-                    ForEach(points) { point in
-                        AreaMark(
-                            x: .value("Time", point.bucketStart),
-                            y: .value("Input tokens", point.promptTokensTotal)
-                        )
-                        .foregroundStyle(
-                            .linearGradient(
-                                colors: [DashboardPalette.accent.opacity(0.28), DashboardPalette.accent.opacity(0.02)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .interpolationMethod(.monotone)
-
-                        LineMark(
-                            x: .value("Time", point.bucketStart),
-                            y: .value("Input tokens", point.promptTokensTotal),
-                            series: .value("Series", "Input")
-                        )
-                        .foregroundStyle(DashboardPalette.accent)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                        .interpolationMethod(.monotone)
-
-                        LineMark(
-                            x: .value("Time", point.bucketStart),
-                            y: .value("Output tokens", point.generatedTokensTotal),
-                            series: .value("Series", "Output")
-                        )
-                        .foregroundStyle(DashboardPalette.indigo)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                        .interpolationMethod(.monotone)
-                    }
-
-                    if let hoveredPoint {
-                        RuleMark(x: .value("Selected time", hoveredPoint.bucketStart))
-                            .foregroundStyle(DashboardPalette.axisLabel.opacity(0.8))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-
-                        PointMark(
-                            x: .value("Selected time", hoveredPoint.bucketStart),
-                            y: .value("Input tokens", hoveredPoint.promptTokensTotal)
-                        )
-                        .foregroundStyle(DashboardPalette.accent)
-                        .symbolSize(48)
-
-                        PointMark(
-                            x: .value("Selected time", hoveredPoint.bucketStart),
-                            y: .value("Output tokens", hoveredPoint.generatedTokensTotal)
-                        )
-                        .foregroundStyle(DashboardPalette.indigo)
-                        .symbolSize(48)
-                    }
+                    usageMarks
+                    hoverMarks
                 }
-                .chartLegend(.hidden)
+                .chartLegend(showsAllModels ? .visible : .hidden)
                 .chartXAxis {
                     AxisMarks(values: axisDates) { value in
                         AxisGridLine().foregroundStyle(DashboardPalette.panelStroke.opacity(0.5))
@@ -491,10 +483,20 @@ private struct TokenUsagePanel: View {
                                    proxy: proxy,
                                    geometry: geometry
                                ) {
-                                TokenUsageTooltip(point: hoveredPoint, granularity: granularity)
-                                    .position(tooltipCenter)
-                                    .allowsHitTesting(false)
-                                    .transition(.identity)
+                                Group {
+                                    if showsAllModels {
+                                        ModelTokenUsageTooltip(
+                                            date: hoveredPoint.bucketStart,
+                                            points: modelValues(at: hoveredPoint.bucketStart),
+                                            granularity: granularity
+                                        )
+                                    } else {
+                                        TokenUsageTooltip(point: hoveredPoint, granularity: granularity)
+                                    }
+                                }
+                                .position(tooltipCenter)
+                                .allowsHitTesting(false)
+                                .transition(.identity)
                             }
                         }
                         .transaction { transaction in
@@ -514,6 +516,112 @@ private struct TokenUsagePanel: View {
         .dashboardPanelStyle(cornerRadius: 14)
     }
 
+    @ChartContentBuilder
+    private var usageMarks: some ChartContent {
+        if showsAllModels {
+            allModelMarks
+        } else {
+            inputOutputMarks
+        }
+    }
+
+    @ChartContentBuilder
+    private var allModelMarks: some ChartContent {
+        if allModelsDisplay == .lines {
+            ForEach(modelPoints) { point in
+                LineMark(
+                    x: .value("Time", point.bucketStart),
+                    y: .value("Total tokens", point.totalTokens),
+                    series: .value("Model", point.modelID)
+                )
+                .foregroundStyle(by: .value("Model", point.modelID))
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                .interpolationMethod(.monotone)
+            }
+        } else {
+            ForEach(histogramSegments) { segment in
+                RectangleMark(
+                    xStart: .value("Bucket start", segment.bucketStart),
+                    xEnd: .value("Bucket end", bucketEnd(after: segment.bucketStart)),
+                    yStart: .value("Token start", segment.yStart),
+                    yEnd: .value("Token end", segment.yEnd)
+                )
+                .foregroundStyle(by: .value("Model", segment.modelID))
+                .opacity(0.9)
+            }
+        }
+    }
+
+    @ChartContentBuilder
+    private var inputOutputMarks: some ChartContent {
+        ForEach(points) { point in
+            AreaMark(
+                x: .value("Time", point.bucketStart),
+                y: .value("Input tokens", point.promptTokensTotal)
+            )
+            .foregroundStyle(
+                .linearGradient(
+                    colors: [DashboardPalette.accent.opacity(0.28), DashboardPalette.accent.opacity(0.02)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .interpolationMethod(.monotone)
+
+            LineMark(
+                x: .value("Time", point.bucketStart),
+                y: .value("Input tokens", point.promptTokensTotal),
+                series: .value("Series", "Input")
+            )
+            .foregroundStyle(DashboardPalette.accent)
+            .lineStyle(StrokeStyle(lineWidth: 2))
+            .interpolationMethod(.monotone)
+
+            LineMark(
+                x: .value("Time", point.bucketStart),
+                y: .value("Output tokens", point.generatedTokensTotal),
+                series: .value("Series", "Output")
+            )
+            .foregroundStyle(DashboardPalette.indigo)
+            .lineStyle(StrokeStyle(lineWidth: 2))
+            .interpolationMethod(.monotone)
+        }
+    }
+
+    @ChartContentBuilder
+    private var hoverMarks: some ChartContent {
+        if let hoveredPoint {
+            RuleMark(x: .value("Selected time", hoveredPoint.bucketStart))
+                .foregroundStyle(DashboardPalette.axisLabel.opacity(0.8))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+            if showsAllModels {
+                ForEach(modelValues(at: hoveredPoint.bucketStart)) { modelPoint in
+                    PointMark(
+                        x: .value("Selected time", modelPoint.bucketStart),
+                        y: .value("Total tokens", modelPoint.totalTokens)
+                    )
+                    .foregroundStyle(by: .value("Model", modelPoint.modelID))
+                    .symbolSize(42)
+                }
+            } else {
+                PointMark(
+                    x: .value("Selected time", hoveredPoint.bucketStart),
+                    y: .value("Input tokens", hoveredPoint.promptTokensTotal)
+                )
+                .foregroundStyle(DashboardPalette.accent)
+                .symbolSize(48)
+
+                PointMark(
+                    x: .value("Selected time", hoveredPoint.bucketStart),
+                    y: .value("Output tokens", hoveredPoint.generatedTokensTotal)
+                )
+                .foregroundStyle(DashboardPalette.indigo)
+                .symbolSize(48)
+            }
+        }
+    }
+
     private var hoveredPoint: DashboardViewModel.BucketPoint? {
         guard let hoveredPointID else { return nil }
         return points.first { $0.id == hoveredPointID }
@@ -525,6 +633,44 @@ private struct TokenUsagePanel: View {
 
     private var axisDates: [Date] {
         DashboardChartAxis.markDates(from: points.map(\.bucketStart), maximumCount: 6)
+    }
+
+    private func modelValues(at date: Date) -> [DashboardViewModel.ModelTokenPoint] {
+        modelPoints
+            .filter { $0.bucketStart == date }
+            .sorted { $0.totalTokens > $1.totalTokens }
+    }
+
+    private var histogramSegments: [HistogramSegment] {
+        Dictionary(grouping: modelPoints, by: \.bucketStart)
+            .flatMap { bucketStart, bucketPoints in
+                var cumulative = 0
+                return bucketPoints
+                    .sorted { $0.modelID.localizedCaseInsensitiveCompare($1.modelID) == .orderedAscending }
+                    .map { point in
+                        let segment = HistogramSegment(
+                            modelID: point.modelID,
+                            bucketStart: bucketStart,
+                            yStart: cumulative,
+                            yEnd: cumulative + point.totalTokens
+                        )
+                        cumulative += point.totalTokens
+                        return segment
+                    }
+            }
+            .sorted {
+                if $0.bucketStart == $1.bucketStart { return $0.yStart < $1.yStart }
+                return $0.bucketStart < $1.bucketStart
+            }
+    }
+
+    private func bucketEnd(after date: Date) -> Date {
+        switch granularity {
+        case .hour:
+            Calendar.current.date(byAdding: .hour, value: 1, to: date) ?? date.addingTimeInterval(3_600)
+        case .day:
+            Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date.addingTimeInterval(86_400)
+        }
     }
 
     private func axisLabel(for date: Date) -> String {
@@ -570,13 +716,16 @@ private struct TokenUsagePanel: View {
     ) -> CGPoint? {
         guard let plotFrameAnchor = proxy.plotFrame,
               let plotX = proxy.position(forX: point.bucketStart),
-              let plotY = proxy.position(forY: point.generatedTokensTotal) else {
+              let plotY = proxy.position(forY: tooltipAnchorValue(for: point)) else {
             return nil
         }
 
         let plotFrame = geometry[plotFrameAnchor]
         let anchor = CGPoint(x: plotFrame.minX + plotX, y: plotFrame.minY + plotY)
-        let tooltipSize = CGSize(width: 174, height: 142)
+        let tooltipSize = CGSize(
+            width: showsAllModels ? 230 : 174,
+            height: showsAllModels ? min(CGFloat(modelValues(at: point.bucketStart).count) * 25 + 72, 272) : 142
+        )
         let spacing: CGFloat = 12
         let showOnLeft = anchor.x > plotFrame.midX
         let desiredX = showOnLeft
@@ -588,6 +737,78 @@ private struct TokenUsagePanel: View {
             x: min(max(desiredX, tooltipSize.width / 2), geometry.size.width - tooltipSize.width / 2),
             y: min(max(desiredY, tooltipSize.height / 2), geometry.size.height - tooltipSize.height / 2)
         )
+    }
+
+    private func tooltipAnchorValue(for point: DashboardViewModel.BucketPoint) -> Int {
+        guard showsAllModels else { return point.generatedTokensTotal }
+        let values = modelValues(at: point.bucketStart).map(\.totalTokens)
+        if allModelsDisplay == .stacked {
+            return values.reduce(0, +)
+        }
+        return values.max() ?? 0
+    }
+}
+
+private struct ModelTokenUsageTooltip: View {
+    let date: Date
+    let points: [DashboardViewModel.ModelTokenPoint]
+    let granularity: MLXServerAnalyticsGranularity
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(dateLabel)
+                .font(.caption.weight(.semibold))
+
+            ScrollView {
+                VStack(spacing: 7) {
+                    ForEach(points) { point in
+                        HStack(spacing: 10) {
+                            Text(point.modelID)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 12)
+                            Text(MLXServerDemoFormatting.integer(point.totalTokens))
+                                .fontWeight(.medium)
+                                .monospacedDigit()
+                        }
+                        .font(.caption)
+                    }
+                }
+            }
+            .frame(maxHeight: 190)
+
+            Divider()
+
+            HStack {
+                Text("All models")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 16)
+                Text(MLXServerDemoFormatting.integer(totalTokens))
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+            }
+            .font(.caption)
+        }
+        .padding(12)
+        .frame(width: 230)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(DashboardPalette.panelStroke, lineWidth: 0.75)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
+
+    private var totalTokens: Int {
+        points.reduce(0) { $0 + $1.totalTokens }
+    }
+
+    private var dateLabel: String {
+        if granularity == .hour {
+            return date.formatted(date: .abbreviated, time: .shortened)
+        }
+        return date.formatted(date: .long, time: .omitted)
     }
 }
 

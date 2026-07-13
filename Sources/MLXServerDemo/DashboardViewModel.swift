@@ -108,10 +108,21 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    struct ModelTokenPoint: Identifiable, Hashable, Sendable {
+        let modelID: String
+        let bucketStart: Date
+        let totalTokens: Int
+
+        var id: String {
+            "\(modelID):\(bucketStart.timeIntervalSince1970)"
+        }
+    }
+
     @Published private(set) var availableModels: [ModelOption] = [.all]
     @Published private(set) var historicalSummary = MLXServerHistoricalAnalyticsSummary.empty
     @Published private(set) var bucketPoints: [BucketPoint] = []
     @Published private(set) var modelPerformance: [ModelPerformance] = []
+    @Published private(set) var modelTokenPoints: [ModelTokenPoint] = []
     @Published private(set) var recentRequestEvents: [MLXServerAnalyticsRequestEvent] = []
     @Published private(set) var isLoadingHistory = false
     @Published private(set) var localModelError: String?
@@ -226,10 +237,15 @@ final class DashboardViewModel: ObservableObject {
                 granularity: displayGranularity
             )
             let modelPerformance = Self.modelPerformance(from: rawBuckets)
+            let modelTokenPoints = Self.modelTokenPoints(
+                from: rawBuckets,
+                bucketDates: points.map(\.bucketStart)
+            )
             return DashboardSnapshot(
                 summary: summary,
                 points: points,
                 modelPerformance: modelPerformance,
+                modelTokenPoints: modelTokenPoints,
                 knownModelIDs: knownModelIDs,
                 recentRequestEvents: recentRequestEvents
             )
@@ -244,6 +260,7 @@ final class DashboardViewModel: ObservableObject {
             historicalSummary = snapshot.summary
             bucketPoints = snapshot.points
             modelPerformance = snapshot.modelPerformance
+            modelTokenPoints = snapshot.modelTokenPoints
             historicalModelIDs = snapshot.knownModelIDs
             rebuildAvailableModels()
             recentRequestEvents = snapshot.recentRequestEvents
@@ -310,6 +327,7 @@ private extension DashboardViewModel {
         let summary: MLXServerHistoricalAnalyticsSummary
         let points: [BucketPoint]
         let modelPerformance: [ModelPerformance]
+        let modelTokenPoints: [ModelTokenPoint]
         let knownModelIDs: [String]
         let recentRequestEvents: [MLXServerAnalyticsRequestEvent]
     }
@@ -340,6 +358,31 @@ private extension DashboardViewModel {
                 }
                 return lhs.processedTokens > rhs.processedTokens
             }
+    }
+
+    nonisolated static func modelTokenPoints(
+        from buckets: [MLXServerAnalyticsBucketPoint],
+        bucketDates: [Date]
+    ) -> [ModelTokenPoint] {
+        let rowsByModel = Dictionary(grouping: buckets, by: \.modelID)
+
+        return rowsByModel.flatMap { modelID, rows in
+            let rowsByDate = Dictionary(grouping: rows, by: \.bucketStart)
+            return bucketDates.map { bucketStart in
+                ModelTokenPoint(
+                    modelID: modelID,
+                    bucketStart: bucketStart,
+                    totalTokens: rowsByDate[bucketStart, default: []]
+                        .reduce(0) { $0 + $1.totalProcessedTokens }
+                )
+            }
+        }
+        .sorted {
+            if $0.bucketStart == $1.bucketStart {
+                return $0.modelID.localizedCaseInsensitiveCompare($1.modelID) == .orderedAscending
+            }
+            return $0.bucketStart < $1.bucketStart
+        }
     }
 
     nonisolated static func bucketPoints(
