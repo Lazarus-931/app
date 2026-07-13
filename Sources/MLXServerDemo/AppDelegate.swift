@@ -295,7 +295,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var window: NSWindow?
     private let model = MLXServerDemoModel()
     private var statusItem: NSStatusItem?
-    private var statusMenuItem: NSMenuItem?
     private var serverActionMenuItem: NSMenuItem?
     private var modelMenuItem: NSMenuItem?
     private var localModels: [LocalModel] = []
@@ -459,19 +458,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         menu.removeAllItems()
 
-        let statusMenuItem: NSMenuItem
         let sessionStatsAreLoading = model.metricsLoading || model.modelSwitchInProgress
         if model.sessionStatsDisplayMetrics != nil || model.isRunning || sessionStatsAreLoading {
-            statusMenuItem = makeSessionStatsMenuItem()
+            for item in makeSessionStatsMenuItems() {
+                menu.addItem(item)
+            }
         } else {
-            statusMenuItem = NSMenuItem(
+            let statusMenuItem = NSMenuItem(
                 title: model.isRunning ? model.unavailableMetricsText : "MLX Server is Not Running",
                 action: nil,
                 keyEquivalent: ""
             )
             statusMenuItem.isEnabled = false
+            menu.addItem(statusMenuItem)
         }
-        menu.addItem(statusMenuItem)
 
         menu.addItem(.separator())
         let modelMenuItem = makeModelMenuItem()
@@ -497,23 +497,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quitMenuItem)
 
         statusItem.menu = menu
-        self.statusMenuItem = statusMenuItem
         self.serverActionMenuItem = serverActionMenuItem
         self.modelMenuItem = modelMenuItem
     }
 
-    private func makeSessionStatsMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Session Stats", action: nil, keyEquivalent: "")
+    private func makeSessionStatsMenuItems() -> [NSMenuItem] {
+        let headerItem = NSMenuItem(title: "Session Status", action: nil, keyEquivalent: "")
+        let headerView = NSHostingView(rootView: SessionStatsContainerView(
+            model: model,
+            highlightState: SessionStatsHighlightState(),
+            section: .header
+        ))
+        headerView.frame = NSRect(x: 0, y: 0, width: 350, height: SessionStatsSection.header.height)
+        headerItem.view = headerView
+        headerItem.isEnabled = false
+
+        let bodyItem = NSMenuItem(title: "Session Stats", action: nil, keyEquivalent: "")
         let highlightState = SessionStatsHighlightState()
-        let hostingView = SessionStatsHostingView(
-            rootView: SessionStatsContainerView(model: model, highlightState: highlightState),
+        let bodyView = SessionStatsHostingView(
+            rootView: SessionStatsContainerView(
+                model: model,
+                highlightState: highlightState,
+                section: .body
+            ),
             highlightState: highlightState
         )
-        hostingView.frame = NSRect(x: 0, y: 0, width: 350, height: 360)
-        item.view = hostingView
-        item.isEnabled = true
-        item.submenu = makeServingStatsSubmenu()
-        return item
+        bodyView.frame = NSRect(x: 0, y: 0, width: 350, height: SessionStatsSection.body.height)
+        bodyItem.view = bodyView
+        bodyItem.isEnabled = true
+        bodyItem.submenu = makeServingStatsSubmenu()
+        return [headerItem, bodyItem]
     }
 
     private func refreshVisibleMenuState() {
@@ -913,9 +926,24 @@ private enum SessionStatsMenuPalette {
     }
 }
 
+private enum SessionStatsSection {
+    case header
+    case body
+
+    var height: CGFloat {
+        switch self {
+        case .header:
+            64
+        case .body:
+            296
+        }
+    }
+}
+
 private struct SessionStatsContainerView: View {
     @ObservedObject var model: MLXServerDemoModel
     @ObservedObject var highlightState: SessionStatsHighlightState
+    let section: SessionStatsSection
 
     private var isLoading: Bool {
         model.metricsLoading || model.modelSwitchInProgress
@@ -931,6 +959,7 @@ private struct SessionStatsContainerView: View {
                     isLoading: isLoading,
                     isPreserved: model.sessionStatsArePreserved,
                     isHighlighted: highlightState.isHighlighted,
+                    section: section,
                     displayModel: isLoading
                         ? model.selectedModelDisplay
                         : metrics.server.displayLoadedModel
@@ -939,13 +968,14 @@ private struct SessionStatsContainerView: View {
                 SessionStatsLoadingMenuView(
                     modelName: model.selectedModelDisplay,
                     isHighlighted: highlightState.isHighlighted,
+                    section: section,
                     statusText: model.settings.normalized().languageModelID == nil
                         ? "Starting server…"
                         : "Loading model…"
                 )
             }
         }
-        .frame(width: 350, height: 360, alignment: .topLeading)
+        .frame(width: 350, height: section.height, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(highlightState.isHighlighted
@@ -965,6 +995,7 @@ private struct SessionStatsMenuView: View {
     let isLoading: Bool
     let isPreserved: Bool
     let isHighlighted: Bool
+    let section: SessionStatsSection
     let displayModel: String
 
     private var primaryTextColor: Color {
@@ -992,45 +1023,58 @@ private struct SessionStatsMenuView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-
-            VStack(alignment: .leading, spacing: 0) {
-                Divider()
-                    .overlay(dividerColor)
-                    .padding(.vertical, 10)
-
-                sessionOverview
-
-                SessionActivityPlot(
-                    values: tokenActivity,
-                    promptAccent: accent,
-                    generatedAccent: generatedAccent,
-                    secondaryTextColor: secondaryTextColor
-                )
-                .padding(.top, 12)
-
-                Divider()
-                    .overlay(dividerColor)
-                    .padding(.vertical, 10)
-
-                metricsGrid
-
-                if let latest = metrics.latest {
+        Group {
+            switch section {
+            case .header:
+                VStack(alignment: .leading, spacing: 0) {
+                    header
                     Divider()
                         .overlay(dividerColor)
-                        .padding(.vertical, 10)
-                    latestRequest(latest)
+                        .padding(.top, 10)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+            case .body:
+                statsBody
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 14)
+                    .opacity(isLoading ? 0.42 : 1)
             }
-            .opacity(isLoading ? 0.42 : 1)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(width: 350, height: 360, alignment: .topLeading)
+        .frame(width: 350, height: section.height, alignment: .topLeading)
         .foregroundStyle(primaryTextColor)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("MLX Server session statistics")
+        .accessibilityLabel(section == .header
+            ? "MLX Server status"
+            : "MLX Server session statistics")
+    }
+
+    private var statsBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sessionOverview
+
+            SessionActivityPlot(
+                values: tokenActivity,
+                promptAccent: accent,
+                generatedAccent: generatedAccent,
+                secondaryTextColor: secondaryTextColor
+            )
+            .padding(.top, 12)
+
+            Divider()
+                .overlay(dividerColor)
+                .padding(.vertical, 10)
+
+            metricsGrid
+
+            if let latest = metrics.latest {
+                Divider()
+                    .overlay(dividerColor)
+                    .padding(.vertical, 10)
+                latestRequest(latest)
+            }
+        }
     }
 
     private var header: some View {
@@ -1064,10 +1108,6 @@ private struct SessionStatsMenuView: View {
                 .lineLimit(1)
             }
 
-            Image(systemName: "chevron.right")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(secondaryTextColor)
-                .padding(.top, 3)
         }
     }
 
@@ -1089,6 +1129,10 @@ private struct SessionStatsMenuView: View {
                     MLXServerDemoFormatting.rate(metrics.summary.averageDecodeTokensPerSecond),
                     alignment: .trailing
                 )
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(secondaryTextColor)
             }
 
             HStack(spacing: 16) {
@@ -1182,6 +1226,7 @@ private struct SessionStatsMenuView: View {
 private struct SessionStatsLoadingMenuView: View {
     let modelName: String
     let isHighlighted: Bool
+    let section: SessionStatsSection
     let statusText: String
 
     private var primaryTextColor: Color {
@@ -1197,63 +1242,72 @@ private struct SessionStatsLoadingMenuView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("MLX Server")
-                        .font(.headline)
-                    Text("Waiting for session metrics")
-                        .font(.subheadline)
-                        .foregroundStyle(secondaryTextColor)
+        Group {
+            switch section {
+            case .header:
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                    Divider()
+                        .overlay(dividerColor)
+                        .padding(.top, 10)
                 }
-
-                Spacer(minLength: 16)
-
-                VStack(alignment: .trailing, spacing: 1) {
-                    HStack(spacing: 5) {
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+            case .body:
+                ZStack(alignment: .topTrailing) {
+                    VStack(spacing: 10) {
                         ProgressView()
-                            .controlSize(.small)
+                            .controlSize(.regular)
                             .tint(primaryTextColor)
-                        Text(statusText)
-                            .font(.headline)
+                        Text("Session stats will appear when the server is ready.")
+                            .font(.caption)
+                            .foregroundStyle(secondaryTextColor)
+                            .multilineTextAlignment(.center)
                     }
-                    Text(MLXServerDemoFormatting.truncateModelName(modelName, maxLength: 20))
-                        .font(.subheadline)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(secondaryTextColor)
-                        .lineLimit(1)
+                        .padding(.top, 12)
+                        .padding(.trailing, 16)
                 }
-
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(secondaryTextColor)
-                    .padding(.top, 3)
             }
-
-            Divider()
-                .overlay(dividerColor)
-                .padding(.vertical, 10)
-
-            Spacer()
-
-            VStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.regular)
-                    .tint(primaryTextColor)
-                Text("Session stats will appear when the server is ready.")
-                    .font(.caption)
-                    .foregroundStyle(secondaryTextColor)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-
-            Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(width: 350, height: 360, alignment: .topLeading)
+        .frame(width: 350, height: section.height, alignment: .topLeading)
         .foregroundStyle(primaryTextColor)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("MLX Server is loading \(modelName)")
+        .accessibilityLabel(section == .header
+            ? "MLX Server is loading \(modelName)"
+            : "Waiting for session statistics")
+    }
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("MLX Server")
+                    .font(.headline)
+                Text("Waiting for session metrics")
+                    .font(.subheadline)
+                    .foregroundStyle(secondaryTextColor)
+            }
+
+            Spacer(minLength: 16)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                HStack(spacing: 5) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(primaryTextColor)
+                    Text(statusText)
+                        .font(.headline)
+                }
+                Text(MLXServerDemoFormatting.truncateModelName(modelName, maxLength: 20))
+                    .font(.subheadline)
+                    .foregroundStyle(secondaryTextColor)
+                    .lineLimit(1)
+            }
+        }
     }
 }
 
