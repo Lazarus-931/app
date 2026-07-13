@@ -9,6 +9,7 @@ struct ChatView: View {
     @ObservedObject var model: MLXServerDemoModel
     @ObservedObject var chat: ChatViewModel
     @State private var transcriptScrollPosition = ScrollPosition(edge: .bottom)
+    @State private var composerHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,17 +23,28 @@ struct ChatView: View {
             Divider()
 
             transcript
-
-            Divider()
-
-            ChatComposer(
-                viewModel: chat,
-                unavailableReason: unavailableReason,
-                canSend: canSend,
-                onSend: {
-                    chat.send(using: model)
+                .overlay(alignment: .bottom) {
+                    ChatComposer(
+                        viewModel: chat,
+                        unavailableReason: unavailableReason,
+                        canSend: canSend,
+                        onSend: {
+                            chat.send(using: model)
+                        }
+                    )
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        let isInitialMeasurement = composerHeight == 0
+                        composerHeight = height
+                        if isInitialMeasurement {
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(50))
+                                transcriptScrollPosition.scrollTo(edge: .bottom)
+                            }
+                        }
+                    }
                 }
-            )
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -66,7 +78,9 @@ struct ChatView: View {
                     }
                 }
             }
-            .padding(18)
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+            .padding(.bottom, max(18, composerHeight))
         }
         .scrollPosition($transcriptScrollPosition)
         .onChange(of: chat.scrollToken) { _, _ in
@@ -1406,7 +1420,10 @@ private struct ChatComposer: View {
     let unavailableReason: String?
     let canSend: Bool
     let onSend: () -> Void
-    private let textInset = EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14)
+    @State private var editorContentHeight: CGFloat = 0
+    private let textInset = EdgeInsets(top: 14, leading: 14, bottom: 10, trailing: 14)
+    private let editorMinimumHeight: CGFloat = 64
+    private let editorMaximumHeight: CGFloat = 120
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1417,32 +1434,15 @@ private struct ChatComposer: View {
                     .lineLimit(1)
             }
 
-            if !viewModel.pendingImageAttachments.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(viewModel.pendingImageAttachments) { attachment in
-                            ChatPendingImageAttachmentView(attachment: attachment) {
-                                viewModel.removePendingImageAttachment(attachment.id)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 1)
-                }
-            }
-
-            HStack(alignment: .bottom, spacing: 10) {
+            VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                        )
-
                     ChatComposerTextEditor(
                         text: $viewModel.draft,
                         isEnabled: unavailableReason == nil,
-                        onSubmit: onSend
+                        onSubmit: onSend,
+                        onContentHeightChange: { height in
+                            editorContentHeight = height
+                        }
                     )
 
                     if viewModel.draft.isEmpty {
@@ -1454,52 +1454,85 @@ private struct ChatComposer: View {
                             .allowsHitTesting(false)
                     }
                 }
-                .frame(minHeight: 72, maxHeight: 120)
+                .frame(height: editorHeight)
 
-                Button {
-                    viewModel.chooseImageAttachments()
-                } label: {
-                    Image(systemName: "photo.badge.plus")
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.bordered)
-                .disabled(unavailableReason != nil)
-                .help("Attach images")
-
-                Button {
-                    if viewModel.isSending {
-                        viewModel.cancel()
+                if !viewModel.pendingImageAttachments.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(viewModel.pendingImageAttachments) { attachment in
+                                ChatPendingImageAttachmentView(attachment: attachment) {
+                                    viewModel.removePendingImageAttachment(attachment.id)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 1)
                     }
-                } label: {
-                    Image(systemName: "stop.fill")
-                        .frame(width: 18, height: 18)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
                 }
-                .buttonStyle(.bordered)
-                .disabled(!viewModel.isSending)
-                .help("Stop response")
 
-                Button {
-                    onSend()
-                } label: {
-                    Image(systemName: "paperplane.fill")
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!canSend)
-                .help("Send (Return)")
+                HStack {
+                    Menu {
+                        Button {
+                            viewModel.chooseImageAttachments()
+                        } label: {
+                            Label("Attach Image", systemImage: "photo.badge.plus")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .regular))
+                            .frame(width: 30, height: 30)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .disabled(unavailableReason != nil)
+                    .help("Add attachment")
 
-                Button {
-                    viewModel.clear()
-                } label: {
-                    Image(systemName: "trash")
-                        .frame(width: 18, height: 18)
+                    Spacer(minLength: 12)
+
+                    Button {
+                        if viewModel.isSending {
+                            viewModel.cancel()
+                        } else {
+                            onSend()
+                        }
+                    } label: {
+                        Image(systemName: viewModel.isSending ? "stop.fill" : "arrow.up")
+                            .font(.system(size: viewModel.isSending ? 10 : 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(actionButtonColor, in: Circle())
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!viewModel.isSending && !canSend)
+                    .help(viewModel.isSending ? "Stop response" : "Send (Return)")
                 }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.messages.isEmpty && viewModel.draft.isEmpty)
-                .help("Clear conversation")
+                .padding(.leading, 10)
+                .padding(.trailing, 12)
+                .padding(.bottom, 10)
             }
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.75)
+            }
+            .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
         }
         .padding(18)
+    }
+
+    private var actionButtonColor: Color {
+        if viewModel.isSending || canSend {
+            return .accentColor
+        }
+        return Color(nsColor: .tertiaryLabelColor)
+    }
+
+    private var editorHeight: CGFloat {
+        min(max(editorContentHeight, editorMinimumHeight), editorMaximumHeight)
     }
 }
 
@@ -1507,9 +1540,14 @@ private struct ChatComposerTextEditor: NSViewRepresentable {
     @Binding var text: String
     let isEnabled: Bool
     let onSubmit: () -> Void
+    let onContentHeightChange: (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, onSubmit: onSubmit)
+        Coordinator(
+            text: $text,
+            onSubmit: onSubmit,
+            onContentHeightChange: onContentHeightChange
+        )
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -1532,20 +1570,23 @@ private struct ChatComposerTextEditor: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
         textView.string = text
 
-        let scrollView = NSScrollView()
+        let scrollView = ChatComposerNSScrollView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.documentView = textView
+        scrollView.onLayout = context.coordinator.reportContentHeight
 
         context.coordinator.textView = textView
+        context.coordinator.reportContentHeight()
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.onSubmit = onSubmit
+        context.coordinator.onContentHeightChange = onContentHeightChange
 
         guard let textView = context.coordinator.textView else {
             return
@@ -1555,20 +1596,29 @@ private struct ChatComposerTextEditor: NSViewRepresentable {
         textView.isSelectable = isEnabled
 
         guard textView.string != text else {
+            context.coordinator.reportContentHeight()
             return
         }
 
         textView.string = text
+        context.coordinator.reportContentHeight()
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding private var text: String
         var onSubmit: () -> Void
+        var onContentHeightChange: (CGFloat) -> Void
         weak var textView: NSTextView?
+        private var lastReportedHeight: CGFloat?
 
-        init(text: Binding<String>, onSubmit: @escaping () -> Void) {
+        init(
+            text: Binding<String>,
+            onSubmit: @escaping () -> Void,
+            onContentHeightChange: @escaping (CGFloat) -> Void
+        ) {
             _text = text
             self.onSubmit = onSubmit
+            self.onContentHeightChange = onContentHeightChange
         }
 
         func textDidChange(_ notification: Notification) {
@@ -1577,11 +1627,47 @@ private struct ChatComposerTextEditor: NSViewRepresentable {
             }
 
             text = textView.string
+            reportContentHeight()
         }
 
         func handleSubmit() {
             onSubmit()
         }
+
+        func reportContentHeight() {
+            guard let textView,
+                  let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer,
+                  textContainer.containerSize.width > 0
+            else {
+                return
+            }
+
+            layoutManager.ensureLayout(for: textContainer)
+            let usedRect = layoutManager.usedRect(for: textContainer)
+            let measuredHeight = ceil(usedRect.maxY + (textView.textContainerInset.height * 2))
+
+            guard lastReportedHeight.map({ abs($0 - measuredHeight) >= 0.5 }) ?? true else {
+                return
+            }
+
+            lastReportedHeight = measuredHeight
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.lastReportedHeight == measuredHeight else {
+                    return
+                }
+                self.onContentHeightChange(measuredHeight)
+            }
+        }
+    }
+}
+
+private final class ChatComposerNSScrollView: NSScrollView {
+    var onLayout: (() -> Void)?
+
+    override func layout() {
+        super.layout()
+        onLayout?()
     }
 }
 
