@@ -8,11 +8,13 @@ struct LogsView: View {
     @ObservedObject var runtime: SystemRuntimeMonitor
     @State private var logQuery = ""
     @State private var logLevelFilter: LogLevelFilter = .all
+    @State private var selectedEndpointCategory: ServerEndpointCategory = .openAI
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             pageHeader
             runtimeGrid
+            serverEndpointsPanel
             logPanel
         }
         .padding(.horizontal, 22)
@@ -158,6 +160,102 @@ struct LogsView: View {
         )
     }
 
+    private var serverEndpointsPanel: some View {
+        VStack(spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
+                    endpointPanelTitle
+
+                    Spacer(minLength: 12)
+
+                    endpointCategoryPicker
+                        .frame(width: 350)
+
+                    routeCount
+                }
+
+                VStack(alignment: .leading, spacing: 9) {
+                    endpointPanelTitle
+
+                    HStack(spacing: 10) {
+                        endpointCategoryPicker
+                            .frame(width: 350)
+
+                        Spacer()
+
+                        routeCount
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            ScrollView {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 245), spacing: 8)],
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+                    ForEach(ServerEndpoint.endpoints(in: selectedEndpointCategory)) { endpoint in
+                        ServerEndpointRow(endpoint: endpoint) {
+                            copyEndpoint(endpoint)
+                        }
+                    }
+                }
+                .padding(10)
+            }
+            .frame(height: endpointListHeight)
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
+    }
+
+    private var endpointPanelTitle: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .foregroundStyle(.blue)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Server endpoints")
+                    .font(.callout.weight(.semibold))
+                Text(ServerEndpoint.baseURL.absoluteString)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var endpointCategoryPicker: some View {
+        Picker("Endpoint category", selection: $selectedEndpointCategory) {
+            ForEach(ServerEndpointCategory.allCases) { category in
+                Text(category.shortTitle).tag(category)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+    }
+
+    private var routeCount: some View {
+        Text("\(ServerEndpoint.endpoints(in: selectedEndpointCategory).count) routes")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize()
+    }
+
+    private var endpointListHeight: CGFloat {
+        switch selectedEndpointCategory {
+        case .openAI: 170
+        case .anthropic: 60
+        case .metrics: 140
+        }
+    }
+
     private func logFilterBar(_ output: LogOutput) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
@@ -231,6 +329,126 @@ struct LogsView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+
+    private func copyEndpoint(_ endpoint: ServerEndpoint) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(endpoint.absoluteURL, forType: .string)
+    }
+}
+
+private struct ServerEndpoint: Identifiable {
+    static let baseURL = URL(string: "http://127.0.0.1:8080")!
+
+    let method: ServerEndpointMethod
+    let path: String
+    let summary: String
+    let category: ServerEndpointCategory
+
+    var id: String { "\(method.rawValue):\(path)" }
+    var absoluteURL: String { Self.baseURL.absoluteString + path }
+
+    static func endpoints(in category: ServerEndpointCategory) -> [ServerEndpoint] {
+        supported.filter { $0.category == category }
+    }
+
+    static let supported: [ServerEndpoint] = [
+        .init(method: .post, path: "/v1/chat/completions", summary: "Chat completions", category: .openAI),
+        .init(method: .post, path: "/v1/responses", summary: "Create a response", category: .openAI),
+        .init(method: .post, path: "/v1/responses/input_tokens", summary: "Count response input tokens", category: .openAI),
+        .init(method: .get, path: "/v1/responses/{response_id}", summary: "Retrieve a response", category: .openAI),
+        .init(method: .delete, path: "/v1/responses/{response_id}", summary: "Delete a response", category: .openAI),
+        .init(method: .post, path: "/v1/responses/{response_id}/cancel", summary: "Cancel a response", category: .openAI),
+        .init(method: .get, path: "/v1/responses/{response_id}/input_items", summary: "List response input items", category: .openAI),
+        .init(method: .post, path: "/v1/images/generations", summary: "Generate images", category: .openAI),
+        .init(method: .post, path: "/v1/images/edits", summary: "Edit images", category: .openAI),
+        .init(method: .get, path: "/v1/models", summary: "List loaded models", category: .openAI),
+        .init(method: .post, path: "/v1/audio/speech", summary: "Synthesize speech", category: .openAI),
+        .init(method: .post, path: "/v1/audio/transcriptions", summary: "Transcribe audio", category: .openAI),
+        .init(method: .post, path: "/v1/audio/translations", summary: "Translate audio", category: .openAI),
+        .init(method: .post, path: "/v1/messages", summary: "Create a message", category: .anthropic),
+        .init(method: .post, path: "/v1/messages/count_tokens", summary: "Count message tokens", category: .anthropic),
+        .init(method: .get, path: "/health", summary: "Server health", category: .metrics),
+        .init(method: .get, path: "/metrics", summary: "Prometheus metrics", category: .metrics),
+        .init(method: .get, path: "/v1/cache/stats", summary: "Prompt cache statistics", category: .metrics),
+        .init(method: .post, path: "/v1/cache/reset", summary: "Reset the prompt cache", category: .metrics),
+        .init(method: .post, path: "/unload", summary: "Unload models", category: .metrics),
+    ]
+}
+
+private enum ServerEndpointCategory: String, CaseIterable, Identifiable {
+    case openAI
+    case anthropic
+    case metrics
+
+    var id: String { rawValue }
+
+    var shortTitle: String {
+        switch self {
+        case .openAI: "OpenAI"
+        case .anthropic: "Anthropic"
+        case .metrics: "Metrics"
+        }
+    }
+
+}
+
+private enum ServerEndpointMethod: String {
+    case get = "GET"
+    case post = "POST"
+    case delete = "DELETE"
+
+    var tint: Color {
+        switch self {
+        case .get: .blue
+        case .post: .green
+        case .delete: .red
+        }
+    }
+}
+
+private struct ServerEndpointRow: View {
+    let endpoint: ServerEndpoint
+    let copyAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text(endpoint.method.rawValue)
+                .font(.caption2.monospaced().weight(.bold))
+                .foregroundStyle(endpoint.method.tint)
+                .frame(width: 42, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(endpoint.path)
+                    .font(.caption.monospaced().weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(endpoint.summary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 2)
+
+            Button(action: copyAction) {
+                Image(systemName: "doc.on.doc")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Copy endpoint URL")
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 40)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(endpoint.method.tint.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(endpoint.method.tint.opacity(0.15), lineWidth: 0.5)
+        )
     }
 }
 
