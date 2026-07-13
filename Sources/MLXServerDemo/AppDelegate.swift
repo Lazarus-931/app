@@ -320,6 +320,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureMainMenu()
         configureStatusItem()
         configureWindow()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(localModelLibraryDidChange(_:)),
+            name: .localModelLibraryDidChange,
+            object: nil
+        )
         refreshLocalModels()
         model.startServer()
     }
@@ -384,9 +390,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showMainWindow()
     }
 
-    @objc private func openSettingsFromMenu(_ sender: Any?) {
-        controlPanelNavigation.open(.settings)
+    @objc private func openModelsFromMenu(_ sender: Any?) {
+        controlPanelNavigation.open(.models)
         showMainWindow()
+    }
+
+    @objc private func localModelLibraryDidChange(_ notification: Notification) {
+        refreshLocalModels()
     }
 
     @objc private func quit(_ sender: Any?) {
@@ -515,15 +525,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         dashboardMenuItem.image = menuIcon("chart.xyaxis.line", description: "Dashboard")
         menu.addItem(dashboardMenuItem)
 
-        let settingsMenuItem = NSMenuItem(
-            title: "Settings…",
-            action: #selector(openSettingsFromMenu(_:)),
+        let modelsMenuItem = NSMenuItem(
+            title: "Models…",
+            action: #selector(openModelsFromMenu(_:)),
             keyEquivalent: ","
         )
-        settingsMenuItem.target = self
-        settingsMenuItem.keyEquivalentModifierMask = [.command]
-        settingsMenuItem.image = menuIcon("gearshape", description: "Settings")
-        menu.addItem(settingsMenuItem)
+        modelsMenuItem.target = self
+        modelsMenuItem.keyEquivalentModifierMask = [.command]
+        modelsMenuItem.image = menuIcon("cube.transparent", description: "Models")
+        menu.addItem(modelsMenuItem)
 
         let quitMenuItem = NSMenuItem(
             title: "Quit", 

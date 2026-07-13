@@ -126,7 +126,7 @@ final class ChatViewModel: ObservableObject {
             return "Server is stopped."
         }
         if selectedModelID?.isEmpty != false {
-            return "Select a model in Settings."
+            return "Select a model in Models."
         }
         if isSending {
             return "Response in progress."
@@ -1633,7 +1633,7 @@ private struct ChatEmptyTranscriptView: View {
             return "Start the server to chat."
         }
         if selectedModelID == nil {
-            return "Choose a model in Settings."
+            return "Choose a model in Models."
         }
         return selectedModelID ?? ""
     }

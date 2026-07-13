@@ -17,7 +17,8 @@
 		59D763EE60AF4E826404A5F0 /* MLXServerKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		65518C3B8CFFCB021938B536 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */; };
 		68EC2E304EA347E685D0EA44 /* ImageGenerationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */; };
-		690C9D518D413F04B23658CB /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E79C616B1499AB84D9C0C73 /* SettingsView.swift */; };
+		690C9D518D413F04B23658CB /* ModelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E79C616B1499AB84D9C0C73 /* ModelsView.swift */; };
+		B7A1D5E2C3F44001A9B80006 /* HuggingFaceHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A1D5E2C3F44001A9B80007 /* HuggingFaceHub.swift */; };
 		6BAF9797FB49E6C792EDCA3D /* MLXServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D1EB0EEA882E66FB200B81 /* MLXServerSettings.swift */; };
 		6E0E1F734A9D47A48A54D22D /* MLXServerAnalyticsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E05D72C9A804E4C9E7B9F83 /* MLXServerAnalyticsStore.swift */; };
 		72E445A0615F4A0EAAA3E063 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D7B4EB36624849814B34D0 /* DashboardViewModel.swift */; };
@@ -58,7 +59,8 @@
 /* Begin PBXFileReference section */
 		08C732254F6B490DC7013A27 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		15AE0B934327136178FAC319 /* MLXServerImageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerImageClient.swift; sourceTree = "<group>"; };
-		1E79C616B1499AB84D9C0C73 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1E79C616B1499AB84D9C0C73 /* ModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsView.swift; sourceTree = "<group>"; };
+		B7A1D5E2C3F44001A9B80007 /* HuggingFaceHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceHub.swift; sourceTree = "<group>"; };
 		32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MLXServerKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		407939E1CDFD2C6D24170E71 /* MLXServerDemoModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerDemoModel.swift; sourceTree = "<group>"; };
 		4C7902FB9F159500C5939C27 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
@@ -127,6 +129,7 @@
 				C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */,
 				E4D7B4EB36624849814B34D0 /* DashboardViewModel.swift */,
 				08C732254F6B490DC7013A27 /* Formatting.swift */,
+				B7A1D5E2C3F44001A9B80007 /* HuggingFaceHub.swift */,
 				9C31C8C37F38184423C71293 /* ImageGenerationView.swift */,
 				8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */,
 				A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */,
@@ -137,7 +140,7 @@
 				8E05D72C9A804E4C9E7B9F83 /* MLXServerAnalyticsStore.swift */,
 				407939E1CDFD2C6D24170E71 /* MLXServerDemoModel.swift */,
 				E1D1EB0EEA882E66FB200B81 /* MLXServerSettings.swift */,
-				1E79C616B1499AB84D9C0C73 /* SettingsView.swift */,
+				1E79C616B1499AB84D9C0C73 /* ModelsView.swift */,
 				4C7902FB9F159500C5939C27 /* StatsView.swift */,
 			);
 			path = MLXServerDemo;
@@ -268,6 +271,7 @@
 				0F1DC5A03D5852A5D9334D85 /* ControlPanelView.swift in Sources */,
 				72E445A0615F4A0EAAA3E063 /* DashboardViewModel.swift in Sources */,
 				D63EB8DC9FD1B889B779EB78 /* Formatting.swift in Sources */,
+				B7A1D5E2C3F44001A9B80006 /* HuggingFaceHub.swift in Sources */,
 				0A5BF495C93AFBBD50AD6C69 /* ImageGenerationView.swift in Sources */,
 				68EC2E304EA347E685D0EA44 /* ImageGenerationViewModel.swift in Sources */,
 				78E5B5ECF19EA010DF623E71 /* LocalModelDiscovery.swift in Sources */,
@@ -277,7 +281,7 @@
 				33CBEFA3EDA5C21878C45FB9 /* MLXServerDemoModel.swift in Sources */,
 				6BAF9797FB49E6C792EDCA3D /* MLXServerSettings.swift in Sources */,
 				F8B6A5BA3BEBA0234436C1E2 /* Main.swift in Sources */,
-				690C9D518D413F04B23658CB /* SettingsView.swift in Sources */,
+				690C9D518D413F04B23658CB /* ModelsView.swift in Sources */,
 				A93021B45F62CF668BA0F097 /* StatsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -4,11 +4,11 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     case chat = "Chat"
     case imageGeneration = "Image Generation"
     case dashboard = "Dashboard"
-    case settings = "Settings"
+    case models = "Models"
     case logs = "Logs"
 
     static var allCases: [ControlPanelTab] {
-        [.chat, .dashboard, .settings, .logs]
+        [.chat, .dashboard, .models, .logs]
     }
 
     var id: String { rawValue }
@@ -21,8 +21,8 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
             "photo.on.rectangle"
         case .dashboard:
             "chart.bar.xaxis"
-        case .settings:
-            "gearshape"
+        case .models:
+            "cube.transparent"
         case .logs:
             "doc.text"
         }
@@ -152,8 +152,8 @@ struct ControlPanelView: View {
                     ImageGenerationView(model: model, viewModel: imageGeneration)
                 case .dashboard:
                     StatsView(model: model, dashboard: dashboard)
-                case .settings:
-                    SettingsView(model: model)
+                case .models:
+                    ModelsView(model: model)
                 case .logs:
                     LogsView(model: model)
                 }
@@ -279,7 +279,7 @@ struct ControlPanelView: View {
     private var statusSubtitle: String {
         if model.isRunning {
             if model.settingsRequireRestart {
-                return "Running | \(model.loadedModelDisplay) | Settings pending"
+                return "Running | \(model.loadedModelDisplay) | Model changes pending"
             }
             return "Running | \(model.loadedModelDisplay)"
         }

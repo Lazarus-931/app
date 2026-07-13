@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let localModelLibraryDidChange = Notification.Name("LocalModelLibraryDidChange")
+}
+
 enum LocalModelCapability: String, CaseIterable, Hashable, Sendable {
     case vision
     case audio
