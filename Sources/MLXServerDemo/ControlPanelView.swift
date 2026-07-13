@@ -111,29 +111,6 @@ struct ControlPanelView: View {
             }
 
             Section {
-                Button {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        createRecentSession()
-                    }
-                } label: {
-                    Label("New chat", systemImage: "plus")
-                        .font(.callout.weight(.semibold))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.accentColor.opacity(0.16))
-                        )
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .disabled(isNewRecentDisabled)
-                .help(newRecentHelp)
-                .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 8, trailing: 8))
-            }
-
-            Section("Recents") {
                 ForEach(recentSessions) { recent in
                     ControlPanelRecentSessionRow(
                         recent: recent,
@@ -149,6 +126,32 @@ struct ControlPanelView: View {
                     )
                     .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                 }
+            } header: {
+                HStack(spacing: 8) {
+                    Text("Recents")
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            createRecentSession()
+                        }
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.caption.weight(.semibold))
+                            .frame(width: 30, height: 28)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.accentColor.opacity(0.12))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .disabled(isNewRecentDisabled)
+                    .help(newRecentHelp)
+                    .padding(.trailing, 4)
+                }
+                .textCase(nil)
             }
         }
         .listStyle(.sidebar)
@@ -414,6 +417,15 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
         }
     }
 
+    var systemImage: String {
+        switch modelKind {
+        case .language:
+            return "bubble.left"
+        case .imageGeneration:
+            return "photo"
+        }
+    }
+
     static func recencySort(_ lhs: ControlPanelRecentSession, _ rhs: ControlPanelRecentSession) -> Bool {
         if lhs.updatedAt == rhs.updatedAt {
             return lhs.createdAt > rhs.createdAt
@@ -429,50 +441,59 @@ private struct ControlPanelRecentSessionRow: View {
     let isDisabled: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
+    @State private var isHovering = false
+    @State private var isDeleteHovering = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 2) {
             Button(action: onSelect) {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    Image(systemName: recent.systemImage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(
+                                    isSelected
+                                        ? Color.accentColor.opacity(0.14)
+                                        : Color.secondary.opacity(0.08)
+                                )
+                        )
+
                     VStack(alignment: .leading, spacing: 3) {
                         Text(recent.title)
-                            .font(.callout.weight(isCurrent ? .semibold : .regular))
+                            .font(.callout.weight(isSelected ? .semibold : .regular))
                             .lineLimit(1)
                             .truncationMode(.tail)
 
                         HStack(spacing: 6) {
+                            if isCurrent {
+                                Circle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: 5, height: 5)
+                            }
+
                             Text(detail)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
 
+                            Text("·")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+
                             Text(recent.modelKind.badgeTitle)
-                                .font(.caption2.weight(.semibold))
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(
-                                    Capsule()
-                                        .fill(Color.secondary.opacity(0.12))
-                                )
                         }
                     }
 
                     Spacer(minLength: 0)
-
-                    if isCurrent {
-                        Image(systemName: "checkmark")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
                 }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 8)
+                .padding(.leading, 8)
+                .padding(.vertical, 7)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
-                )
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -481,19 +502,40 @@ private struct ControlPanelRecentSessionRow: View {
 
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 28, height: 28)
+                    .font(.caption)
+                    .frame(width: 26, height: 26)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.secondary.opacity(0.12))
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(isDeleteHovering ? Color.red.opacity(0.13) : Color.clear)
                     )
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(isDeleteHovering ? Color.red : Color.secondary)
             .disabled(isDisabled)
             .help("Delete \(recent.title)")
+            .opacity(isHovering && !isDisabled ? 1 : 0)
+            .allowsHitTesting(isHovering && !isDisabled)
+            .onHover { isDeleteHovering = $0 }
         }
+        .padding(.trailing, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(
+                    isSelected
+                        ? Color.accentColor.opacity(0.16)
+                        : isHovering ? Color.secondary.opacity(0.07) : Color.clear
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(
+                    isSelected ? Color.accentColor.opacity(0.12) : Color.clear,
+                    lineWidth: 0.5
+                )
+        )
         .opacity(isDisabled && !isCurrent ? 0.55 : 1)
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovering)
         .contextMenu {
             Button {
                 onSelect()
