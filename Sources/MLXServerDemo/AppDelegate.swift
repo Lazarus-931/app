@@ -303,6 +303,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var modelScanInProgress = false
     private var modelScanError: String?
     private var lastScannedModelPath: String?
+    private weak var highlightedMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.onMenuStateChanged = { [weak self] in
@@ -350,8 +351,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuDidClose(_ menu: NSMenu) {
+        (highlightedMenuItem?.view as? SessionStatsHighlighting)?.setHighlighted(false)
+        highlightedMenuItem = nil
         model.menuIsOpen = false
         rebuildMenu()
+    }
+
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        guard highlightedMenuItem !== item else {
+            return
+        }
+        (highlightedMenuItem?.view as? SessionStatsHighlighting)?.setHighlighted(false)
+        highlightedMenuItem = item
+        (item?.view as? SessionStatsHighlighting)?.setHighlighted(true)
     }
 
     @objc private func toggleServerFromMenu(_ sender: Any?) {
@@ -464,7 +476,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         let modelMenuItem = makeModelMenuItem()
         menu.addItem(modelMenuItem)
-        menu.addItem(makeServingStatsMenuItem())
         menu.addItem(.separator())
 
         let serverActionMenuItem = NSMenuItem(
@@ -493,9 +504,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func makeSessionStatsMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Session Stats", action: nil, keyEquivalent: "")
-        let hostingView = NSHostingView(rootView: SessionStatsContainerView(model: model))
+        let highlightState = SessionStatsHighlightState()
+        let hostingView = SessionStatsHostingView(
+            rootView: SessionStatsContainerView(model: model, highlightState: highlightState),
+            highlightState: highlightState
+        )
         hostingView.frame = NSRect(x: 0, y: 0, width: 350, height: 360)
         item.view = hostingView
+        item.isEnabled = true
+        item.submenu = makeServingStatsSubmenu()
         return item
     }
 
@@ -505,12 +522,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             : "Model: \(selectedModelMenuTitle)"
         modelMenuItem?.submenu = makeModelSubmenu()
         serverActionMenuItem?.title = model.isRunning ? "Stop Server" : "Start Server"
-    }
-
-    private func makeServingStatsMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Serving Stats", action: nil, keyEquivalent: "")
-        item.submenu = makeServingStatsSubmenu()
-        return item
     }
 
     private func makeModelMenuItem() -> NSMenuItem {
@@ -838,8 +849,73 @@ private enum StatsMenuLayout {
     static let minimumColumnGap: CGFloat = 24
 }
 
+@MainActor
+private protocol SessionStatsHighlighting: AnyObject {
+    func setHighlighted(_ highlighted: Bool)
+}
+
+@MainActor
+private final class SessionStatsHighlightState: ObservableObject {
+    @Published var isHighlighted = false
+}
+
+@MainActor
+private final class SessionStatsHostingView<Content: View>: NSHostingView<Content>, SessionStatsHighlighting {
+    private let highlightState: SessionStatsHighlightState
+
+    init(rootView: Content, highlightState: SessionStatsHighlightState) {
+        self.highlightState = highlightState
+        super.init(rootView: rootView)
+    }
+
+    required init(rootView: Content) {
+        self.highlightState = SessionStatsHighlightState()
+        super.init(rootView: rootView)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    func setHighlighted(_ highlighted: Bool) {
+        guard highlightState.isHighlighted != highlighted else {
+            return
+        }
+        highlightState.isHighlighted = highlighted
+    }
+}
+
+private enum SessionStatsMenuPalette {
+    static let normalPromptAccent = Color(red: 0.31, green: 0.72, blue: 0.77)
+    static let normalGeneratedAccent = Color(red: 0.45, green: 0.55, blue: 0.92)
+    static let selectedText = Color(nsColor: .selectedMenuItemTextColor)
+    static let selectionBackground = Color(red: 0.34, green: 0.62, blue: 0.95)
+
+    static func primary(_ highlighted: Bool) -> Color {
+        highlighted ? selectedText : Color(nsColor: .controlTextColor)
+    }
+
+    static func secondary(_ highlighted: Bool) -> Color {
+        highlighted ? selectedText : Color(nsColor: .secondaryLabelColor)
+    }
+
+    static func divider(_ highlighted: Bool) -> Color {
+        highlighted ? selectedText.opacity(0.24) : Color(nsColor: .separatorColor)
+    }
+
+    static func promptAccent(_ highlighted: Bool) -> Color {
+        highlighted ? selectedText.opacity(0.9) : normalPromptAccent
+    }
+
+    static func generatedAccent(_ highlighted: Bool) -> Color {
+        highlighted ? selectedText.opacity(0.58) : normalGeneratedAccent
+    }
+}
+
 private struct SessionStatsContainerView: View {
     @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var highlightState: SessionStatsHighlightState
 
     private var isLoading: Bool {
         model.metricsLoading || model.modelSwitchInProgress
@@ -854,6 +930,7 @@ private struct SessionStatsContainerView: View {
                     tokenActivity: model.sessionStatsDisplayTokenActivity,
                     isLoading: isLoading,
                     isPreserved: model.sessionStatsArePreserved,
+                    isHighlighted: highlightState.isHighlighted,
                     displayModel: isLoading
                         ? model.selectedModelDisplay
                         : metrics.server.displayLoadedModel
@@ -861,6 +938,7 @@ private struct SessionStatsContainerView: View {
             } else {
                 SessionStatsLoadingMenuView(
                     modelName: model.selectedModelDisplay,
+                    isHighlighted: highlightState.isHighlighted,
                     statusText: model.settings.normalized().languageModelID == nil
                         ? "Starting server…"
                         : "Loading model…"
@@ -868,6 +946,15 @@ private struct SessionStatsContainerView: View {
             }
         }
         .frame(width: 350, height: 360, alignment: .topLeading)
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(highlightState.isHighlighted
+                    ? SessionStatsMenuPalette.selectionBackground
+                    : .clear)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+        }
+        .animation(.easeOut(duration: 0.06), value: highlightState.isHighlighted)
     }
 }
 
@@ -877,10 +964,28 @@ private struct SessionStatsMenuView: View {
     let tokenActivity: [SessionTokenActivitySample]
     let isLoading: Bool
     let isPreserved: Bool
+    let isHighlighted: Bool
     let displayModel: String
 
-    private let accent = Color(red: 0.31, green: 0.72, blue: 0.77)
-    private let generatedAccent = Color(red: 0.45, green: 0.55, blue: 0.92)
+    private var primaryTextColor: Color {
+        SessionStatsMenuPalette.primary(isHighlighted)
+    }
+
+    private var secondaryTextColor: Color {
+        SessionStatsMenuPalette.secondary(isHighlighted)
+    }
+
+    private var dividerColor: Color {
+        SessionStatsMenuPalette.divider(isHighlighted)
+    }
+
+    private var accent: Color {
+        SessionStatsMenuPalette.promptAccent(isHighlighted)
+    }
+
+    private var generatedAccent: Color {
+        SessionStatsMenuPalette.generatedAccent(isHighlighted)
+    }
 
     private var totalTokens: Int {
         metrics.summary.totalProcessedTokens
@@ -892,6 +997,7 @@ private struct SessionStatsMenuView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Divider()
+                    .overlay(dividerColor)
                     .padding(.vertical, 10)
 
                 sessionOverview
@@ -899,17 +1005,20 @@ private struct SessionStatsMenuView: View {
                 SessionActivityPlot(
                     values: tokenActivity,
                     promptAccent: accent,
-                    generatedAccent: generatedAccent
+                    generatedAccent: generatedAccent,
+                    secondaryTextColor: secondaryTextColor
                 )
                 .padding(.top, 12)
 
                 Divider()
+                    .overlay(dividerColor)
                     .padding(.vertical, 10)
 
                 metricsGrid
 
                 if let latest = metrics.latest {
                     Divider()
+                        .overlay(dividerColor)
                         .padding(.vertical, 10)
                     latestRequest(latest)
                 }
@@ -919,6 +1028,7 @@ private struct SessionStatsMenuView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .frame(width: 350, height: 360, alignment: .topLeading)
+        .foregroundStyle(primaryTextColor)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("MLX Server session statistics")
     }
@@ -930,7 +1040,7 @@ private struct SessionStatsMenuView: View {
                     .font(.headline)
                 Text(isPreserved ? "Previous session snapshot" : updatedText)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(secondaryTextColor)
             }
 
             Spacer(minLength: 16)
@@ -940,6 +1050,7 @@ private struct SessionStatsMenuView: View {
                     if isLoading {
                         ProgressView()
                             .controlSize(.small)
+                            .tint(primaryTextColor)
                     }
                     Text(isLoading ? "Loading model…" : "Running")
                         .font(.headline)
@@ -949,9 +1060,14 @@ private struct SessionStatsMenuView: View {
                     maxLength: 20
                 ))
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(secondaryTextColor)
                 .lineLimit(1)
             }
+
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(secondaryTextColor)
+                .padding(.top, 3)
         }
     }
 
@@ -961,7 +1077,7 @@ private struct SessionStatsMenuView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Processed tokens")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryTextColor)
                     Text(formatted(totalTokens))
                         .font(.title2.weight(.semibold).monospacedDigit())
                 }
@@ -1010,7 +1126,7 @@ private struct SessionStatsMenuView: View {
                 .frame(width: 7, height: 7)
             Text("\(label) \(formatted(value))")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(secondaryTextColor)
         }
     }
 
@@ -1037,7 +1153,7 @@ private struct SessionStatsMenuView: View {
         VStack(alignment: alignment, spacing: 2) {
             Text(label)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(secondaryTextColor)
             Text(value)
                 .font(.body.weight(.semibold))
         }
@@ -1065,7 +1181,20 @@ private struct SessionStatsMenuView: View {
 
 private struct SessionStatsLoadingMenuView: View {
     let modelName: String
+    let isHighlighted: Bool
     let statusText: String
+
+    private var primaryTextColor: Color {
+        SessionStatsMenuPalette.primary(isHighlighted)
+    }
+
+    private var secondaryTextColor: Color {
+        SessionStatsMenuPalette.secondary(isHighlighted)
+    }
+
+    private var dividerColor: Color {
+        SessionStatsMenuPalette.divider(isHighlighted)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1075,7 +1204,7 @@ private struct SessionStatsLoadingMenuView: View {
                         .font(.headline)
                     Text("Waiting for session metrics")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryTextColor)
                 }
 
                 Spacer(minLength: 16)
@@ -1084,17 +1213,24 @@ private struct SessionStatsLoadingMenuView: View {
                     HStack(spacing: 5) {
                         ProgressView()
                             .controlSize(.small)
+                            .tint(primaryTextColor)
                         Text(statusText)
                             .font(.headline)
                     }
                     Text(MLXServerDemoFormatting.truncateModelName(modelName, maxLength: 20))
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryTextColor)
                         .lineLimit(1)
                 }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(secondaryTextColor)
+                    .padding(.top, 3)
             }
 
             Divider()
+                .overlay(dividerColor)
                 .padding(.vertical, 10)
 
             Spacer()
@@ -1102,9 +1238,10 @@ private struct SessionStatsLoadingMenuView: View {
             VStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.regular)
+                    .tint(primaryTextColor)
                 Text("Session stats will appear when the server is ready.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(secondaryTextColor)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
@@ -1114,6 +1251,7 @@ private struct SessionStatsLoadingMenuView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .frame(width: 350, height: 360, alignment: .topLeading)
+        .foregroundStyle(primaryTextColor)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("MLX Server is loading \(modelName)")
     }
@@ -1123,6 +1261,7 @@ private struct SessionActivityPlot: View {
     let values: [SessionTokenActivitySample]
     let promptAccent: Color
     let generatedAccent: Color
+    let secondaryTextColor: Color
 
     private struct Bucket {
         var promptTokens = 0
@@ -1165,7 +1304,7 @@ private struct SessionActivityPlot: View {
                 Spacer()
                 Text("Last ~10 min")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(secondaryTextColor)
             }
 
             HStack(alignment: .bottom, spacing: 3) {
