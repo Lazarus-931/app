@@ -294,6 +294,7 @@ private final class ModelMenuSectionHeaderView: NSView {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var window: NSWindow?
     private let model = MLXServerDemoModel()
+    private let controlPanelNavigation = ControlPanelNavigation()
     private var statusItem: NSStatusItem?
     private var serverActionMenuItem: NSMenuItem?
     private var modelMenuItem: NSMenuItem?
@@ -378,6 +379,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshLocalModels()
     }
 
+    @objc private func openDashboardFromMenu(_ sender: Any?) {
+        controlPanelNavigation.open(.dashboard)
+        showMainWindow()
+    }
+
+    @objc private func openSettingsFromMenu(_ sender: Any?) {
+        controlPanelNavigation.open(.settings)
+        showMainWindow()
+    }
+
     @objc private func quit(_ sender: Any?) {
         NSApplication.shared.terminate(sender)
     }
@@ -417,7 +428,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.center()
-        window.contentView = NSHostingView(rootView: ControlPanelView(model: model))
+        window.contentView = NSHostingView(rootView: ControlPanelView(
+            model: model,
+            navigation: controlPanelNavigation
+        ))
         window.makeKeyAndOrderFront(nil)
         self.window = window
     }
@@ -484,9 +498,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: "s"
         )
         serverActionMenuItem.target = self
+        serverActionMenuItem.image = menuIcon(
+            model.isRunning ? "stop.circle" : "play.circle",
+            description: model.isRunning ? "Stop server" : "Start server"
+        )
         menu.addItem(serverActionMenuItem)
 
         menu.addItem(.separator())
+
+        let dashboardMenuItem = NSMenuItem(
+            title: "Dashboard…",
+            action: #selector(openDashboardFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        dashboardMenuItem.target = self
+        dashboardMenuItem.image = menuIcon("chart.xyaxis.line", description: "Dashboard")
+        menu.addItem(dashboardMenuItem)
+
+        let settingsMenuItem = NSMenuItem(
+            title: "Settings…",
+            action: #selector(openSettingsFromMenu(_:)),
+            keyEquivalent: ","
+        )
+        settingsMenuItem.target = self
+        settingsMenuItem.keyEquivalentModifierMask = [.command]
+        settingsMenuItem.image = menuIcon("gearshape", description: "Settings")
+        menu.addItem(settingsMenuItem)
 
         let quitMenuItem = NSMenuItem(
             title: "Quit", 
@@ -494,6 +531,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: "q"
         )
         quitMenuItem.target = self
+        quitMenuItem.image = menuIcon("xmark.rectangle", description: "Quit")
         menu.addItem(quitMenuItem)
 
         statusItem.menu = menu
@@ -535,6 +573,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             : "Model: \(selectedModelMenuTitle)"
         modelMenuItem?.submenu = makeModelSubmenu()
         serverActionMenuItem?.title = model.isRunning ? "Stop Server" : "Start Server"
+        serverActionMenuItem?.image = menuIcon(
+            model.isRunning ? "stop.circle" : "play.circle",
+            description: model.isRunning ? "Stop server" : "Start server"
+        )
     }
 
     private func makeModelMenuItem() -> NSMenuItem {
@@ -543,6 +585,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             action: nil,
             keyEquivalent: ""
         )
+        item.image = menuIcon("cube.transparent", description: "Model")
         item.submenu = makeModelSubmenu()
         return item
     }
@@ -852,6 +895,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
+    }
+
+    private func menuIcon(_ systemName: String, description: String) -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        guard let image = NSImage(
+            systemSymbolName: systemName,
+            accessibilityDescription: description
+        )?.withSymbolConfiguration(configuration) else {
+            return nil
+        }
+        image.isTemplate = true
+        image.size = NSSize(width: 16, height: 16)
+        return image
     }
 }
 

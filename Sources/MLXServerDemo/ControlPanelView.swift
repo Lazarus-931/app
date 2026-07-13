@@ -29,8 +29,18 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     }
 }
 
+@MainActor
+final class ControlPanelNavigation: ObservableObject {
+    @Published private(set) var requestedTab: ControlPanelTab?
+
+    func open(_ tab: ControlPanelTab) {
+        requestedTab = tab
+    }
+}
+
 struct ControlPanelView: View {
     @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var navigation: ControlPanelNavigation
     @StateObject private var chat = ChatViewModel()
     @StateObject private var imageGeneration = ImageGenerationViewModel()
     @StateObject private var dashboard = DashboardViewModel()
@@ -48,7 +58,11 @@ struct ControlPanelView: View {
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 900, minHeight: 580)
         .onAppear {
-            applySidebarSelection(sidebarSelection)
+            applySidebarSelection(navigation.requestedTab.map(ControlPanelSidebarSelection.tab) ?? sidebarSelection)
+        }
+        .onReceive(navigation.$requestedTab) { tab in
+            guard let tab else { return }
+            applySidebarSelection(.tab(tab))
         }
     }
 
@@ -456,5 +470,5 @@ private extension View {
 }
 
 #Preview {
-    ControlPanelView(model: .init())
+    ControlPanelView(model: .init(), navigation: .init())
 }
