@@ -776,6 +776,7 @@ class StreamAccumulator:
     def _consume_chat_chunk(self, payload: dict[str, Any]) -> None:
         self.model = payload.get("model") or self.model
         usage = payload.get("usage") or {}
+        timings = payload.get("timings") or {}
         self.prompt_tokens = int(usage.get("prompt_tokens") or self.prompt_tokens)
         self.completion_tokens = int(usage.get("completion_tokens") or self.completion_tokens)
         self.generated_tokens = int(usage.get("completion_tokens") or self.generated_tokens)
@@ -783,8 +784,11 @@ class StreamAccumulator:
             self.prefill_tok_s = float(usage["prompt_tps"])
         if usage.get("generation_tps") is not None:
             self.decode_tok_s = float(usage["generation_tps"])
-        if usage.get("peak_memory") is not None:
-            self.peak_memory_gb = float(usage["peak_memory"])
+        peak_memory = timings.get("peak_memory")
+        if peak_memory is None:
+            peak_memory = usage.get("peak_memory")
+        if peak_memory is not None:
+            self.peak_memory_gb = float(peak_memory)
 
         choices = payload.get("choices") or []
         if not choices:
@@ -850,6 +854,7 @@ class StreamAccumulator:
 def parse_chat_response(body: bytes, observation: RequestObservation) -> dict[str, Any]:
     payload = json.loads(body.decode("utf-8"))
     usage = payload.get("usage") or {}
+    timings = payload.get("timings") or {}
     choices = payload.get("choices") or []
     choice = choices[0] if choices else {}
     elapsed = max(0.0, time.perf_counter() - observation.start_time)
@@ -875,7 +880,13 @@ def parse_chat_response(body: bytes, observation: RequestObservation) -> dict[st
         "prompt_eval_time_s": prompt_eval_time,
         "prefill_tok_s": float(prompt_tps) if prompt_tps is not None else None,
         "ttft_s": None,
-        "peak_memory_gb": float(usage["peak_memory"]) if usage.get("peak_memory") is not None else None,
+        "peak_memory_gb": (
+            float(timings["peak_memory"])
+            if timings.get("peak_memory") is not None
+            else float(usage["peak_memory"])
+            if usage.get("peak_memory") is not None
+            else None
+        ),
         "finish_reason": choice.get("finish_reason"),
         "tool_calls": (
             choice.get("finish_reason") == "tool_calls"
