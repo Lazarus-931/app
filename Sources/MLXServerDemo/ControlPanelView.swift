@@ -33,9 +33,23 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
 @MainActor
 final class ControlPanelNavigation: ObservableObject {
     @Published private(set) var requestedTab: ControlPanelTab?
+    @Published private(set) var newChatRequest = 0
+    private var consumedNewChatRequest = 0
 
     func open(_ tab: ControlPanelTab) {
         requestedTab = tab
+    }
+
+    func createChat() {
+        newChatRequest += 1
+    }
+
+    func consumeNewChatRequest() -> Bool {
+        guard consumedNewChatRequest < newChatRequest else {
+            return false
+        }
+        consumedNewChatRequest = newChatRequest
+        return true
     }
 }
 
@@ -62,10 +76,14 @@ struct ControlPanelView: View {
         .frame(minWidth: 720, minHeight: 520)
         .onAppear {
             applySidebarSelection(navigation.requestedTab.map(ControlPanelSidebarSelection.tab) ?? sidebarSelection)
+            handleNewChatRequest()
         }
         .onReceive(navigation.$requestedTab) { tab in
             guard let tab else { return }
             applySidebarSelection(.tab(tab))
+        }
+        .onChange(of: navigation.newChatRequest) { _, _ in
+            handleNewChatRequest()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { _ in
             isFullScreen = true
@@ -204,6 +222,13 @@ struct ControlPanelView: View {
     private func createRecentSession() {
         chat.createSession()
         applySidebarSelection(chat.currentSessionID.map(ControlPanelSidebarSelection.chat) ?? .tab(.chat))
+    }
+
+    private func handleNewChatRequest() {
+        guard navigation.consumeNewChatRequest() else {
+            return
+        }
+        createRecentSession()
     }
 
     private func deleteRecentSession(_ recent: ControlPanelRecentSession) {

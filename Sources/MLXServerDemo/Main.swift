@@ -1,5 +1,6 @@
 import AppKit
 import MLXServerKit
+import SwiftUI
 
 @main
 enum Main {
@@ -49,12 +50,7 @@ enum Main {
             }
         }
 
-        let application = NSApplication.shared
-        let delegate = AppDelegate()
-        application.delegate = delegate
-        application.setActivationPolicy(.regular)
-        application.activate(ignoringOtherApps: true)
-        application.run()
+        MLXServerDemoApplication.main()
     }
 
     private static func waitForMetricsEndpoint(port: String, timeout: TimeInterval = 5) -> Bool {
@@ -87,5 +83,50 @@ enum Main {
             task.cancel()
         }
         return didSucceed
+    }
+}
+
+private struct MLXServerDemoApplication: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
+    var body: some Scene {
+        Window("MLX Server", id: "main") {
+            MLXServerDemoRootView(appDelegate: appDelegate)
+        }
+        .defaultSize(width: 920, height: 620)
+        .defaultPosition(.center)
+        .windowStyle(.hiddenTitleBar)
+        .windowBackgroundDragBehavior(.enabled)
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Chat") {
+                    appDelegate.createNewChat()
+                }
+                .keyboardShortcut("n")
+            }
+
+            SidebarCommands()
+
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    appDelegate.openSettings()
+                }
+                .keyboardShortcut(",")
+            }
+        }
+    }
+}
+
+private struct MLXServerDemoRootView: View {
+    @Environment(\.openWindow) private var openWindow
+    let appDelegate: AppDelegate
+
+    var body: some View {
+        appDelegate.rootView
+            .onAppear {
+                appDelegate.registerMainWindowOpener {
+                    openWindow(id: "main")
+                }
+            }
     }
 }
