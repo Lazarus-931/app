@@ -169,9 +169,7 @@ struct LogsView: View {
                     Spacer(minLength: 12)
 
                     endpointCategoryPicker
-                        .frame(width: 350)
-
-                    routeCount
+                        .frame(width: 320)
                 }
 
                 VStack(alignment: .leading, spacing: 9) {
@@ -179,11 +177,9 @@ struct LogsView: View {
 
                     HStack(spacing: 10) {
                         endpointCategoryPicker
-                            .frame(width: 350)
+                            .frame(width: 320)
 
                         Spacer()
-
-                        routeCount
                     }
                 }
             }
@@ -241,18 +237,11 @@ struct LogsView: View {
         .pickerStyle(.segmented)
     }
 
-    private var routeCount: some View {
-        Text("\(ServerEndpoint.endpoints(in: selectedEndpointCategory).count) routes")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize()
-    }
-
     private var endpointListHeight: CGFloat {
         switch selectedEndpointCategory {
-        case .openAI: 170
-        case .anthropic: 60
-        case .metrics: 140
+        case .openAI: 148
+        case .anthropic: 50
+        case .metrics: 86
         }
     }
 
@@ -343,7 +332,6 @@ private struct ServerEndpoint: Identifiable {
 
     let method: ServerEndpointMethod
     let path: String
-    let summary: String
     let category: ServerEndpointCategory
 
     var id: String { "\(method.rawValue):\(path)" }
@@ -354,26 +342,26 @@ private struct ServerEndpoint: Identifiable {
     }
 
     static let supported: [ServerEndpoint] = [
-        .init(method: .post, path: "/v1/chat/completions", summary: "Chat completions", category: .openAI),
-        .init(method: .post, path: "/v1/responses", summary: "Create a response", category: .openAI),
-        .init(method: .post, path: "/v1/responses/input_tokens", summary: "Count response input tokens", category: .openAI),
-        .init(method: .get, path: "/v1/responses/{response_id}", summary: "Retrieve a response", category: .openAI),
-        .init(method: .delete, path: "/v1/responses/{response_id}", summary: "Delete a response", category: .openAI),
-        .init(method: .post, path: "/v1/responses/{response_id}/cancel", summary: "Cancel a response", category: .openAI),
-        .init(method: .get, path: "/v1/responses/{response_id}/input_items", summary: "List response input items", category: .openAI),
-        .init(method: .post, path: "/v1/images/generations", summary: "Generate images", category: .openAI),
-        .init(method: .post, path: "/v1/images/edits", summary: "Edit images", category: .openAI),
-        .init(method: .get, path: "/v1/models", summary: "List loaded models", category: .openAI),
-        .init(method: .post, path: "/v1/audio/speech", summary: "Synthesize speech", category: .openAI),
-        .init(method: .post, path: "/v1/audio/transcriptions", summary: "Transcribe audio", category: .openAI),
-        .init(method: .post, path: "/v1/audio/translations", summary: "Translate audio", category: .openAI),
-        .init(method: .post, path: "/v1/messages", summary: "Create a message", category: .anthropic),
-        .init(method: .post, path: "/v1/messages/count_tokens", summary: "Count message tokens", category: .anthropic),
-        .init(method: .get, path: "/health", summary: "Server health", category: .metrics),
-        .init(method: .get, path: "/metrics", summary: "Prometheus metrics", category: .metrics),
-        .init(method: .get, path: "/v1/cache/stats", summary: "Prompt cache statistics", category: .metrics),
-        .init(method: .post, path: "/v1/cache/reset", summary: "Reset the prompt cache", category: .metrics),
-        .init(method: .post, path: "/unload", summary: "Unload models", category: .metrics),
+        .init(method: .post, path: "/v1/chat/completions", category: .openAI),
+        .init(method: .post, path: "/v1/responses", category: .openAI),
+        .init(method: .post, path: "/v1/responses/input_tokens", category: .openAI),
+        .init(method: .get, path: "/v1/responses/{response_id}", category: .openAI),
+        .init(method: .delete, path: "/v1/responses/{response_id}", category: .openAI),
+        .init(method: .post, path: "/v1/responses/{response_id}/cancel", category: .openAI),
+        .init(method: .get, path: "/v1/responses/{response_id}/input_items", category: .openAI),
+        .init(method: .post, path: "/v1/images/generations", category: .openAI),
+        .init(method: .post, path: "/v1/images/edits", category: .openAI),
+        .init(method: .get, path: "/v1/models", category: .openAI),
+        .init(method: .post, path: "/v1/audio/speech", category: .openAI),
+        .init(method: .post, path: "/v1/audio/transcriptions", category: .openAI),
+        .init(method: .post, path: "/v1/audio/translations", category: .openAI),
+        .init(method: .post, path: "/v1/messages", category: .anthropic),
+        .init(method: .post, path: "/v1/messages/count_tokens", category: .anthropic),
+        .init(method: .get, path: "/health", category: .metrics),
+        .init(method: .get, path: "/metrics", category: .metrics),
+        .init(method: .get, path: "/v1/cache/stats", category: .metrics),
+        .init(method: .post, path: "/v1/cache/reset", category: .metrics),
+        .init(method: .post, path: "/unload", category: .metrics),
     ]
 }
 
@@ -411,44 +399,39 @@ private enum ServerEndpointMethod: String {
 private struct ServerEndpointRow: View {
     let endpoint: ServerEndpoint
     let copyAction: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 9) {
-            Text(endpoint.method.rawValue)
-                .font(.caption2.monospaced().weight(.bold))
-                .foregroundStyle(endpoint.method.tint)
-                .frame(width: 42, alignment: .leading)
+        Button(action: copyAction) {
+            HStack(spacing: 8) {
+                Text(endpoint.method.rawValue)
+                    .font(.caption2.monospaced().weight(.bold))
+                    .foregroundStyle(endpoint.method.tint)
+                    .frame(width: 42, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 2) {
                 Text(endpoint.path)
-                    .font(.caption.monospaced().weight(.medium))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(endpoint.summary)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
 
-            Spacer(minLength: 2)
+                Spacer(minLength: 2)
 
-            Button(action: copyAction) {
                 Image(systemName: "doc.on.doc")
                     .foregroundStyle(.secondary)
+                    .opacity(isHovering ? 1 : 0)
             }
-            .buttonStyle(.plain)
-            .help("Copy endpoint URL")
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, 9)
-        .frame(height: 40)
+        .frame(height: 30)
+        .contentShape(Rectangle())
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(endpoint.method.tint.opacity(0.06))
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHovering ? Color.secondary.opacity(0.08) : .clear)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(endpoint.method.tint.opacity(0.15), lineWidth: 0.5)
-        )
+        .onHover { isHovering = $0 }
+        .help("Copy \(endpoint.absoluteURL)")
     }
 }
 
