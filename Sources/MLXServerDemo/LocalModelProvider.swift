@@ -1,0 +1,194 @@
+import AppKit
+
+enum LocalModelProvider: String, Hashable, Sendable {
+    case google
+    case openAI
+    case meta
+    case mistral
+    case qwen
+    case microsoft
+    case cohere
+    case deepSeek
+    case ai2
+    case openBMB
+    case nvidia
+    case apple
+    case ibm
+
+    var displayName: String {
+        switch self {
+        case .google: "Google"
+        case .openAI: "OpenAI"
+        case .meta: "Meta"
+        case .mistral: "Mistral AI"
+        case .qwen: "Qwen"
+        case .microsoft: "Microsoft"
+        case .cohere: "Cohere"
+        case .deepSeek: "DeepSeek"
+        case .ai2: "Ai2"
+        case .openBMB: "OpenBMB"
+        case .nvidia: "NVIDIA"
+        case .apple: "Apple"
+        case .ibm: "IBM"
+        }
+    }
+
+    var iconResourceName: String? {
+        switch self {
+        case .google: "ModelProviderIcon-google"
+        case .openAI: "ModelProviderIcon-openai"
+        case .meta: "ModelProviderIcon-meta"
+        case .mistral: "ModelProviderIcon-mistral"
+        case .qwen: "ModelProviderIcon-qwen"
+        case .microsoft: "ModelProviderIcon-microsoft"
+        case .cohere: "ModelProviderIcon-cohere"
+        case .deepSeek: "ModelProviderIcon-deepseek"
+        case .ai2: "ModelProviderIcon-ai2"
+        case .openBMB: nil
+        case .nvidia: "ModelProviderIcon-nvidia"
+        case .apple: "ModelProviderIcon-apple"
+        case .ibm: "ModelProviderIcon-ibm"
+        }
+    }
+
+    var monogram: String {
+        switch self {
+        case .google: "G"
+        case .openAI: "AI"
+        case .meta: "M"
+        case .mistral: "M"
+        case .qwen: "Q"
+        case .microsoft: "MS"
+        case .cohere: "C"
+        case .deepSeek: "D"
+        case .ai2: "A2"
+        case .openBMB: "B"
+        case .nvidia: "N"
+        case .apple: "A"
+        case .ibm: "IBM"
+        }
+    }
+}
+
+enum LocalModelProviderResolver {
+    private struct ModelFamilyMapping {
+        let provider: LocalModelProvider
+        let identifiers: [String]
+    }
+
+    // Family mappings intentionally run before organization mappings. Converted and
+    // quantized models are commonly republished by mlx-community or another account.
+    private static let modelFamilyMappings: [ModelFamilyMapping] = [
+        ModelFamilyMapping(
+            provider: .google,
+            identifiers: ["gemma", "paligemma", "shieldgemma", "recurrentgemma", "diffusiongemma"]
+        ),
+        ModelFamilyMapping(provider: .qwen, identifiers: ["qwen"]),
+        ModelFamilyMapping(
+            provider: .mistral,
+            identifiers: ["mistral", "mixtral", "devstral", "ministral", "pixtral"]
+        ),
+        ModelFamilyMapping(provider: .microsoft, identifiers: ["phi"]),
+        ModelFamilyMapping(provider: .cohere, identifiers: ["cohere", "command", "aya"]),
+        ModelFamilyMapping(provider: .ai2, identifiers: ["olmo", "molmo"]),
+        ModelFamilyMapping(provider: .openBMB, identifiers: ["minicpm"]),
+        ModelFamilyMapping(provider: .openAI, identifiers: ["gptoss", "whisper"]),
+        ModelFamilyMapping(provider: .meta, identifiers: ["llama"]),
+        ModelFamilyMapping(provider: .deepSeek, identifiers: ["deepseek"]),
+        ModelFamilyMapping(provider: .nvidia, identifiers: ["nemotron"]),
+        ModelFamilyMapping(provider: .apple, identifiers: ["openelm"]),
+        ModelFamilyMapping(provider: .ibm, identifiers: ["granite"])
+    ]
+
+    private static let organizationMappings: [String: LocalModelProvider] = [
+        "google": .google,
+        "googledeepmind": .google,
+        "openai": .openAI,
+        "meta": .meta,
+        "metallama": .meta,
+        "facebook": .meta,
+        "mistralai": .mistral,
+        "qwen": .qwen,
+        "alibaba": .qwen,
+        "alibabacloud": .qwen,
+        "microsoft": .microsoft,
+        "cohere": .cohere,
+        "coherelabs": .cohere,
+        "cohereforai": .cohere,
+        "deepseekai": .deepSeek,
+        "allenai": .ai2,
+        "ai2": .ai2,
+        "openbmb": .openBMB,
+        "nvidia": .nvidia,
+        "apple": .apple,
+        "ibm": .ibm,
+        "ibmgranite": .ibm
+    ]
+
+    static func resolve(
+        repoID: String,
+        modelType: String?,
+        architectures: [String]
+    ) -> LocalModelProvider? {
+        let repositoryName = repoID.split(separator: "/").last.map(String.init) ?? repoID
+        let modelDescriptors = [modelType ?? ""] + architectures + [repositoryName]
+        let candidates = modelDescriptors.flatMap(normalizedCandidates)
+
+        for mapping in modelFamilyMappings
+            where mapping.identifiers.contains(where: { identifier in
+                candidates.contains(where: { $0.hasPrefix(identifier) })
+            }) {
+            return mapping.provider
+        }
+
+        guard let organization = repoID.split(separator: "/").first else {
+            return nil
+        }
+        return organizationMappings[normalizedKey(String(organization))]
+    }
+
+    private static func normalizedCandidates(_ value: String) -> [String] {
+        let lowercase = value.lowercased()
+        let segments = lowercase
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+        let collapsed = normalizedKey(lowercase)
+        return collapsed.isEmpty ? segments : segments + [collapsed]
+    }
+
+    private static func normalizedKey(_ value: String) -> String {
+        String(value.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
+}
+
+@MainActor
+enum LocalModelProviderIcon {
+    private static let size = NSSize(width: 16, height: 16)
+    private static var cache: [LocalModelProvider: NSImage] = [:]
+
+    static func image(for provider: LocalModelProvider) -> NSImage? {
+        if let cached = cache[provider] {
+            return cached
+        }
+        guard let resourceName = provider.iconResourceName else {
+            return nil
+        }
+
+        let bundle = Bundle.main
+        let resourceURL = bundle.url(
+            forResource: resourceName,
+            withExtension: "svg",
+            subdirectory: "ModelProviderIcons"
+        ) ?? bundle.url(forResource: resourceName, withExtension: "svg")
+
+        guard let resourceURL,
+              let image = NSImage(contentsOf: resourceURL) else {
+            return nil
+        }
+
+        image.size = size
+        image.isTemplate = true
+        cache[provider] = image
+        return image
+    }
+}

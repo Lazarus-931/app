@@ -13,6 +13,7 @@ struct LocalModel: Identifiable, Equatable, Sendable {
     let modifiedAt: Date?
     let sizeBytes: Int64?
     let contextSize: Int?
+    let provider: LocalModelProvider?
     let capabilities: Set<LocalModelCapability>
 }
 
@@ -69,6 +70,11 @@ enum LocalModelDiscovery {
                 modifiedAt: modifiedAt,
                 sizeBytes: snapshotSize(at: snapshotURL, fileManager: fileManager),
                 contextSize: contextSize(at: snapshotURL, fileManager: fileManager),
+                provider: modelProvider(
+                    repoID: repoID,
+                    snapshotURL: snapshotURL,
+                    fileManager: fileManager
+                ),
                 capabilities: modelCapabilities(at: snapshotURL, fileManager: fileManager)
             )
         }
@@ -263,6 +269,29 @@ enum LocalModelDiscovery {
         }
 
         return capabilities
+    }
+
+    private static func modelProvider(
+        repoID: String,
+        snapshotURL: URL,
+        fileManager: FileManager
+    ) -> LocalModelProvider? {
+        let configURL = snapshotURL.appendingPathComponent("config.json")
+        guard fileManager.fileExists(atPath: configURL.path),
+              let data = try? Data(contentsOf: configURL),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return LocalModelProviderResolver.resolve(
+                repoID: repoID,
+                modelType: nil,
+                architectures: []
+            )
+        }
+
+        return LocalModelProviderResolver.resolve(
+            repoID: repoID,
+            modelType: config["model_type"] as? String,
+            architectures: config["architectures"] as? [String] ?? []
+        )
     }
 
     private static func recursiveKeys(in value: Any) -> Set<String> {

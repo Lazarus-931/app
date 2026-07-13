@@ -12,6 +12,8 @@
 		14E63F48F62A4F1B8D639139 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C167745187A4892E26BA3BC /* LogsView.swift */; };
 		1ACD7C1CA60EA1DEDE1FF275 /* MLXServerImageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15AE0B934327136178FAC319 /* MLXServerImageClient.swift */; };
 		33CBEFA3EDA5C21878C45FB9 /* MLXServerDemoModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 407939E1CDFD2C6D24170E71 /* MLXServerDemoModel.swift */; };
+		B7A1D5E2C3F44001A9B80001 /* LocalModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A1D5E2C3F44001A9B80003 /* LocalModelProvider.swift */; };
+		B7A1D5E2C3F44001A9B80002 /* ModelProviderIcons in Resources */ = {isa = PBXBuildFile; fileRef = B7A1D5E2C3F44001A9B80004 /* ModelProviderIcons */; };
 		59D763EE60AF4E826404A5F0 /* MLXServerKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		65518C3B8CFFCB021938B536 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA5729F5A27FAF71DCE0708 /* AppDelegate.swift */; };
 		68EC2E304EA347E685D0EA44 /* ImageGenerationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */; };
@@ -68,6 +70,8 @@
 		8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationViewModel.swift; sourceTree = "<group>"; };
 		9C31C8C37F38184423C71293 /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
 		A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelDiscovery.swift; sourceTree = "<group>"; };
+		B7A1D5E2C3F44001A9B80003 /* LocalModelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelProvider.swift; sourceTree = "<group>"; };
+		B7A1D5E2C3F44001A9B80004 /* ModelProviderIcons */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ModelProviderIcons; sourceTree = "<group>"; };
 		C2B92C2BF96DE82F83EBEFF5 /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelView.swift; sourceTree = "<group>"; };
 		D57AF974FB413126871D42D8 /* MLXServerChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerChatClient.swift; sourceTree = "<group>"; };
 		D906FE8C8AC46CC3A5B45200 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
@@ -126,6 +130,8 @@
 				9C31C8C37F38184423C71293 /* ImageGenerationView.swift */,
 				8357894A0162D2A458831A57 /* ImageGenerationViewModel.swift */,
 				A8C04D3AD659F6BD60B8B087 /* LocalModelDiscovery.swift */,
+				B7A1D5E2C3F44001A9B80003 /* LocalModelProvider.swift */,
+				B7A1D5E2C3F44001A9B80004 /* ModelProviderIcons */,
 				5C167745187A4892E26BA3BC /* LogsView.swift */,
 				EAAF4B832B30BF0E9EE4C343 /* Main.swift */,
 				8E05D72C9A804E4C9E7B9F83 /* MLXServerAnalyticsStore.swift */,
@@ -155,6 +161,7 @@
 			buildPhases = (
 				08779AF8AE84B0689ABAF7F3 /* Sources */,
 				A5335BFEA40AAD44BAEA0A9A /* Frameworks */,
+				B7A1D5E2C3F44001A9B80005 /* Resources */,
 				B6AB13D5070D2D90EB8C12A2 /* Embed Frameworks */,
 			);
 			buildRules = (
@@ -218,6 +225,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		B7A1D5E2C3F44001A9B80005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B7A1D5E2C3F44001A9B80002 /* ModelProviderIcons in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXShellScriptBuildPhase section */
 		A03ACDD3249F07CDC7D469B5 /* Build mlx-vlm-server resource */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -253,6 +271,7 @@
 				0A5BF495C93AFBBD50AD6C69 /* ImageGenerationView.swift in Sources */,
 				68EC2E304EA347E685D0EA44 /* ImageGenerationViewModel.swift in Sources */,
 				78E5B5ECF19EA010DF623E71 /* LocalModelDiscovery.swift in Sources */,
+				B7A1D5E2C3F44001A9B80001 /* LocalModelProvider.swift in Sources */,
 				14E63F48F62A4F1B8D639139 /* LogsView.swift in Sources */,
 				6E0E1F734A9D47A48A54D22D /* MLXServerAnalyticsStore.swift in Sources */,
 				33CBEFA3EDA5C21878C45FB9 /* MLXServerDemoModel.swift in Sources */,

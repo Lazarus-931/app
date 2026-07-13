@@ -5,29 +5,51 @@ import SwiftUI
 @MainActor
 private final class ModelMenuIconView: NSView {
     private let imageView = NSImageView()
+    private let monogramLabel = NSTextField(labelWithString: "")
     private let isSelected: Bool
 
-    init(isSelected: Bool) {
+    init(provider: LocalModelProvider?, isSelected: Bool) {
         self.isSelected = isSelected
         super.init(frame: .zero)
 
         wantsLayer = true
         layer?.cornerRadius = 14
 
-        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
-        imageView.image = NSImage(
-            systemSymbolName: "cube.transparent.fill",
-            accessibilityDescription: "Model"
-        )?.withSymbolConfiguration(configuration)
+        if let provider,
+           let providerImage = LocalModelProviderIcon.image(for: provider) {
+            imageView.image = providerImage
+            imageView.setAccessibilityLabel(provider.displayName)
+            toolTip = provider.displayName
+        } else if let provider {
+            monogramLabel.stringValue = provider.monogram
+            monogramLabel.font = .systemFont(
+                ofSize: provider.monogram.count > 2 ? 7 : 9,
+                weight: .bold
+            )
+            monogramLabel.alignment = .center
+            monogramLabel.setAccessibilityLabel(provider.displayName)
+            toolTip = provider.displayName
+        } else {
+            let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+            imageView.image = NSImage(
+                systemSymbolName: "cube.transparent.fill",
+                accessibilityDescription: "Unknown model provider"
+            )?.withSymbolConfiguration(configuration)
+        }
         imageView.imageScaling = .scaleProportionallyDown
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        monogramLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(imageView)
+        addSubview(monogramLabel)
 
         NSLayoutConstraint.activate([
             imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
             imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
             imageView.widthAnchor.constraint(equalToConstant: 16),
-            imageView.heightAnchor.constraint(equalToConstant: 16)
+            imageView.heightAnchor.constraint(equalToConstant: 16),
+            monogramLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            monogramLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            monogramLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 22)
         ])
         updateColors()
     }
@@ -47,6 +69,7 @@ private final class ModelMenuIconView: NSView {
             ? NSColor.controlAccentColor.cgColor
             : NSColor.controlBackgroundColor.cgColor
         imageView.contentTintColor = isSelected ? .white : .secondaryLabelColor
+        monogramLabel.textColor = isSelected ? .white : .secondaryLabelColor
     }
 }
 
@@ -64,6 +87,7 @@ private final class ModelMenuRowView: NSView {
         name: String,
         details: String,
         tooltip: String,
+        provider: LocalModelProvider?,
         capabilities: Set<LocalModelCapability>,
         isSelected: Bool,
         onSelect: @escaping () -> Void
@@ -71,7 +95,7 @@ private final class ModelMenuRowView: NSView {
         self.onSelect = onSelect
         super.init(frame: NSRect(x: 0, y: 0, width: 340, height: 44))
 
-        let iconView = ModelMenuIconView(isSelected: isSelected)
+        let iconView = ModelMenuIconView(provider: provider, isSelected: isSelected)
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
         let nameLabel = NSTextField(labelWithString: name)
@@ -157,7 +181,8 @@ private final class ModelMenuRowView: NSView {
             .sorted()
             .joined(separator: ", ")
         let accessibilitySuffix = capabilityDescription.isEmpty ? "" : ", \(capabilityDescription)"
-        setAccessibilityLabel("\(name), \(details)\(accessibilitySuffix)")
+        let providerDescription = provider.map { ", \($0.displayName)" } ?? ""
+        setAccessibilityLabel("\(name)\(providerDescription), \(details)\(accessibilitySuffix)")
     }
 
     @available(*, unavailable)
@@ -558,6 +583,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: modelDisplayName(localModel.repoID),
             details: modelDetails(localModel),
             tooltip: modelMenuTooltip(localModel),
+            provider: localModel.provider,
             capabilities: localModel.capabilities,
             isSelected: model.settings.normalized().languageModelID == localModel.repoID,
             onSelect: { [weak self] in
@@ -598,6 +624,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func modelMenuTooltip(_ localModel: LocalModel) -> String {
         var lines = [localModel.repoID]
+        if let provider = localModel.provider {
+            lines.append("Provider: \(provider.displayName)")
+        }
         if let sizeBytes = localModel.sizeBytes {
             lines.append("Size: \(ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file))")
         }
