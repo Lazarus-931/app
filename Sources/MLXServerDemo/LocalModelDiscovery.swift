@@ -6,6 +6,8 @@ struct LocalModel: Identifiable, Equatable, Sendable {
     let repoID: String
     let snapshotURL: URL?
     let modifiedAt: Date?
+    let sizeBytes: Int64?
+    let contextSize: Int?
 }
 
 enum LocalModelDiscovery {
@@ -55,7 +57,13 @@ enum LocalModelDiscovery {
             }
 
             let modifiedAt = (try? snapshotURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-            return LocalModel(repoID: repoID, snapshotURL: snapshotURL, modifiedAt: modifiedAt)
+            return LocalModel(
+                repoID: repoID,
+                snapshotURL: snapshotURL,
+                modifiedAt: modifiedAt,
+                sizeBytes: snapshotSize(at: snapshotURL, fileManager: fileManager),
+                contextSize: contextSize(at: snapshotURL, fileManager: fileManager)
+            )
         }
 
         return models.sorted { lhs, rhs in
@@ -149,6 +157,84 @@ enum LocalModelDiscovery {
             return false
         }
         return contents.contains { $0.pathExtension == "safetensors" }
+    }
+
+    private static func snapshotSize(at snapshotURL: URL, fileManager: FileManager) -> Int64? {
+        guard let enumerator = fileManager.enumerator(
+            at: snapshotURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        var visitedFiles = Set<String>()
+        var totalBytes: Int64 = 0
+        var foundFile = false
+
+        for case let fileURL as URL in enumerator {
+            let resolvedURL = fileURL.resolvingSymlinksInPath()
+            guard visitedFiles.insert(resolvedURL.path).inserted,
+                  let values = try? resolvedURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                  values.isRegularFile == true,
+                  let fileSize = values.fileSize
+            else {
+                continue
+            }
+            totalBytes += Int64(fileSize)
+            foundFile = true
+        }
+
+        return foundFile ? totalBytes : nil
+    }
+
+    private static func contextSize(at snapshotURL: URL, fileManager: FileManager) -> Int? {
+        let candidates = ["config.json", "tokenizer_config.json"]
+        for filename in candidates {
+            let url = snapshotURL.appendingPathComponent(filename)
+            guard fileManager.fileExists(atPath: url.path),
+                  let data = try? Data(contentsOf: url),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let contextSize = contextSize(in: json)
+            else {
+                continue
+            }
+            return contextSize
+        }
+        return nil
+    }
+
+    private static func contextSize(in config: [String: Any]) -> Int? {
+        let nestedConfigurationKeys = ["text_config", "llm_config", "language_config"]
+        let contextKeys = [
+            "max_position_embeddings",
+            "model_max_length",
+            "max_sequence_length",
+            "seq_length",
+            "n_positions",
+            "context_length"
+        ]
+
+        for nestedKey in nestedConfigurationKeys {
+            if let nested = config[nestedKey] as? [String: Any],
+               let value = contextValue(in: nested, keys: contextKeys) {
+                return value
+            }
+        }
+        return contextValue(in: config, keys: contextKeys)
+    }
+
+    private static func contextValue(in config: [String: Any], keys: [String]) -> Int? {
+        for key in keys {
+            guard let number = config[key] as? NSNumber else {
+                continue
+            }
+            let value = number.intValue
+            if value > 0, value <= 10_000_000 {
+                return value
+            }
+        }
+        return nil
     }
 
     private static func isDirectoryURL(_ url: URL, fileManager: FileManager) -> Bool {

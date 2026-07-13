@@ -3,12 +3,222 @@ import MLXServerKit
 import SwiftUI
 
 @MainActor
+private final class ModelMenuIconView: NSView {
+    private let imageView = NSImageView()
+    private let isSelected: Bool
+
+    init(isSelected: Bool) {
+        self.isSelected = isSelected
+        super.init(frame: .zero)
+
+        wantsLayer = true
+        layer?.cornerRadius = 14
+
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        imageView.image = NSImage(
+            systemSymbolName: "cube.transparent.fill",
+            accessibilityDescription: "Model"
+        )?.withSymbolConfiguration(configuration)
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
+
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 16),
+            imageView.heightAnchor.constraint(equalToConstant: 16)
+        ])
+        updateColors()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColors()
+    }
+
+    private func updateColors() {
+        layer?.backgroundColor = isSelected
+            ? NSColor.controlAccentColor.cgColor
+            : NSColor.controlBackgroundColor.cgColor
+        imageView.contentTintColor = isSelected ? .white : .secondaryLabelColor
+    }
+}
+
+@MainActor
+private final class ModelMenuRowView: NSView {
+    private let onSelect: () -> Void
+    private var trackingArea: NSTrackingArea?
+    private var isHovered = false {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
+    init(
+        name: String,
+        details: String,
+        tooltip: String,
+        isSelected: Bool,
+        onSelect: @escaping () -> Void
+    ) {
+        self.onSelect = onSelect
+        super.init(frame: NSRect(x: 0, y: 0, width: 340, height: 44))
+
+        let iconView = ModelMenuIconView(isSelected: isSelected)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        let nameLabel = NSTextField(labelWithString: name)
+        nameLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        nameLabel.lineBreakMode = .byTruncatingTail
+
+        let detailsLabel = NSTextField(labelWithString: details)
+        detailsLabel.font = .systemFont(ofSize: 10)
+        detailsLabel.textColor = .secondaryLabelColor
+        detailsLabel.lineBreakMode = .byTruncatingTail
+
+        let labels = NSStackView(views: [nameLabel, detailsLabel])
+        labels.orientation = .vertical
+        labels.alignment = .leading
+        labels.spacing = 0
+        labels.translatesAutoresizingMaskIntoConstraints = false
+
+        let selectedImage = NSImageView()
+        selectedImage.image = isSelected
+            ? NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Loaded")
+            : nil
+        selectedImage.contentTintColor = .controlAccentColor
+        selectedImage.imageScaling = .scaleProportionallyDown
+        selectedImage.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(iconView)
+        addSubview(labels)
+        addSubview(selectedImage)
+
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 28),
+            iconView.heightAnchor.constraint(equalToConstant: 28),
+
+            labels.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
+            labels.centerYAnchor.constraint(equalTo: centerYAnchor),
+            labels.trailingAnchor.constraint(lessThanOrEqualTo: selectedImage.leadingAnchor, constant: -6),
+
+            selectedImage.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            selectedImage.centerYAnchor.constraint(equalTo: centerYAnchor),
+            selectedImage.widthAnchor.constraint(equalToConstant: 14),
+            selectedImage.heightAnchor.constraint(equalToConstant: 14)
+        ])
+
+        self.toolTip = tooltip
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("\(name), \(details)")
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard isHovered else {
+            return
+        }
+        NSColor.selectedContentBackgroundColor.withAlphaComponent(0.14).setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 1), xRadius: 5, yRadius: 5).fill()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseEnteredAndExited],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard event.buttonNumber == 0 else {
+            return
+        }
+        enclosingMenuItem?.menu?.cancelTracking()
+        onSelect()
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
+@MainActor
+private final class ModelMenuSectionHeaderView: NSView {
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
+
+        let title = NSMutableAttributedString(
+            string: "Installed ",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                .foregroundColor: NSColor.labelColor
+            ]
+        )
+        title.append(NSAttributedString(
+            string: "models",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                .foregroundColor: NSColor.controlAccentColor
+            ]
+        ))
+
+        let label = NSTextField(labelWithAttributedString: title)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+}
+
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var window: NSWindow?
     private let model = MLXServerDemoModel()
     private var statusItem: NSStatusItem?
     private var statusMenuItem: NSMenuItem?
     private var serverActionMenuItem: NSMenuItem?
+    private var modelMenuItem: NSMenuItem?
+    private var localModels: [LocalModel] = []
+    private var modelScanTask: Task<Void, Never>?
+    private var modelScanInProgress = false
+    private var modelScanError: String?
+    private var lastScannedModelPath: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.onMenuStateChanged = { [weak self] in
@@ -18,6 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureMainMenu()
         configureStatusItem()
         configureWindow()
+        refreshLocalModels()
         model.startServer()
     }
 
@@ -34,6 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        modelScanTask?.cancel()
         model.applicationWillTerminate()
     }
 
@@ -43,6 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if model.metricsAreStale {
             model.refreshMetricsIfRunning(force: true)
         }
+        refreshLocalModelsIfNeeded()
     }
 
     func menuDidClose(_ menu: NSMenu) {
@@ -52,6 +265,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleServerFromMenu(_ sender: Any?) {
         model.toggleServer()
+    }
+
+    @objc private func switchModelFromMenu(_ sender: NSMenuItem) {
+        let rawModelID = sender.representedObject as? String
+        model.switchLanguageModel(to: rawModelID?.isEmpty == false ? rawModelID : nil)
+    }
+
+    @objc private func refreshModelsFromMenu(_ sender: Any?) {
+        refreshLocalModels()
     }
 
     @objc private func quit(_ sender: Any?) {
@@ -148,6 +370,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(statusMenuItem)
 
         menu.addItem(.separator())
+        let modelMenuItem = makeModelMenuItem()
+        menu.addItem(modelMenuItem)
         menu.addItem(makeServingStatsMenuItem())
         menu.addItem(.separator())
 
@@ -172,6 +396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
         self.statusMenuItem = statusMenuItem
         self.serverActionMenuItem = serverActionMenuItem
+        self.modelMenuItem = modelMenuItem
     }
 
     private func makeSessionStatsMenuItem(_ metrics: MLXServerMetrics) -> NSMenuItem {
@@ -190,6 +415,210 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem(title: "Serving Stats", action: nil, keyEquivalent: "")
         item.submenu = makeServingStatsSubmenu()
         return item
+    }
+
+    private func makeModelMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(
+            title: model.modelSwitchInProgress ? "Model: Loading…" : "Model: \(selectedModelMenuTitle)",
+            action: nil,
+            keyEquivalent: ""
+        )
+        item.submenu = makeModelSubmenu()
+        return item
+    }
+
+    private func makeModelSubmenu() -> NSMenu {
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+
+        if model.modelSwitchInProgress {
+            submenu.addItem(disabledMenuItem("Restarting server and loading model…"))
+            return submenu
+        }
+
+        submenu.addItem(disabledMenuItem("Loaded: \(model.loadedModelDisplay)"))
+        submenu.addItem(.separator())
+
+        submenu.addItem(modelOptionMenuItem(title: "Load on demand", modelID: nil))
+
+        let selectedModelID = model.settings.normalized().languageModelID
+        if let selectedModelID,
+           !localModels.contains(where: { $0.repoID == selectedModelID }) {
+            submenu.addItem(modelOptionMenuItem(
+                title: missingModelMenuLabel(selectedModelID),
+                modelID: selectedModelID
+            ))
+        }
+
+        if !localModels.isEmpty {
+            submenu.addItem(.separator())
+            submenu.addItem(installedModelsHeaderMenuItem())
+        }
+
+        for localModel in localModels {
+            submenu.addItem(modelRowMenuItem(localModel))
+        }
+
+        if localModels.isEmpty, selectedModelID == nil {
+            let message = modelScanInProgress
+                ? "Scanning for local models…"
+                : modelScanError ?? "No local models found"
+            submenu.addItem(disabledMenuItem(message))
+        }
+
+        submenu.addItem(.separator())
+        let refreshItem = NSMenuItem(
+            title: modelScanInProgress ? "Refreshing Models…" : "Refresh Models",
+            action: #selector(refreshModelsFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        refreshItem.target = self
+        refreshItem.isEnabled = !modelScanInProgress
+        submenu.addItem(refreshItem)
+
+        return submenu
+    }
+
+    private func modelOptionMenuItem(
+        title: String,
+        modelID: String?
+    ) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: title,
+            action: #selector(switchModelFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.representedObject = modelID ?? ""
+        item.state = model.settings.normalized().languageModelID == modelID ? .on : .off
+        return item
+    }
+
+    private func installedModelsHeaderMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Installed models", action: nil, keyEquivalent: "")
+        item.view = ModelMenuSectionHeaderView()
+        return item
+    }
+
+    private func modelRowMenuItem(_ localModel: LocalModel) -> NSMenuItem {
+        let item = NSMenuItem(title: localModel.repoID, action: nil, keyEquivalent: "")
+        item.isEnabled = true
+        item.view = ModelMenuRowView(
+            name: modelDisplayName(localModel.repoID),
+            details: modelDetails(localModel),
+            tooltip: modelMenuTooltip(localModel),
+            isSelected: model.settings.normalized().languageModelID == localModel.repoID,
+            onSelect: { [weak self] in
+                self?.model.switchLanguageModel(to: localModel.repoID)
+            }
+        )
+        return item
+    }
+
+    private var selectedModelMenuTitle: String {
+        guard let modelID = model.settings.normalized().languageModelID else {
+            return "On demand"
+        }
+        let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
+        return MLXServerDemoFormatting.truncateModelName(shortName, maxLength: 28)
+    }
+
+    private func modelDisplayName(_ modelID: String) -> String {
+        let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
+        return MLXServerDemoFormatting.truncateModelName(shortName, maxLength: 34)
+    }
+
+    private func missingModelMenuLabel(_ modelID: String) -> String {
+        let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
+        return "\(MLXServerDemoFormatting.truncateModelName(shortName, maxLength: 34))  ·  Not found"
+    }
+
+    private func modelDetails(_ localModel: LocalModel) -> String {
+        var details: [String] = []
+        if let sizeBytes = localModel.sizeBytes {
+            details.append(ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file))
+        }
+        if let contextSize = localModel.contextSize {
+            details.append("\(compactContextSize(contextSize)) ctx")
+        }
+        return details.isEmpty ? "Model details unavailable" : details.joined(separator: " · ")
+    }
+
+    private func modelMenuTooltip(_ localModel: LocalModel) -> String {
+        var lines = [localModel.repoID]
+        if let sizeBytes = localModel.sizeBytes {
+            lines.append("Size: \(ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file))")
+        }
+        if let contextSize = localModel.contextSize {
+            let formatted = NumberFormatter.localizedString(from: NSNumber(value: contextSize), number: .decimal)
+            lines.append("Context: \(formatted) tokens")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func compactContextSize(_ value: Int) -> String {
+        let million = 1024 * 1024
+        if value >= million, value.isMultiple(of: million) {
+            return "\(value / million)M"
+        }
+        if value >= 1024, value.isMultiple(of: 1024) {
+            return "\(value / 1024)K"
+        }
+        return NumberFormatter.localizedString(from: NSNumber(value: value), number: .decimal)
+    }
+
+    private func refreshLocalModelsIfNeeded() {
+        let currentPath = model.settings.normalized().expandedModelSearchPath
+        guard lastScannedModelPath != currentPath else {
+            return
+        }
+        refreshLocalModels()
+    }
+
+    private func refreshLocalModels() {
+        modelScanTask?.cancel()
+        let searchPath = model.settings.normalized().expandedModelSearchPath
+        modelScanInProgress = true
+        modelScanError = nil
+        rebuildModelSubmenu()
+
+        modelScanTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                let models = try await LocalModelDiscovery.scan(path: searchPath)
+                guard !Task.isCancelled else {
+                    return
+                }
+                self.localModels = models
+                self.lastScannedModelPath = searchPath
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else {
+                    return
+                }
+                self.localModels = []
+                self.modelScanError = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                self.lastScannedModelPath = searchPath
+            }
+
+            self.modelScanInProgress = false
+            self.rebuildModelSubmenu()
+        }
+    }
+
+    private func rebuildModelSubmenu() {
+        guard let modelMenuItem else {
+            return
+        }
+        modelMenuItem.title = model.modelSwitchInProgress
+            ? "Model: Loading…"
+            : "Model: \(selectedModelMenuTitle)"
+        modelMenuItem.submenu = makeModelSubmenu()
     }
 
     private func makeServingStatsSubmenu() -> NSMenu {

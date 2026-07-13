@@ -11,6 +11,7 @@ final class MLXServerDemoModel: ObservableObject {
     @Published private(set) var lastMetricsFetchAt: Date?
     @Published private(set) var allTimeStats = MLXServerAllTimeStats()
     @Published private(set) var sessionTokenActivity: [Int] = []
+    @Published private(set) var modelSwitchInProgress = false
     @Published var settings = MLXServerSettings.load() {
         didSet {
             settings.save()
@@ -115,6 +116,47 @@ final class MLXServerDemoModel: ObservableObject {
             stopServer()
         } else {
             startServer()
+        }
+    }
+
+    func switchLanguageModel(to modelID: String?) {
+        guard !modelSwitchInProgress else {
+            return
+        }
+
+        var nextSettings = settings
+        nextSettings.languageModelID = modelID
+        let normalizedModelID = nextSettings.normalized().languageModelID
+        let selectionIsAlreadyApplied = settings.normalized().languageModelID == normalizedModelID
+            && server.isRunning
+            && !settingsRequireRestart
+        guard !selectionIsAlreadyApplied else {
+            return
+        }
+
+        settings.languageModelID = normalizedModelID
+        modelSwitchInProgress = true
+        notifyMenuStateChanged()
+
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            defer {
+                self.modelSwitchInProgress = false
+                self.notifyMenuStateChanged()
+            }
+
+            if self.server.isRunning {
+                self.stopServer()
+                await Task.yield()
+            }
+
+            guard !self.server.isRunning else {
+                self.appendLog("\nCould not stop the current server to switch models.\n")
+                return
+            }
+            self.startServer()
         }
     }
 
