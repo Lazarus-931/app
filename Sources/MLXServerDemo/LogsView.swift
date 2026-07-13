@@ -57,9 +57,9 @@ struct LogsView: View {
             )
 
             RuntimeInfoCard(
-                title: "Unified memory",
+                title: "Memory",
                 value: "\(byteCount(runtime.usedMemoryBytes)) of \(byteCount(runtime.totalMemoryBytes))",
-                detail: "\(memoryUsagePercent)% in use",
+                detail: "\(memoryUsagePercent)%",
                 systemImage: "memorychip",
                 tint: memoryUsageTint,
                 progress: runtime.memoryUsageFraction
@@ -190,22 +190,31 @@ private struct RuntimeInfoCard: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
 
-                Text(detail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-
                 if let progress {
-                    ProgressView(value: progress)
-                        .progressViewStyle(.linear)
-                        .tint(tint)
+                    HStack(spacing: 8) {
+                        ProgressView(value: progress)
+                            .progressViewStyle(.linear)
+                            .tint(tint)
+
+                        Text(detail)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
                         .padding(.top, 2)
+                } else {
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(11)
-        .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(height: 82, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 11)
                 .fill(Color(nsColor: .controlBackgroundColor))
