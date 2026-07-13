@@ -123,7 +123,7 @@ private final class ModelMenuRowView: NSView {
                 symbolName = "waveform"
                 description = capability.displayName
             case .tools:
-                symbolName = "wrench.and.screwdriver.fill"
+                symbolName = "hammer.fill"
                 description = capability.displayName
             }
             let configuration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
