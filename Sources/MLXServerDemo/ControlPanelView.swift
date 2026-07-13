@@ -33,6 +33,7 @@ struct ControlPanelView: View {
     @ObservedObject var model: MLXServerDemoModel
     @StateObject private var chat = ChatViewModel()
     @StateObject private var imageGeneration = ImageGenerationViewModel()
+    @StateObject private var dashboard = DashboardViewModel()
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var splitColumnVisibility: NavigationSplitViewVisibility = .all
@@ -136,7 +137,7 @@ struct ControlPanelView: View {
                 case .imageGeneration:
                     ImageGenerationView(model: model, viewModel: imageGeneration)
                 case .dashboard:
-                    StatsView(model: model)
+                    StatsView(model: model, dashboard: dashboard)
                 case .settings:
                     SettingsView(model: model)
                 case .logs:

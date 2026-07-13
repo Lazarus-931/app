@@ -247,9 +247,12 @@ final class DashboardViewModel: ObservableObject {
                 granularity: displayGranularity
             )
             let modelPerformance = Self.modelPerformance(from: rawBuckets)
+            let leadingModelIDs = Set(modelPerformance.prefix(12).map(\.modelID))
             let modelTokenPoints = Self.modelTokenPoints(
                 from: rawBuckets,
-                bucketDates: points.map(\.bucketStart)
+                bucketDates: points.map(\.bucketStart),
+                leadingModelIDs: leadingModelIDs,
+                groupsRemainingModels: modelPerformance.count > 12
             )
             return DashboardSnapshot(
                 summary: summary,
@@ -391,9 +394,16 @@ private extension DashboardViewModel {
 
     nonisolated static func modelTokenPoints(
         from buckets: [MLXServerAnalyticsBucketPoint],
-        bucketDates: [Date]
+        bucketDates: [Date],
+        leadingModelIDs: Set<String>,
+        groupsRemainingModels: Bool
     ) -> [ModelTokenPoint] {
-        let rowsByModel = Dictionary(grouping: buckets, by: \.modelID)
+        let rowsByModel = Dictionary(grouping: buckets) { bucket in
+            if groupsRemainingModels, !leadingModelIDs.contains(bucket.modelID) {
+                return "Other"
+            }
+            return bucket.modelID
+        }
 
         return rowsByModel.flatMap { modelID, rows in
             let rowsByDate = Dictionary(grouping: rows, by: \.bucketStart)

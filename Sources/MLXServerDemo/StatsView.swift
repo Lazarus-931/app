@@ -4,7 +4,8 @@ import SwiftUI
 
 struct StatsView: View {
     @ObservedObject var model: MLXServerDemoModel
-    @StateObject private var dashboard = DashboardViewModel()
+    @ObservedObject var dashboard: DashboardViewModel
+    @FocusState private var isModelSearchFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -22,6 +23,10 @@ struct StatsView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            isModelSearchFocused = false
+        }
         .onAppear {
             syncDashboardState(scanModels: true, reloadHistory: true)
         }
@@ -175,7 +180,11 @@ struct StatsView: View {
                 subtitle: "Usage and throughput by model for the selected period"
             )
 
-            ModelPerformanceTable(rows: dashboard.modelPerformance)
+            ModelPerformanceTable(
+                rows: dashboard.modelPerformance,
+                modelColorDomain: chartModelColorDomain,
+                searchFocus: $isModelSearchFocused
+            )
 
             if let localModelError = dashboard.localModelError {
                 Text(localModelError)
@@ -195,6 +204,20 @@ struct StatsView: View {
             DashboardRecentRequestsTable(requests: dashboard.recentRequestEvents)
         }
     }
+
+    private var leadingModelIDs: [String] {
+        Array(dashboard.modelPerformance.prefix(modelOverviewLimit).map(\.modelID))
+    }
+
+    private var chartModelColorDomain: [String] {
+        var modelIDs = leadingModelIDs
+        if dashboard.modelPerformance.count > modelOverviewLimit {
+            modelIDs.append("Other")
+        }
+        return DashboardModelColorScale.domain(for: modelIDs)
+    }
+
+    private var modelOverviewLimit: Int { 12 }
 
     private var totalRequests: Int {
         dashboard.historicalSummary.requestsCompleted + dashboard.historicalSummary.requestsFailed
@@ -979,7 +1002,23 @@ private struct RequestHealthStat: View {
 }
 
 private struct ModelPerformanceTable: View {
+    enum SortColumn: String {
+        case model
+        case tokens
+        case requests
+        case success
+        case decode
+        case peakMemory
+    }
+
     let rows: [DashboardViewModel.ModelPerformance]
+    let modelColorDomain: [String]
+    let searchFocus: FocusState<Bool>.Binding
+
+    @State private var searchText = ""
+    @State private var sortColumn: SortColumn = .tokens
+    @State private var sortAscending = false
+    @State private var showsAllModels = false
 
     var body: some View {
         Group {
@@ -1009,22 +1048,61 @@ private struct ModelPerformanceTable: View {
 
     private var tableContent: some View {
         VStack(spacing: 0) {
+            tableToolbar
+            Divider().overlay(DashboardPalette.panelStroke)
             modelRowHeader
-            ForEach(rows) { row in
+
+            if visibleRows.isEmpty {
                 Divider().overlay(DashboardPalette.panelStroke)
-                modelRow(row)
+                ContentUnavailableView.search(text: searchText)
+                    .frame(maxWidth: .infinity, minHeight: 140)
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(visibleRows) { row in
+                        Divider().overlay(DashboardPalette.panelStroke)
+                        modelRow(row)
+                    }
+                }
             }
         }
     }
 
+    private var tableToolbar: some View {
+        HStack(spacing: 12) {
+            TextField("Search models", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .focused(searchFocus)
+                .onSubmit {
+                    searchFocus.wrappedValue = false
+                }
+                .frame(width: 260)
+
+            Spacer(minLength: 16)
+
+            Text("Showing \(visibleRows.count) of \(sortedRows.count)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            if searchText.isEmpty, sortedRows.count > defaultVisibleLimit {
+                Button(showsAllModels ? "Show top \(defaultVisibleLimit)" : "Show all") {
+                    searchFocus.wrappedValue = false
+                    showsAllModels.toggle()
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .padding(.vertical, 12)
+    }
+
     private var modelRowHeader: some View {
         HStack(spacing: 18) {
-            tableHeader("Model", width: nil, alignment: .leading)
-            tableHeader("Tokens", width: 105, alignment: .trailing)
-            tableHeader("Requests", width: 90, alignment: .trailing)
-            tableHeader("Success", width: 85, alignment: .trailing)
-            tableHeader("Decode", width: 105, alignment: .trailing)
-            tableHeader("Peak memory", width: 105, alignment: .trailing)
+            sortableHeader("Model", column: .model, width: nil, alignment: .leading)
+            sortableHeader("Tokens", column: .tokens, width: 105, alignment: .trailing)
+            sortableHeader("Requests", column: .requests, width: 90, alignment: .trailing)
+            sortableHeader("Success", column: .success, width: 85, alignment: .trailing)
+            sortableHeader("Decode", column: .decode, width: 105, alignment: .trailing)
+            sortableHeader("Peak memory", column: .peakMemory, width: 105, alignment: .trailing)
         }
         .padding(.vertical, 12)
     }
@@ -1038,7 +1116,7 @@ private struct ModelPerformanceTable: View {
                     .background(DashboardPalette.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
 
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(DashboardModelColorScale.color(for: row.modelID, in: modelColorDomain))
+                    .fill(modelColor(for: row.modelID))
                     .frame(width: 3, height: 24)
 
                 Text(row.modelID)
@@ -1058,20 +1136,48 @@ private struct ModelPerformanceTable: View {
         .padding(.vertical, 13)
     }
 
-    private func tableHeader(_ title: String, width: CGFloat?, alignment: Alignment) -> some View {
+    private func sortableHeader(
+        _ title: String,
+        column: SortColumn,
+        width: CGFloat?,
+        alignment: Alignment
+    ) -> some View {
         Group {
             if let width {
-                Text(title).frame(width: width, alignment: alignment)
+                sortButton(title, column: column)
+                    .frame(width: width, alignment: alignment)
             } else {
-                Text(title).frame(
+                sortButton(title, column: column).frame(
                     minWidth: modelColumnMinimumWidth,
                     maxWidth: .infinity,
                     alignment: alignment
                 )
             }
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
+    }
+
+    private func sortButton(_ title: String, column: SortColumn) -> some View {
+        Button {
+            searchFocus.wrappedValue = false
+            if sortColumn == column {
+                sortAscending.toggle()
+            } else {
+                sortColumn = column
+                sortAscending = column == .model
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(title)
+                if sortColumn == column {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help("Sort by \(title.lowercased())")
     }
 
     private func tableValue(_ value: String, width: CGFloat) -> some View {
@@ -1081,10 +1187,75 @@ private struct ModelPerformanceTable: View {
             .frame(width: width, alignment: .trailing)
     }
 
-    private var modelColorDomain: [String] {
-        DashboardModelColorScale.domain(for: rows.map(\.modelID))
+    private var filteredRows: [DashboardViewModel.ModelPerformance] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return rows }
+        return rows.filter { $0.modelID.localizedCaseInsensitiveContains(query) }
     }
 
+    private var sortedRows: [DashboardViewModel.ModelPerformance] {
+        filteredRows.sorted(by: comesBefore)
+    }
+
+    private var visibleRows: [DashboardViewModel.ModelPerformance] {
+        if showsAllModels || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return sortedRows
+        }
+        return Array(sortedRows.prefix(defaultVisibleLimit))
+    }
+
+    private func comesBefore(
+        _ lhs: DashboardViewModel.ModelPerformance,
+        _ rhs: DashboardViewModel.ModelPerformance
+    ) -> Bool {
+        if sortColumn == .model {
+            let comparison = lhs.modelID.localizedCaseInsensitiveCompare(rhs.modelID)
+            if comparison == .orderedSame { return lhs.modelID < rhs.modelID }
+            return sortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+
+        let lhsValue = numericSortValue(for: lhs)
+        let rhsValue = numericSortValue(for: rhs)
+        switch (lhsValue, rhsValue) {
+        case (.none, .none):
+            return lhs.modelID.localizedCaseInsensitiveCompare(rhs.modelID) == .orderedAscending
+        case (.none, .some):
+            return false
+        case (.some, .none):
+            return true
+        case (.some(let lhsValue), .some(let rhsValue)):
+            if lhsValue == rhsValue {
+                return lhs.modelID.localizedCaseInsensitiveCompare(rhs.modelID) == .orderedAscending
+            }
+            return sortAscending ? lhsValue < rhsValue : lhsValue > rhsValue
+        }
+    }
+
+    private func numericSortValue(for row: DashboardViewModel.ModelPerformance) -> Double? {
+        switch sortColumn {
+        case .model:
+            nil
+        case .tokens:
+            Double(row.processedTokens)
+        case .requests:
+            Double(row.totalRequests)
+        case .success:
+            row.successRate
+        case .decode:
+            row.averageDecodeTokensPerSecond
+        case .peakMemory:
+            row.peakMemoryBytes.map(Double.init)
+        }
+    }
+
+    private func modelColor(for modelID: String) -> Color {
+        if modelColorDomain.contains(modelID) {
+            return DashboardModelColorScale.color(for: modelID, in: modelColorDomain)
+        }
+        return DashboardModelColorScale.color(for: "Other", in: modelColorDomain)
+    }
+
+    private var defaultVisibleLimit: Int { 12 }
     private var modelColumnMinimumWidth: CGFloat { 280 }
     private var minimumTableWidth: CGFloat { 900 }
 }
@@ -1916,6 +2087,10 @@ private enum DashboardModelColorScale {
         .cyan,
         .yellow,
         .mint,
+        .indigo,
+        .red,
+        .teal,
+        .brown,
     ]
 
     static func domain(for modelIDs: [String]) -> [String] {
@@ -1925,11 +2100,18 @@ private enum DashboardModelColorScale {
     }
 
     static func colors(for domain: [String]) -> [Color] {
-        domain.indices.map { palette[$0 % palette.count] }
+        let modelDomain = domain.filter { $0 != "Other" }
+        return domain.map { modelID -> Color in
+            guard modelID != "Other" else { return Color.gray }
+            let index = modelDomain.firstIndex(of: modelID) ?? 0
+            return palette[index % palette.count]
+        }
     }
 
     static func color(for modelID: String, in domain: [String]) -> Color {
-        guard let index = domain.firstIndex(of: modelID) else {
+        guard modelID != "Other" else { return .gray }
+        let modelDomain = domain.filter { $0 != "Other" }
+        guard let index = modelDomain.firstIndex(of: modelID) else {
             return .secondary
         }
         return palette[index % palette.count]
