@@ -217,6 +217,10 @@ final class MLXServerDemoModel: ObservableObject {
         settings = MLXServerSettings()
     }
 
+    func clearLogs() {
+        logText = ""
+    }
+
     func refreshMetricsIfRunning(force: Bool = false) {
         isRunning = server.isRunning
         guard isRunning else {
