@@ -118,10 +118,13 @@ private final class ModelMenuRowView: NSView {
             switch capability {
             case .vision:
                 symbolName = "eye.fill"
-                description = "Vision"
+                description = capability.displayName
             case .audio:
                 symbolName = "waveform"
-                description = "Audio"
+                description = capability.displayName
+            case .tools:
+                symbolName = "wrench.and.screwdriver.fill"
+                description = capability.displayName
             }
             let configuration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
             capabilityImage.image = NSImage(
@@ -179,7 +182,7 @@ private final class ModelMenuRowView: NSView {
         self.toolTip = tooltip
         setAccessibilityRole(.button)
         let capabilityDescription = capabilities
-            .map(\.rawValue.capitalized)
+            .map(\.displayName)
             .sorted()
             .joined(separator: ", ")
         let accessibilitySuffix = capabilityDescription.isEmpty ? "" : ", \(capabilityDescription)"
@@ -650,7 +653,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if !localModel.capabilities.isEmpty {
             let capabilities = localModel.capabilities
-                .map(\.rawValue.capitalized)
+                .map(\.displayName)
                 .sorted()
                 .joined(separator: ", ")
             lines.append("Capabilities: \(capabilities)")

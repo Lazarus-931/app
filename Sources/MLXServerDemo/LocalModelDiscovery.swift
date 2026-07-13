@@ -3,6 +3,18 @@ import Foundation
 enum LocalModelCapability: String, CaseIterable, Hashable, Sendable {
     case vision
     case audio
+    case tools
+
+    var displayName: String {
+        switch self {
+        case .vision:
+            "Vision"
+        case .audio:
+            "Audio"
+        case .tools:
+            "Tool calling"
+        }
+    }
 }
 
 struct LocalModel: Identifiable, Equatable, Sendable {
@@ -222,11 +234,13 @@ enum LocalModelDiscovery {
         fileManager: FileManager
     ) -> Set<LocalModelCapability> {
         let configURL = snapshotURL.appendingPathComponent("config.json")
-        guard fileManager.fileExists(atPath: configURL.path),
-              let data = try? Data(contentsOf: configURL),
-              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return []
+        let config: [String: Any]
+        if fileManager.fileExists(atPath: configURL.path),
+           let data = try? Data(contentsOf: configURL),
+           let parsedConfig = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            config = parsedConfig
+        } else {
+            config = [:]
         }
 
         let keys = recursiveKeys(in: config)
@@ -268,7 +282,57 @@ enum LocalModelDiscovery {
             capabilities.insert(.audio)
         }
 
+        if supportsToolCalling(at: snapshotURL, fileManager: fileManager) {
+            capabilities.insert(.tools)
+        }
+
         return capabilities
+    }
+
+    private static func supportsToolCalling(
+        at snapshotURL: URL,
+        fileManager: FileManager
+    ) -> Bool {
+        let templateURL = snapshotURL.appendingPathComponent("chat_template.jinja")
+        if fileManager.fileExists(atPath: templateURL.path),
+           let template = try? String(contentsOf: templateURL, encoding: .utf8),
+           containsToolCallingMarkers(template) {
+            return true
+        }
+
+        for filename in ["tokenizer_config.json", "processor_config.json"] {
+            let metadataURL = snapshotURL.appendingPathComponent(filename)
+            guard fileManager.fileExists(atPath: metadataURL.path),
+                  let data = try? Data(contentsOf: metadataURL),
+                  let metadata = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let chatTemplate = metadata["chat_template"]
+            else {
+                continue
+            }
+            if templateContainsToolCallingMarkers(chatTemplate) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private static func templateContainsToolCallingMarkers(_ value: Any) -> Bool {
+        if let template = value as? String {
+            return containsToolCallingMarkers(template)
+        }
+        if let templates = value as? [Any] {
+            return templates.contains(where: templateContainsToolCallingMarkers)
+        }
+        if let templates = value as? [String: Any] {
+            return templates.values.contains(where: templateContainsToolCallingMarkers)
+        }
+        return false
+    }
+
+    private static func containsToolCallingMarkers(_ template: String) -> Bool {
+        let normalized = template.lowercased()
+        return normalized.contains("tool_calls") || normalized.contains("tool_call")
     }
 
     private static func modelProvider(
