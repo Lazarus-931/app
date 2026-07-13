@@ -77,25 +77,20 @@ struct ModelsView: View {
     }
 
     private var pageHeader: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Models")
-                    .font(.title2.weight(.semibold))
-                Text("Manage local MLX models or find new ones on Hugging Face.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 16) {
+                pageTitle
+                Spacer(minLength: 12)
+                sectionPicker
             }
 
-            Spacer()
-
-            Picker("Section", selection: $section) {
-                ForEach(ModelsPageSection.allCases) { section in
-                    Text(section.rawValue).tag(section)
+            VStack(alignment: .leading, spacing: 12) {
+                pageTitle
+                HStack {
+                    Spacer()
+                    sectionPicker
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(width: 230)
         }
         .padding(.horizontal, 22)
         .padding(.top, 20)
@@ -204,38 +199,7 @@ struct ModelsView: View {
                     }
                 }
 
-                HStack(spacing: 12) {
-                    Picker("Sort by", selection: $hubSort) {
-                        ForEach(HuggingFaceModelSort.allCases) { sort in
-                            Label(sort.displayName, systemImage: sort.systemImage)
-                                .tag(sort)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .fixedSize()
-
-                    Picker("Capability", selection: $hubCapabilityFilter) {
-                        ForEach(HubCapabilityFilter.allCases) { filter in
-                            Text(filter.rawValue).tag(filter)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .fixedSize()
-
-                    Picker("Access", selection: $hubAccessFilter) {
-                        ForEach(HubAccessFilter.allCases) { filter in
-                            Text(filter.rawValue).tag(filter)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .fixedSize()
-
-                    Spacer()
-
-                    Text("\(filteredHubModels.count) shown")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                discoverFilterBar
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 14)
@@ -260,19 +224,7 @@ struct ModelsView: View {
                             action: {}
                         )
                     } else {
-                        HStack {
-                            Text(hubQuery.isEmpty ? "MLX models on Hugging Face" : "Search results")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Label("Sorted by \(hubSort.displayName.lowercased())", systemImage: hubSort.systemImage)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Link(destination: hubModelsURL) {
-                                Label("Open Hub", systemImage: "arrow.up.right")
-                                    .font(.caption)
-                            }
-                        }
+                        discoverResultsHeader
 
                         if filteredHubModels.isEmpty {
                             ModelsEmptyState(
@@ -352,6 +304,141 @@ struct ModelsView: View {
 
     private var installedModelIDs: Set<String> {
         Set(localLibrary.models.map(\.repoID))
+    }
+
+    private var pageTitle: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Models")
+                .font(.title2.weight(.semibold))
+            Text("Manage local MLX models or find new ones on Hugging Face.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+    }
+
+    private var sectionPicker: some View {
+        Picker("Section", selection: $section) {
+            ForEach(ModelsPageSection.allCases) { section in
+                Text(section.rawValue).tag(section)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(width: 230)
+    }
+
+    private var discoverFilterBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                hubSortPicker
+                hubCapabilityPicker
+                hubAccessPicker
+                Spacer(minLength: 8)
+                shownModelCount
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    hubSortPicker
+                    Spacer(minLength: 8)
+                    shownModelCount
+                }
+                HStack(spacing: 12) {
+                    hubCapabilityPicker
+                    hubAccessPicker
+                    Spacer(minLength: 0)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                hubSortPicker
+                hubCapabilityPicker
+                hubAccessPicker
+                shownModelCount
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var hubSortPicker: some View {
+        Picker("Sort by", selection: $hubSort) {
+            ForEach(HuggingFaceModelSort.allCases) { sort in
+                Label(sort.displayName, systemImage: sort.systemImage)
+                    .tag(sort)
+            }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+    }
+
+    private var hubCapabilityPicker: some View {
+        Picker("Capability", selection: $hubCapabilityFilter) {
+            ForEach(HubCapabilityFilter.allCases) { filter in
+                Text(filter.rawValue).tag(filter)
+            }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+    }
+
+    private var hubAccessPicker: some View {
+        Picker("Access", selection: $hubAccessFilter) {
+            ForEach(HubAccessFilter.allCases) { filter in
+                Text(filter.rawValue).tag(filter)
+            }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+    }
+
+    private var shownModelCount: some View {
+        Text("\(filteredHubModels.count) shown")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize()
+    }
+
+    private var discoverResultsHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                discoverResultsTitle
+                Spacer(minLength: 8)
+                discoverSortStatus
+                openHubLink
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                discoverResultsTitle
+                HStack(spacing: 12) {
+                    discoverSortStatus
+                    Spacer(minLength: 8)
+                    openHubLink
+                }
+            }
+        }
+    }
+
+    private var discoverResultsTitle: some View {
+        Text(hubQuery.isEmpty ? "MLX models on Hugging Face" : "Search results")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .fixedSize()
+    }
+
+    private var discoverSortStatus: some View {
+        Label("Sorted by \(hubSort.displayName.lowercased())", systemImage: hubSort.systemImage)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize()
+    }
+
+    private var openHubLink: some View {
+        Link(destination: hubModelsURL) {
+            Label("Open Hub", systemImage: "arrow.up.right")
+                .font(.caption)
+        }
+        .fixedSize()
     }
 
     private var filteredHubModels: [HuggingFaceModel] {
@@ -587,13 +674,19 @@ private struct HubModelRow: View {
                     HStack(spacing: 6) {
                         ModelPill(title: compactCount(model.downloads), systemImage: "arrow.down.circle")
                         ModelPill(title: compactCount(model.likes), systemImage: "heart")
-                        ForEach(LocalModelCapability.allCases, id: \.self) { capability in
-                            if model.capabilities.contains(capability) {
-                                CapabilityPill(capability: capability)
+                    }
+
+                    if !model.capabilities.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(LocalModelCapability.allCases, id: \.self) { capability in
+                                if model.capabilities.contains(capability) {
+                                    CapabilityPill(capability: capability)
+                                }
                             }
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Spacer(minLength: 12)
 

@@ -56,7 +56,7 @@ struct ControlPanelView: View {
             detail
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 900, minHeight: 580)
+        .frame(minWidth: 720, minHeight: 520)
         .onAppear {
             applySidebarSelection(navigation.requestedTab.map(ControlPanelSidebarSelection.tab) ?? sidebarSelection)
         }
