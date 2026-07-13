@@ -41,6 +41,7 @@ final class ControlPanelNavigation: ObservableObject {
 struct ControlPanelView: View {
     @ObservedObject var model: MLXServerDemoModel
     @ObservedObject var navigation: ControlPanelNavigation
+    @ObservedObject var runtime: SystemRuntimeMonitor
     @StateObject private var chat = ChatViewModel()
     @StateObject private var imageGeneration = ImageGenerationViewModel()
     @StateObject private var dashboard = DashboardViewModel()
@@ -155,7 +156,7 @@ struct ControlPanelView: View {
                 case .models:
                     ModelsView(model: model)
                 case .logs:
-                    LogsView(model: model)
+                    LogsView(model: model, runtime: runtime)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -470,5 +471,5 @@ private extension View {
 }
 
 #Preview {
-    ControlPanelView(model: .init(), navigation: .init())
+    ControlPanelView(model: .init(), navigation: .init(), runtime: .init())
 }

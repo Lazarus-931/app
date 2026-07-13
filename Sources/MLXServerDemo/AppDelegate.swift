@@ -316,6 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var window: NSWindow?
     private let model = MLXServerDemoModel()
     private let controlPanelNavigation = ControlPanelNavigation()
+    private let runtime = SystemRuntimeMonitor()
     private var statusItem: NSStatusItem?
     private var serverActionMenuItem: NSMenuItem?
     private var modelMenuItem: NSMenuItem?
@@ -327,6 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private weak var highlightedMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        runtime.start()
         model.onMenuStateChanged = { [weak self] in
             guard let self else {
                 return
@@ -365,6 +367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         modelScanTask?.cancel()
+        runtime.stop()
         model.applicationWillTerminate()
     }
 
@@ -461,7 +464,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.center()
         window.contentView = NSHostingView(rootView: ControlPanelView(
             model: model,
-            navigation: controlPanelNavigation
+            navigation: controlPanelNavigation,
+            runtime: runtime
         ))
         window.makeKeyAndOrderFront(nil)
         self.window = window
@@ -574,6 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let headerItem = NSMenuItem(title: "Session Status", action: nil, keyEquivalent: "")
         let headerView = NSHostingView(rootView: SessionStatsContainerView(
             model: model,
+            runtime: runtime,
             highlightState: SessionStatsHighlightState(),
             section: .header
         ))
@@ -586,6 +591,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let bodyView = SessionStatsHostingView(
             rootView: SessionStatsContainerView(
                 model: model,
+                runtime: runtime,
                 highlightState: highlightState,
                 section: .body
             ),
@@ -1029,6 +1035,7 @@ private enum SessionStatsSection {
 
 private struct SessionStatsContainerView: View {
     @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var runtime: SystemRuntimeMonitor
     @ObservedObject var highlightState: SessionStatsHighlightState
     let section: SessionStatsSection
 
@@ -1041,10 +1048,9 @@ private struct SessionStatsContainerView: View {
             if let metrics = model.sessionStatsDisplayMetrics {
                 SessionStatsMenuView(
                     metrics: metrics,
-                    updatedAt: model.lastMetricsFetchAt,
+                    runtime: runtime,
                     tokenActivity: model.sessionStatsDisplayTokenActivity,
                     isLoading: isLoading,
-                    isPreserved: model.sessionStatsArePreserved,
                     isHighlighted: highlightState.isHighlighted,
                     section: section,
                     displayModel: isLoading
@@ -1054,6 +1060,7 @@ private struct SessionStatsContainerView: View {
             } else {
                 SessionStatsLoadingMenuView(
                     modelName: model.selectedModelDisplay,
+                    runtime: runtime,
                     isHighlighted: highlightState.isHighlighted,
                     section: section,
                     statusText: model.settings.normalized().languageModelID == nil
@@ -1077,10 +1084,9 @@ private struct SessionStatsContainerView: View {
 
 private struct SessionStatsMenuView: View {
     let metrics: MLXServerMetrics
-    let updatedAt: Date?
+    @ObservedObject var runtime: SystemRuntimeMonitor
     let tokenActivity: [SessionTokenActivitySample]
     let isLoading: Bool
-    let isPreserved: Bool
     let isHighlighted: Bool
     let section: SessionStatsSection
     let displayModel: String
@@ -1169,9 +1175,10 @@ private struct SessionStatsMenuView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("MLX Server")
                     .font(.headline)
-                Text(isPreserved ? "Previous session snapshot" : updatedText)
-                    .font(.subheadline)
-                    .foregroundStyle(secondaryTextColor)
+                SessionMemoryUsageLabel(
+                    runtime: runtime,
+                    textColor: secondaryTextColor
+                )
             }
 
             Spacer(minLength: 16)
@@ -1290,21 +1297,6 @@ private struct SessionStatsMenuView: View {
         }
     }
 
-    private var updatedText: String {
-        guard let updatedAt else {
-            return "Waiting for metrics"
-        }
-
-        let elapsed = max(0, Int(Date().timeIntervalSince(updatedAt)))
-        if elapsed < 10 {
-            return "Updated just now"
-        }
-        if elapsed < 60 {
-            return "Updated \(elapsed)s ago"
-        }
-        return "Updated \(elapsed / 60)m ago"
-    }
-
     private func formatted(_ value: Int) -> String {
         MLXServerDemoFormatting.compactCount(value).display
     }
@@ -1312,6 +1304,7 @@ private struct SessionStatsMenuView: View {
 
 private struct SessionStatsLoadingMenuView: View {
     let modelName: String
+    @ObservedObject var runtime: SystemRuntimeMonitor
     let isHighlighted: Bool
     let section: SessionStatsSection
     let statusText: String
@@ -1374,9 +1367,10 @@ private struct SessionStatsLoadingMenuView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("MLX Server")
                     .font(.headline)
-                Text("Waiting for session metrics")
-                    .font(.subheadline)
-                    .foregroundStyle(secondaryTextColor)
+                SessionMemoryUsageLabel(
+                    runtime: runtime,
+                    textColor: secondaryTextColor
+                )
             }
 
             Spacer(minLength: 16)
@@ -1395,6 +1389,74 @@ private struct SessionStatsLoadingMenuView: View {
                     .lineLimit(1)
             }
         }
+    }
+}
+
+private struct SessionMemoryUsageLabel: View {
+    @ObservedObject var runtime: SystemRuntimeMonitor
+    let textColor: Color
+
+    private var usageFraction: Double {
+        runtime.memoryUsageFraction
+    }
+
+    private var compactValue: String {
+        guard runtime.usedMemoryBytes > 0, runtime.totalMemoryBytes > 0 else {
+            return "--"
+        }
+        return String(
+            format: "%.1f / %.0f GB",
+            gibibytes(runtime.usedMemoryBytes),
+            gibibytes(runtime.totalMemoryBytes)
+        )
+    }
+
+    private var detailedValue: String {
+        guard runtime.usedMemoryBytes > 0, runtime.totalMemoryBytes > 0 else {
+            return "Memory usage unavailable"
+        }
+        return String(
+            format: "Memory usage: %.1f GB of %.0f GB (%d%%)",
+            gibibytes(runtime.usedMemoryBytes),
+            gibibytes(runtime.totalMemoryBytes),
+            Int((usageFraction * 100).rounded())
+        )
+    }
+
+    private var iconColor: Color {
+        switch usageFraction {
+        case 0.85...:
+            return .red
+        case 0.70...:
+            return .orange
+        default:
+            return .green
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "memorychip")
+                .foregroundStyle(iconColor)
+            ProgressView(value: usageFraction)
+                .progressViewStyle(.linear)
+                .tint(iconColor)
+                .frame(width: 54)
+            Text(compactValue)
+                .monospacedDigit()
+                .foregroundStyle(textColor)
+        }
+        .font(.caption)
+        .lineLimit(1)
+        .fixedSize()
+        .help(detailedValue)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Memory usage")
+        .accessibilityValue(detailedValue)
+    }
+
+    private func gibibytes(_ bytes: UInt64) -> Double {
+        Double(bytes) / Double(1024 * 1024 * 1024)
     }
 }
 

@@ -5,7 +5,7 @@ import SwiftUI
 
 struct LogsView: View {
     @ObservedObject var model: MLXServerDemoModel
-    @StateObject private var runtime = LogsRuntimeMonitor()
+    @ObservedObject var runtime: SystemRuntimeMonitor
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -17,8 +17,6 @@ struct LogsView: View {
         .padding(.top, 20)
         .padding(.bottom, 22)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { runtime.start() }
-        .onDisappear { runtime.stop() }
     }
 
     private var pageHeader: some View {
@@ -227,7 +225,7 @@ private struct RuntimeInfoCard: View {
 }
 
 @MainActor
-private final class LogsRuntimeMonitor: ObservableObject {
+final class SystemRuntimeMonitor: ObservableObject {
     @Published private(set) var usedMemoryBytes: UInt64 = 0
 
     let chipName = SystemRuntimeInfo.chipName
@@ -412,6 +410,6 @@ private struct LogTextView: NSViewRepresentable {
 }
 
 #Preview {
-    LogsView(model: .init())
+    LogsView(model: .init(), runtime: .init())
         .frame(width: 950, height: 650)
 }
