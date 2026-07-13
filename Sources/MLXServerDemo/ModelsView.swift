@@ -136,7 +136,8 @@ struct ModelsView: View {
                             InstalledModelRow(
                                 localModel: localModel,
                                 selectedLanguageModelID: model.settings.normalized().languageModelID,
-                                onUseForChat: { model.switchLanguageModel(to: localModel.repoID) },
+                                isModelSwitchInProgress: model.modelSwitchInProgress,
+                                onLoadModel: { model.switchLanguageModel(to: localModel.repoID) },
                                 onUseForImageGeneration: {
                                     model.settings.imageGenerationModelID = localModel.repoID
                                 },
@@ -327,13 +328,18 @@ private struct ModelsSearchField: View {
 private struct InstalledModelRow: View {
     let localModel: LocalModel
     let selectedLanguageModelID: String?
-    let onUseForChat: () -> Void
+    let isModelSwitchInProgress: Bool
+    let onLoadModel: () -> Void
     let onUseForImageGeneration: () -> Void
     let onUseForTextToSpeech: () -> Void
     let onUseForSpeechToText: () -> Void
 
     private var isSelected: Bool {
         selectedLanguageModelID == localModel.repoID
+    }
+
+    private var isLoading: Bool {
+        isSelected && isModelSwitchInProgress
     }
 
     var body: some View {
@@ -345,7 +351,13 @@ private struct InstalledModelRow: View {
                     Text(modelName(localModel.repoID))
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
-                    if isSelected {
+                    if isLoading {
+                        ModelPill(
+                            title: "Loading model",
+                            systemImage: "arrow.triangle.2.circlepath",
+                            color: .orange
+                        )
+                    } else if isSelected {
                         ModelPill(title: "Chat model", systemImage: "checkmark", color: .accentColor)
                     }
                 }
@@ -383,13 +395,22 @@ private struct InstalledModelRow: View {
 
             Spacer(minLength: 12)
 
-            Button(isSelected ? "Selected" : "Use for Chat", action: onUseForChat)
+            Button(action: onLoadModel) {
+                HStack(spacing: 7) {
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(isLoading ? "Loading Model…" : isSelected ? "Loaded" : "Load Model")
+                }
+            }
                 .buttonStyle(.borderedProminent)
                 .disabled(isSelected)
                 .fixedSize()
 
             Menu {
-                Button("Use for Chat", action: onUseForChat)
+                Button("Load Model", action: onLoadModel)
+                    .disabled(isSelected)
                 Button("Use for Image Generation", action: onUseForImageGeneration)
                 Button("Use for Text to Speech", action: onUseForTextToSpeech)
                 Button("Use for Speech to Text", action: onUseForSpeechToText)
