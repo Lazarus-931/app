@@ -19,6 +19,7 @@ final class DashboardViewModel: ObservableObject {
         case last24Hours
         case last7Days
         case last30Days
+        case lastYear
         case allTime
 
         var id: String { rawValue }
@@ -26,11 +27,13 @@ final class DashboardViewModel: ObservableObject {
         var title: String {
             switch self {
             case .last24Hours:
-                "24 hours"
+                "Day"
             case .last7Days:
-                "7 days"
+                "Week"
             case .last30Days:
-                "1 month"
+                "Month"
+            case .lastYear:
+                "Year"
             case .allTime:
                 "All time"
             }
@@ -44,6 +47,8 @@ final class DashboardViewModel: ObservableObject {
                 .last7Days
             case .last30Days:
                 .last30Days
+            case .lastYear:
+                .lastYear
             case .allTime:
                 .allTime
             }
@@ -61,6 +66,8 @@ final class DashboardViewModel: ObservableObject {
                 7
             case .last30Days:
                 30
+            case .lastYear:
+                365
             case .allTime:
                 nil
             }

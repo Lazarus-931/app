@@ -218,30 +218,44 @@ struct StatsView: View {
     }
 
     private var filtersRow: some View {
-        HStack(spacing: 10) {
-            DashboardPickerContainer(title: "Model") {
-                Picker("Model", selection: $dashboard.selectedModelID) {
-                    ForEach(dashboard.availableModels) { option in
-                        Text(option.displayTitle).tag(option.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                modelFilter
+                periodFilter
             }
-            .frame(maxWidth: 340)
 
-            DashboardPickerContainer(title: "Period") {
-                Picker("Period", selection: $dashboard.selectedRange) {
-                    ForEach(DashboardViewModel.RangeOption.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
+            VStack(alignment: .leading, spacing: 10) {
+                modelFilter
+                periodFilter
             }
-            .frame(width: 165)
         }
+    }
+
+    private var modelFilter: some View {
+        DashboardPickerContainer(title: "Model") {
+            Picker("Model", selection: $dashboard.selectedModelID) {
+                ForEach(dashboard.availableModels) { option in
+                    Text(option.displayTitle).tag(option.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: 340)
+    }
+
+    private var periodFilter: some View {
+        DashboardPickerContainer(title: "Period") {
+            Picker("Period", selection: $dashboard.selectedRange) {
+                ForEach(DashboardViewModel.RangeOption.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+        .frame(width: 430)
     }
 
     private var sessionSubtitle: String? {
@@ -1624,7 +1638,7 @@ private struct DashboardTokenChart: View {
         switch range {
         case .last24Hours:
             .hour
-        case .last7Days, .last30Days, .allTime:
+        case .last7Days, .last30Days, .lastYear, .allTime:
             .day
         }
     }
@@ -1702,7 +1716,7 @@ private struct DashboardRequestChart: View {
         switch range {
         case .last24Hours:
             .hour
-        case .last7Days, .last30Days, .allTime:
+        case .last7Days, .last30Days, .lastYear, .allTime:
             .day
         }
     }

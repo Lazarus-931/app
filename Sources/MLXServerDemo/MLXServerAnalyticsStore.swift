@@ -5,13 +5,14 @@ enum MLXServerAnalyticsRange: CaseIterable {
     case last24Hours
     case last7Days
     case last30Days
+    case lastYear
     case allTime
 
     var granularity: MLXServerAnalyticsGranularity {
         switch self {
         case .last24Hours:
             return .hour
-        case .last7Days, .last30Days, .allTime:
+        case .last7Days, .last30Days, .lastYear, .allTime:
             return .day
         }
     }
@@ -24,6 +25,8 @@ enum MLXServerAnalyticsRange: CaseIterable {
             return 7 * 24 * 60 * 60
         case .last30Days:
             return 30 * 24 * 60 * 60
+        case .lastYear:
+            return 365 * 24 * 60 * 60
         case .allTime:
             return nil
         }
