@@ -1274,7 +1274,13 @@ private struct SessionStatsMenuView: View {
                 "Latest request",
                 "\(formatted(latest.promptTokens + latest.generatedTokens)) tokens"
             )
-            Spacer()
+            Spacer(minLength: 8)
+            metric(
+                "Prefill speed",
+                MLXServerDemoFormatting.rate(latest.prefillTokensPerSecond),
+                alignment: .center
+            )
+            Spacer(minLength: 8)
             metric(
                 "Decode speed",
                 MLXServerDemoFormatting.rate(latest.decodeTokensPerSecond),
