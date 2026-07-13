@@ -47,9 +47,9 @@ struct StatsView: View {
 
     private var pageHeader: some View {
         HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Analytics")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.title2.weight(.semibold))
                 Text("Monitor token consumption, request volume, and model performance across this workspace.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
