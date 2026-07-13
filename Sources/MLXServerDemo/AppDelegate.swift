@@ -116,11 +116,32 @@ private final class ModelMenuRowView: NSView {
             let symbolName: String
             let description: String
             switch capability {
+            case .text:
+                symbolName = "text.alignleft"
+                description = capability.displayName
             case .vision:
                 symbolName = "eye.fill"
                 description = capability.displayName
             case .audio:
                 symbolName = "waveform"
+                description = capability.displayName
+            case .video:
+                symbolName = "film.fill"
+                description = capability.displayName
+            case .imageGeneration:
+                symbolName = "photo.badge.plus"
+                description = capability.displayName
+            case .speechToText:
+                symbolName = "captions.bubble.fill"
+                description = capability.displayName
+            case .textToSpeech:
+                symbolName = "speaker.wave.2.fill"
+                description = capability.displayName
+            case .embeddings:
+                symbolName = "circle.grid.3x3.fill"
+                description = capability.displayName
+            case .reasoning:
+                symbolName = "brain.fill"
                 description = capability.displayName
             case .tools:
                 symbolName = "hammer.fill"

@@ -143,16 +143,7 @@ struct ModelsView: View {
                                 localModel: localModel,
                                 selectedLanguageModelID: model.settings.normalized().languageModelID,
                                 isModelSwitchInProgress: model.modelSwitchInProgress,
-                                onLoadModel: { model.switchLanguageModel(to: localModel.repoID) },
-                                onUseForImageGeneration: {
-                                    model.settings.imageGenerationModelID = localModel.repoID
-                                },
-                                onUseForTextToSpeech: {
-                                    model.settings.textToSpeechModelID = localModel.repoID
-                                },
-                                onUseForSpeechToText: {
-                                    model.settings.speechToTextModelID = localModel.repoID
-                                }
+                                onLoadModel: { model.switchLanguageModel(to: localModel.repoID) }
                             )
                         }
                     }
@@ -570,9 +561,6 @@ private struct InstalledModelRow: View {
     let selectedLanguageModelID: String?
     let isModelSwitchInProgress: Bool
     let onLoadModel: () -> Void
-    let onUseForImageGeneration: () -> Void
-    let onUseForTextToSpeech: () -> Void
-    let onUseForSpeechToText: () -> Void
 
     private var isSelected: Bool {
         selectedLanguageModelID == localModel.repoID
@@ -648,24 +636,17 @@ private struct InstalledModelRow: View {
                 .disabled(isSelected)
                 .fixedSize()
 
-            Menu {
-                Button("Load Model", action: onLoadModel)
-                    .disabled(isSelected)
-                Button("Use for Image Generation", action: onUseForImageGeneration)
-                Button("Use for Text to Speech", action: onUseForTextToSpeech)
-                Button("Use for Speech to Text", action: onUseForSpeechToText)
-                if let snapshotURL = localModel.snapshotURL {
-                    Divider()
-                    Button("Show in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([snapshotURL])
-                    }
+            if let snapshotURL = localModel.snapshotURL {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([snapshotURL])
+                } label: {
+                    Image(systemName: "arrow.up.forward.square")
+                        .frame(width: 20, height: 20)
                 }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .frame(width: 20)
+                .buttonStyle(.borderless)
+                .help("Show in Finder")
+                .accessibilityLabel("Show \(localModel.repoID) in Finder")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
         }
         .padding(14)
         .modelRowBackground(isHighlighted: isSelected)
@@ -1028,8 +1009,15 @@ private extension View {
 private extension LocalModelCapability {
     var systemImage: String {
         switch self {
+        case .text: "text.alignleft"
         case .vision: "eye"
         case .audio: "waveform"
+        case .video: "film"
+        case .imageGeneration: "photo.badge.plus"
+        case .speechToText: "captions.bubble"
+        case .textToSpeech: "speaker.wave.2"
+        case .embeddings: "circle.grid.3x3"
+        case .reasoning: "brain"
         case .tools: "hammer"
         }
     }

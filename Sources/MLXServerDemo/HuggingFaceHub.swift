@@ -73,23 +73,70 @@ struct HuggingFaceModel: Decodable, Identifiable, Equatable, Sendable {
     }
 
     var capabilities: Set<LocalModelCapability> {
+        let pipeline = pipelineTag?.lowercased() ?? ""
         let descriptors = ([pipelineTag, libraryName].compactMap { $0 } + tags)
             .joined(separator: " ")
             .lowercased()
         var result = Set<LocalModelCapability>()
-        if descriptors.contains("image-text")
+
+        let textPipelines: Set<String> = [
+            "text-generation", "image-text-to-text", "image-to-text",
+            "video-text-to-text", "any-to-any", "translation"
+        ]
+        if textPipelines.contains(pipeline)
+            || descriptors.contains("conversational")
+            || descriptors.contains("causal-lm") {
+            result.insert(.text)
+        }
+
+        if pipeline.contains("image-text")
+            || pipeline == "image-to-text"
             || descriptors.contains("vision")
             || descriptors.contains("vlm")
             || descriptors.contains("llava") {
             result.insert(.vision)
         }
-        if descriptors.contains("audio")
-            || descriptors.contains("speech")
+
+        if pipeline.contains("video") || descriptors.contains("video") {
+            result.insert(.video)
+            result.insert(.vision)
+        }
+
+        if pipeline == "text-to-image" {
+            result.insert(.imageGeneration)
+        }
+
+        if pipeline == "automatic-speech-recognition"
             || descriptors.contains("whisper")
-            || descriptors.contains("asr")
-            || descriptors.contains("tts") {
+            || descriptors.contains("transcribe")
+            || descriptors.contains(" asr") {
+            result.insert(.speechToText)
+        }
+
+        if pipeline == "text-to-speech" || descriptors.contains(" tts") {
+            result.insert(.textToSpeech)
+        }
+
+        let embeddingPipelines: Set<String> = [
+            "feature-extraction", "sentence-similarity", "text-ranking"
+        ]
+        if embeddingPipelines.contains(pipeline)
+            || descriptors.contains("embedding")
+            || descriptors.contains("sentence-transformers") {
+            result.insert(.embeddings)
+        }
+
+        if descriptors.contains("reasoning") || descriptors.contains("thinking") {
+            result.insert(.reasoning)
+        }
+
+        if pipeline.contains("audio")
+            || descriptors.contains("speech")
+            || result.contains(.speechToText)
+            || result.contains(.textToSpeech) {
             result.insert(.audio)
         }
+
         if descriptors.contains("tool") || descriptors.contains("function-call") {
             result.insert(.tools)
         }

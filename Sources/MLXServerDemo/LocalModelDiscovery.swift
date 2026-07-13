@@ -5,16 +5,37 @@ extension Notification.Name {
 }
 
 enum LocalModelCapability: String, CaseIterable, Hashable, Sendable {
+    case text
     case vision
     case audio
+    case video
+    case imageGeneration
+    case speechToText
+    case textToSpeech
+    case embeddings
+    case reasoning
     case tools
 
     var displayName: String {
         switch self {
+        case .text:
+            "Text"
         case .vision:
             "Vision"
         case .audio:
             "Audio"
+        case .video:
+            "Video"
+        case .imageGeneration:
+            "Image generation"
+        case .speechToText:
+            "Speech to text"
+        case .textToSpeech:
+            "Text to speech"
+        case .embeddings:
+            "Embeddings"
+        case .reasoning:
+            "Reasoning"
         case .tools:
             "Tool calling"
         }
@@ -247,9 +268,28 @@ enum LocalModelDiscovery {
             config = [:]
         }
 
-        let keys = recursiveKeys(in: config)
-        let descriptors = modelDescriptors(in: config)
+        let modelIndexURL = snapshotURL.appendingPathComponent("model_index.json")
+        let modelIndex: [String: Any]
+        if fileManager.fileExists(atPath: modelIndexURL.path),
+           let data = try? Data(contentsOf: modelIndexURL),
+           let parsedModelIndex = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            modelIndex = parsedModelIndex
+        } else {
+            modelIndex = [:]
+        }
+
+        let keys = recursiveKeys(in: config).union(recursiveKeys(in: modelIndex))
+        let descriptors = [modelDescriptors(in: config), modelDescriptors(in: modelIndex)]
+            .joined(separator: " ")
         var capabilities = Set<LocalModelCapability>()
+
+        let textDescriptors = [
+            "causallm", "conditionalgeneration", "language", "llm", "gpt",
+            "gemma", "qwen", "mistral", "llama", "deepseek", "cohere"
+        ]
+        if textDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.text)
+        }
 
         let visionKeys: Set<String> = [
             "vision_config",
@@ -265,6 +305,19 @@ enum LocalModelDiscovery {
         if !keys.isDisjoint(with: visionKeys)
             || visionDescriptors.contains(where: descriptors.contains) {
             capabilities.insert(.vision)
+        }
+
+        let videoDescriptors = ["video", "videollava"]
+        if videoDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.video)
+            capabilities.insert(.vision)
+        }
+
+        let imageGenerationDescriptors = [
+            "diffusion", "stable_diffusion", "fluxpipeline", "imagegeneration"
+        ]
+        if imageGenerationDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.imageGeneration)
         }
 
         let audioKeys: Set<String> = [
@@ -284,6 +337,25 @@ enum LocalModelDiscovery {
         if !keys.isDisjoint(with: audioKeys)
             || audioDescriptors.contains(where: descriptors.contains) {
             capabilities.insert(.audio)
+        }
+
+        let speechToTextDescriptors = ["whisper", "asr", "transcribe", "speechrecognition"]
+        if speechToTextDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.speechToText)
+        }
+
+        let textToSpeechDescriptors = ["tts", "texttospeech", "speechsynthesis"]
+        if textToSpeechDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.textToSpeech)
+        }
+
+        if fileManager.fileExists(atPath: snapshotURL.appendingPathComponent("modules.json").path)
+            || descriptors.contains("embedding") {
+            capabilities.insert(.embeddings)
+        }
+
+        if descriptors.contains("reasoning") || keys.contains("thinking_config") {
+            capabilities.insert(.reasoning)
         }
 
         if supportsToolCalling(at: snapshotURL, fileManager: fileManager) {
@@ -379,7 +451,11 @@ enum LocalModelDiscovery {
     private static func modelDescriptors(in config: [String: Any]) -> String {
         let modelType = config["model_type"] as? String ?? ""
         let architectures = config["architectures"] as? [String] ?? []
-        return ([modelType] + architectures).joined(separator: " ").lowercased()
+        let className = config["_class_name"] as? String ?? ""
+        let pipelineTag = config["pipeline_tag"] as? String ?? ""
+        return ([modelType, className, pipelineTag] + architectures)
+            .joined(separator: " ")
+            .lowercased()
     }
 
     private static func contextSize(in config: [String: Any]) -> Int? {
