@@ -244,8 +244,7 @@ struct ControlPanelView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-
-            Spacer(minLength: 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(model.isRunning ? "Running" : "Start") {
                 model.toggleServer()
@@ -254,6 +253,7 @@ struct ControlPanelView: View {
             .buttonStyle(.glassProminent)
             .tint(model.isRunning ? .white : .accentColor)
             .keyboardShortcut("s", modifiers: .command)
+            .fixedSize()
         }
         .padding(.leading, headerLeadingPadding)
         .padding(.trailing, 18)

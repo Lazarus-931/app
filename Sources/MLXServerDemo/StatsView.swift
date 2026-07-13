@@ -47,9 +47,9 @@ struct StatsView: View {
                 Text("Monitor token consumption, request volume, and model performance across this workspace.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer(minLength: 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {
                 Circle()
@@ -68,6 +68,7 @@ struct StatsView: View {
                 .help("Refresh analytics")
                 .disabled(dashboard.isLoadingHistory)
             }
+            .fixedSize()
         }
     }
 
@@ -94,7 +95,7 @@ struct StatsView: View {
 
     private var overviewCards: some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 205), spacing: 14)],
+            columns: [GridItem(.adaptive(minimum: 280), spacing: 14)],
             alignment: .leading,
             spacing: 14
         ) {
@@ -220,13 +221,13 @@ struct StatsView: View {
     private var filtersRow: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
-                modelFilter
-                periodFilter
+                modelFilter.frame(width: 300)
+                periodFilter.frame(width: 430)
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                modelFilter
-                periodFilter
+                modelFilter.frame(maxWidth: .infinity)
+                periodFilter.frame(maxWidth: .infinity)
             }
         }
     }
@@ -242,7 +243,6 @@ struct StatsView: View {
             .labelsHidden()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: 340)
     }
 
     private var periodFilter: some View {
@@ -255,7 +255,6 @@ struct StatsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
         }
-        .frame(width: 430)
     }
 
     private var sessionSubtitle: String? {
@@ -998,17 +997,30 @@ private struct ModelPerformanceTable: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 180)
             } else {
-                VStack(spacing: 0) {
-                    modelRowHeader
-                    ForEach(rows) { row in
-                        Divider().overlay(DashboardPalette.panelStroke)
-                        modelRow(row)
+                ViewThatFits(in: .horizontal) {
+                    tableContent
+                        .frame(minWidth: minimumTableWidth, maxWidth: .infinity)
+
+                    ScrollView(.horizontal) {
+                        tableContent
+                            .frame(width: minimumTableWidth)
                     }
+                    .scrollIndicators(.visible)
                 }
             }
         }
         .padding(.horizontal, 16)
         .dashboardPanelStyle(cornerRadius: 14)
+    }
+
+    private var tableContent: some View {
+        VStack(spacing: 0) {
+            modelRowHeader
+            ForEach(rows) { row in
+                Divider().overlay(DashboardPalette.panelStroke)
+                modelRow(row)
+            }
+        }
     }
 
     private var modelRowHeader: some View {
@@ -1038,9 +1050,10 @@ private struct ModelPerformanceTable: View {
                 Text(row.modelID)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .layoutPriority(1)
                     .help(row.modelID)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minWidth: modelColumnMinimumWidth, maxWidth: .infinity, alignment: .leading)
 
             tableValue(MLXServerDemoFormatting.compactCount(row.processedTokens).display, width: 105)
             tableValue(MLXServerDemoFormatting.integer(row.totalRequests), width: 90)
@@ -1056,7 +1069,11 @@ private struct ModelPerformanceTable: View {
             if let width {
                 Text(title).frame(width: width, alignment: alignment)
             } else {
-                Text(title).frame(maxWidth: .infinity, alignment: alignment)
+                Text(title).frame(
+                    minWidth: modelColumnMinimumWidth,
+                    maxWidth: .infinity,
+                    alignment: alignment
+                )
             }
         }
         .font(.caption)
@@ -1073,6 +1090,9 @@ private struct ModelPerformanceTable: View {
     private var modelColorDomain: [String] {
         DashboardModelColorScale.domain(for: rows.map(\.modelID))
     }
+
+    private var modelColumnMinimumWidth: CGFloat { 280 }
+    private var minimumTableWidth: CGFloat { 900 }
 }
 
 private struct SessionCardValue: Identifiable {
