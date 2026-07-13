@@ -304,6 +304,7 @@ struct ControlPanelView: View {
 
 struct ServerControlButton: View {
     @ObservedObject var model: MLXServerDemoModel
+    @State private var isHovering = false
 
     var body: some View {
         Button {
@@ -317,10 +318,22 @@ struct ServerControlButton: View {
         .labelStyle(.titleAndIcon)
         .buttonBorderShape(.capsule)
         .buttonStyle(.glassProminent)
-        .tint(model.isRunning ? .white : .accentColor)
+        .tint(model.isRunning ? (isHovering ? .red : .white) : .accentColor)
+        .scaleEffect(isHovering ? 1.04 : 1)
+        .shadow(
+            color: hoverTint.opacity(isHovering ? 0.28 : 0),
+            radius: isHovering ? 10 : 0,
+            y: 2
+        )
         .keyboardShortcut("s", modifiers: .command)
         .help(model.isRunning ? "Stop server" : "Start server")
         .fixedSize()
+        .onHover { isHovering = $0 }
+        .animation(.snappy(duration: 0.16), value: isHovering)
+    }
+
+    private var hoverTint: Color {
+        model.isRunning ? .red : .accentColor
     }
 }
 
