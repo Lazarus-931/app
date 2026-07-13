@@ -39,7 +39,8 @@ struct StatsView: View {
         .onChange(of: model.metrics?.server.loadedModel) { _, _ in
             syncDashboardState(scanModels: false, reloadHistory: false)
         }
-        .onChange(of: model.lastMetricsFetchAt) { _, _ in
+        .onChange(of: historicalMetricsRevision) { oldRevision, newRevision in
+            guard oldRevision != nil, newRevision != nil else { return }
             syncDashboardState(scanModels: false, reloadHistory: true)
         }
     }
@@ -237,6 +238,14 @@ struct StatsView: View {
         return "Updated \(date.formatted(date: .abbreviated, time: .shortened))"
     }
 
+    private var historicalMetricsRevision: DashboardMetricsRevision? {
+        guard let summary = model.metrics?.summary else { return nil }
+        return DashboardMetricsRevision(
+            completedRequests: summary.requestsCompleted,
+            failedRequests: summary.requestsFailed
+        )
+    }
+
     private func compact(_ value: Int) -> String {
         MLXServerDemoFormatting.compactCount(value).display
     }
@@ -348,6 +357,11 @@ struct StatsView: View {
             dashboard.reloadHistorical()
         }
     }
+}
+
+private struct DashboardMetricsRevision: Equatable {
+    let completedRequests: Int
+    let failedRequests: Int
 }
 
 private struct AnalyticsSectionHeader: View {
