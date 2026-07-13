@@ -261,7 +261,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.onMenuStateChanged = { [weak self] in
-            self?.rebuildMenu()
+            guard let self else {
+                return
+            }
+            if self.model.menuIsOpen {
+                self.refreshVisibleMenuState()
+            } else {
+                self.rebuildMenu()
+            }
         }
 
         configureMainMenu()
@@ -396,8 +403,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
 
         let statusMenuItem: NSMenuItem
-        if model.isRunning, let metrics = model.metrics {
-            statusMenuItem = makeSessionStatsMenuItem(metrics)
+        let sessionStatsAreLoading = model.metricsLoading || model.modelSwitchInProgress
+        if model.sessionStatsDisplayMetrics != nil || model.isRunning || sessionStatsAreLoading {
+            statusMenuItem = makeSessionStatsMenuItem()
         } else {
             statusMenuItem = NSMenuItem(
                 title: model.isRunning ? model.unavailableMetricsText : "MLX Server is Not Running",
@@ -438,16 +446,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.modelMenuItem = modelMenuItem
     }
 
-    private func makeSessionStatsMenuItem(_ metrics: MLXServerMetrics) -> NSMenuItem {
+    private func makeSessionStatsMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Session Stats", action: nil, keyEquivalent: "")
-        let hostingView = NSHostingView(rootView: SessionStatsMenuView(
-            metrics: metrics,
-            updatedAt: model.lastMetricsFetchAt,
-            tokenActivity: model.sessionTokenActivity
-        ))
+        let hostingView = NSHostingView(rootView: SessionStatsContainerView(model: model))
         hostingView.frame = NSRect(x: 0, y: 0, width: 350, height: 360)
         item.view = hostingView
         return item
+    }
+
+    private func refreshVisibleMenuState() {
+        modelMenuItem?.title = model.modelSwitchInProgress
+            ? "Model: Loading…"
+            : "Model: \(selectedModelMenuTitle)"
+        modelMenuItem?.submenu = makeModelSubmenu()
+        serverActionMenuItem?.title = model.isRunning ? "Stop Server" : "Start Server"
     }
 
     private func makeServingStatsMenuItem() -> NSMenuItem {
@@ -780,10 +792,46 @@ private enum StatsMenuLayout {
     static let minimumColumnGap: CGFloat = 24
 }
 
+private struct SessionStatsContainerView: View {
+    @ObservedObject var model: MLXServerDemoModel
+
+    private var isLoading: Bool {
+        model.metricsLoading || model.modelSwitchInProgress
+    }
+
+    var body: some View {
+        Group {
+            if let metrics = model.sessionStatsDisplayMetrics {
+                SessionStatsMenuView(
+                    metrics: metrics,
+                    updatedAt: model.lastMetricsFetchAt,
+                    tokenActivity: model.sessionStatsDisplayTokenActivity,
+                    isLoading: isLoading,
+                    isPreserved: model.sessionStatsArePreserved,
+                    displayModel: isLoading
+                        ? model.selectedModelDisplay
+                        : metrics.server.displayLoadedModel
+                )
+            } else {
+                SessionStatsLoadingMenuView(
+                    modelName: model.selectedModelDisplay,
+                    statusText: model.settings.normalized().languageModelID == nil
+                        ? "Starting server…"
+                        : "Loading model…"
+                )
+            }
+        }
+        .frame(width: 350, height: 360, alignment: .topLeading)
+    }
+}
+
 private struct SessionStatsMenuView: View {
     let metrics: MLXServerMetrics
     let updatedAt: Date?
     let tokenActivity: [SessionTokenActivitySample]
+    let isLoading: Bool
+    let isPreserved: Bool
+    let displayModel: String
 
     private let accent = Color(red: 0.31, green: 0.72, blue: 0.77)
     private let generatedAccent = Color(red: 0.45, green: 0.55, blue: 0.92)
@@ -795,28 +843,32 @@ private struct SessionStatsMenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider()
-                .padding(.vertical, 10)
 
-            sessionOverview
-
-            SessionActivityPlot(
-                values: tokenActivity,
-                promptAccent: accent,
-                generatedAccent: generatedAccent
-            )
-                .padding(.top, 12)
-
-            Divider()
-                .padding(.vertical, 10)
-
-            metricsGrid
-
-            if let latest = metrics.latest {
+            VStack(alignment: .leading, spacing: 0) {
                 Divider()
                     .padding(.vertical, 10)
-                latestRequest(latest)
+
+                sessionOverview
+
+                SessionActivityPlot(
+                    values: tokenActivity,
+                    promptAccent: accent,
+                    generatedAccent: generatedAccent
+                )
+                .padding(.top, 12)
+
+                Divider()
+                    .padding(.vertical, 10)
+
+                metricsGrid
+
+                if let latest = metrics.latest {
+                    Divider()
+                        .padding(.vertical, 10)
+                    latestRequest(latest)
+                }
             }
+            .opacity(isLoading ? 0.42 : 1)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -830,7 +882,7 @@ private struct SessionStatsMenuView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("MLX Server")
                     .font(.headline)
-                Text(updatedText)
+                Text(isPreserved ? "Previous session snapshot" : updatedText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -838,10 +890,16 @@ private struct SessionStatsMenuView: View {
             Spacer(minLength: 16)
 
             VStack(alignment: .trailing, spacing: 1) {
-                Text("Running")
-                    .font(.headline)
+                HStack(spacing: 5) {
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(isLoading ? "Loading model…" : "Running")
+                        .font(.headline)
+                }
                 Text(MLXServerDemoFormatting.truncateModelName(
-                    metrics.server.displayLoadedModel,
+                    displayModel,
                     maxLength: 20
                 ))
                 .font(.subheadline)
@@ -956,6 +1014,62 @@ private struct SessionStatsMenuView: View {
 
     private func formatted(_ value: Int) -> String {
         MLXServerDemoFormatting.compactCount(value).display
+    }
+}
+
+private struct SessionStatsLoadingMenuView: View {
+    let modelName: String
+    let statusText: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("MLX Server")
+                        .font(.headline)
+                    Text("Waiting for session metrics")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 16)
+
+                VStack(alignment: .trailing, spacing: 1) {
+                    HStack(spacing: 5) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(statusText)
+                            .font(.headline)
+                    }
+                    Text(MLXServerDemoFormatting.truncateModelName(modelName, maxLength: 20))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Divider()
+                .padding(.vertical, 10)
+
+            Spacer()
+
+            VStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.regular)
+                Text("Session stats will appear when the server is ready.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(width: 350, height: 360, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("MLX Server is loading \(modelName)")
     }
 }
 
