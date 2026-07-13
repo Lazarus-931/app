@@ -107,22 +107,23 @@ struct LogsView: View {
 
                 Spacer()
 
-                Button {
+                LogToolbarActionButton(
+                    title: "Copy visible logs",
+                    systemImage: "doc.on.doc",
+                    hoverTint: .blue,
+                    isDisabled: output.visibleLineCount == 0
+                ) {
                     copyLogs(output.text)
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
                 }
-                .buttonStyle(.bordered)
-                .disabled(output.visibleLineCount == 0)
-                .help("Copy visible logs")
 
-                Button {
+                LogToolbarActionButton(
+                    title: "Clear logs",
+                    systemImage: "trash",
+                    hoverTint: .red,
+                    isDisabled: model.logText.isEmpty
+                ) {
                     model.clearLogs()
-                } label: {
-                    Label("Clear", systemImage: "trash")
                 }
-                .buttonStyle(.bordered)
-                .disabled(model.logText.isEmpty)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -544,6 +545,54 @@ private struct LogSearchField: View {
             RoundedRectangle(cornerRadius: 7)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         )
+    }
+}
+
+private struct LogToolbarActionButton: View {
+    let title: String
+    let systemImage: String
+    let hoverTint: Color
+    let isDisabled: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 30, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(foregroundColor)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(backgroundColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(borderColor, lineWidth: 0.5)
+        )
+        .onHover { isHovering = $0 }
+        .disabled(isDisabled)
+        .help(title)
+        .accessibilityLabel(title)
+    }
+
+    private var foregroundColor: Color {
+        if isDisabled { return .secondary.opacity(0.45) }
+        return isHovering ? hoverTint : .primary
+    }
+
+    private var backgroundColor: Color {
+        if isDisabled { return .secondary.opacity(0.04) }
+        return isHovering ? hoverTint.opacity(0.14) : .secondary.opacity(0.08)
+    }
+
+    private var borderColor: Color {
+        if isDisabled { return .clear }
+        return isHovering ? hoverTint.opacity(0.32) : Color(nsColor: .separatorColor)
     }
 }
 
