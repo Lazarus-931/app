@@ -312,7 +312,7 @@ private final class ModelMenuSectionHeaderView: NSView {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
     private var window: NSWindow?
     private let model = MLXServerDemoModel()
     private let controlPanelNavigation = ControlPanelNavigation()
@@ -369,6 +369,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         modelScanTask?.cancel()
         runtime.stop()
         model.applicationWillTerminate()
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === self.window else {
+            return
+        }
+        window.toolbar?.isVisible = false
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === self.window else {
+            return
+        }
+        window.toolbar?.isVisible = false
+    }
+
+    func windowWillExitFullScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === self.window else {
+            return
+        }
+        window.toolbar?.isVisible = true
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === self.window else {
+            return
+        }
+        window.toolbar?.isVisible = true
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -461,6 +489,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.styleMask.insert(.fullSizeContentView)
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.center()
         window.contentView = NSHostingView(rootView: ControlPanelView(
             model: model,

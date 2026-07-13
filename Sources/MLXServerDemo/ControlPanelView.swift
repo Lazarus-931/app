@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum ControlPanelTab: String, CaseIterable, Identifiable {
@@ -48,6 +49,7 @@ struct ControlPanelView: View {
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var splitColumnVisibility: NavigationSplitViewVisibility = .all
+    @State private var isFullScreen = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $splitColumnVisibility) {
@@ -64,6 +66,12 @@ struct ControlPanelView: View {
         .onReceive(navigation.$requestedTab) { tab in
             guard let tab else { return }
             applySidebarSelection(.tab(tab))
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { _ in
+            isFullScreen = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { _ in
+            isFullScreen = false
         }
     }
 
@@ -126,6 +134,11 @@ struct ControlPanelView: View {
             }
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if isFullScreen {
+                Color.clear.frame(height: 28)
+            }
+        }
         .navigationTitle("MLX Server")
     }
 
@@ -262,19 +275,16 @@ struct ControlPanelView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button(model.isRunning ? "Running" : "Start") {
-                model.toggleServer()
-            }
-            .buttonBorderShape(.capsule)
-            .buttonStyle(.glassProminent)
-            .tint(model.isRunning ? .white : .accentColor)
-            .keyboardShortcut("s", modifiers: .command)
-            .fixedSize()
+            serverControlButton
         }
         .padding(.leading, headerLeadingPadding)
         .padding(.trailing, 18)
         .padding(.vertical, 14)
         .animation(.snappy(duration: 0.2), value: splitColumnVisibility)
+    }
+
+    private var serverControlButton: some View {
+        ServerControlButton(model: model)
     }
 
     private var statusSubtitle: String {
@@ -289,6 +299,28 @@ struct ControlPanelView: View {
 
     private var headerLeadingPadding: CGFloat {
         splitColumnVisibility == .detailOnly ? 164 : 18
+    }
+}
+
+struct ServerControlButton: View {
+    @ObservedObject var model: MLXServerDemoModel
+
+    var body: some View {
+        Button {
+            model.toggleServer()
+        } label: {
+            Label(
+                model.isRunning ? "Stop" : "Start",
+                systemImage: model.isRunning ? "stop.fill" : "play.fill"
+            )
+        }
+        .labelStyle(.titleAndIcon)
+        .buttonBorderShape(.capsule)
+        .buttonStyle(.glassProminent)
+        .tint(model.isRunning ? .white : .accentColor)
+        .keyboardShortcut("s", modifiers: .command)
+        .help(model.isRunning ? "Stop server" : "Start server")
+        .fixedSize()
     }
 }
 
