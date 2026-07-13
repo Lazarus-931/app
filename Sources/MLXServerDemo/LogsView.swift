@@ -57,18 +57,10 @@ struct LogsView: View {
             )
 
             RuntimeInfoCard(
-                title: "Memory",
-                value: byteCount(runtime.totalMemoryBytes),
-                detail: "Unified memory",
+                title: "Unified memory",
+                value: "\(byteCount(runtime.usedMemoryBytes)) of \(byteCount(runtime.totalMemoryBytes))",
+                detail: "\(memoryUsagePercent)% in use",
                 systemImage: "memorychip",
-                tint: .purple
-            )
-
-            RuntimeInfoCard(
-                title: "Live usage",
-                value: byteCount(runtime.usedMemoryBytes),
-                detail: "\(memoryUsagePercent)% of memory in use",
-                systemImage: "gauge.with.dots.needle.67percent",
                 tint: memoryUsageTint,
                 progress: runtime.memoryUsageFraction
             )
