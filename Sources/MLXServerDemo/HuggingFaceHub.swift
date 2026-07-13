@@ -1,6 +1,33 @@
 import Foundation
 import MLXServerKit
 
+enum HuggingFaceModelSort: String, CaseIterable, Identifiable, Sendable {
+    case downloads
+    case trending = "trendingScore"
+    case likes
+    case recentlyUpdated = "lastModified"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .downloads: "Downloads"
+        case .trending: "Trending"
+        case .likes: "Likes"
+        case .recentlyUpdated: "Recently Updated"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .downloads: "arrow.down.circle"
+        case .trending: "flame"
+        case .likes: "heart"
+        case .recentlyUpdated: "clock.arrow.circlepath"
+        }
+    }
+}
+
 struct HuggingFaceModel: Decodable, Identifiable, Equatable, Sendable {
     let id: String
     let downloads: Int
@@ -91,7 +118,7 @@ enum HuggingFaceHubError: LocalizedError {
 }
 
 private struct HuggingFaceHubClient: Sendable {
-    func search(query: String) async throws -> [HuggingFaceModel] {
+    func search(query: String, sort: HuggingFaceModelSort) async throws -> HuggingFaceModelPage {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "huggingface.co"
@@ -99,9 +126,9 @@ private struct HuggingFaceHubClient: Sendable {
 
         var queryItems = [
             URLQueryItem(name: "filter", value: "mlx"),
-            URLQueryItem(name: "sort", value: "downloads"),
+            URLQueryItem(name: "sort", value: sort.rawValue),
             URLQueryItem(name: "direction", value: "-1"),
-            URLQueryItem(name: "limit", value: "30"),
+            URLQueryItem(name: "limit", value: "50"),
             URLQueryItem(name: "full", value: "true")
         ]
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -114,6 +141,11 @@ private struct HuggingFaceHubClient: Sendable {
             throw HuggingFaceHubError.invalidResponse
         }
 
+        return try await page(at: url)
+    }
+
+    func page(at url: URL) async throws -> HuggingFaceModelPage {
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
         request.setValue("MLXPlatform/1.0", forHTTPHeaderField: "User-Agent")
@@ -125,8 +157,31 @@ private struct HuggingFaceHubClient: Sendable {
             let message = (try? JSONDecoder().decode(HubErrorPayload.self, from: data))?.error ?? ""
             throw HuggingFaceHubError.requestFailed(httpResponse.statusCode, message)
         }
-        return try JSONDecoder().decode([HuggingFaceModel].self, from: data)
+        let models = try JSONDecoder()
+            .decode([HuggingFaceModel].self, from: data)
+            .filter { !$0.id.lowercased().hasPrefix("lmstudio-community/") }
+        return HuggingFaceModelPage(
+            models: models,
+            nextPageURL: nextPageURL(from: httpResponse.value(forHTTPHeaderField: "Link"))
+        )
     }
+
+    private func nextPageURL(from linkHeader: String?) -> URL? {
+        guard let nextLink = linkHeader?
+            .split(separator: ",")
+            .first(where: { $0.contains("rel=\"next\"") }),
+              let start = nextLink.firstIndex(of: "<"),
+              let end = nextLink[start...].firstIndex(of: ">")
+        else {
+            return nil
+        }
+        return URL(string: String(nextLink[nextLink.index(after: start)..<end]))
+    }
+}
+
+private struct HuggingFaceModelPage: Sendable {
+    let models: [HuggingFaceModel]
+    let nextPageURL: URL?
 }
 
 private struct HubErrorPayload: Decodable {
@@ -138,30 +193,90 @@ final class HuggingFaceModelLibrary: ObservableObject {
     @Published private(set) var models: [HuggingFaceModel] = []
     @Published private(set) var isSearching = false
     @Published private(set) var error: String?
+    @Published private(set) var pageNumber = 1
 
     private let client = HuggingFaceHubClient()
     private var searchTask: Task<Void, Never>?
+    private var cachedPages: [HuggingFaceModelPage] = []
+    private let maximumPageCount = 5
 
     deinit {
         searchTask?.cancel()
     }
 
-    func search(query: String) {
+    func search(query: String, sort: HuggingFaceModelSort) {
         searchTask?.cancel()
         isSearching = true
         error = nil
+        models = []
+        cachedPages = []
+        pageNumber = 1
 
         searchTask = Task { [weak self, client] in
             do {
-                let models = try await client.search(query: query)
+                let page = try await client.search(query: query, sort: sort)
                 try Task.checkCancellation()
-                self?.models = models
+                self?.cachedPages = [page]
+                self?.models = page.models
                 self?.error = nil
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
                 self?.models = []
+                self?.error = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+            guard !Task.isCancelled else { return }
+            self?.isSearching = false
+        }
+    }
+
+    var canGoToPreviousPage: Bool {
+        pageNumber > 1 && !isSearching
+    }
+
+    var canGoToNextPage: Bool {
+        guard !isSearching, pageNumber < maximumPageCount else { return false }
+        if pageNumber < cachedPages.count {
+            return true
+        }
+        return cachedPages.last?.nextPageURL != nil
+    }
+
+    func goToPreviousPage() {
+        guard canGoToPreviousPage else { return }
+        pageNumber -= 1
+        models = cachedPages[pageNumber - 1].models
+        error = nil
+    }
+
+    func goToNextPage() {
+        guard canGoToNextPage else { return }
+
+        if pageNumber < cachedPages.count {
+            pageNumber += 1
+            models = cachedPages[pageNumber - 1].models
+            error = nil
+            return
+        }
+
+        guard let nextPageURL = cachedPages.last?.nextPageURL else { return }
+        searchTask?.cancel()
+        isSearching = true
+        error = nil
+
+        searchTask = Task { [weak self, client] in
+            do {
+                let page = try await client.page(at: nextPageURL)
+                try Task.checkCancellation()
+                self?.cachedPages.append(page)
+                self?.pageNumber += 1
+                self?.models = page.models
+                self?.error = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
                 self?.error = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
             guard !Task.isCancelled else { return }

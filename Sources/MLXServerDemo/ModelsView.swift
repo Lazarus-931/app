@@ -8,6 +8,32 @@ private enum ModelsPageSection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private enum HubCapabilityFilter: String, CaseIterable, Identifiable {
+    case all = "All capabilities"
+    case vision = "Vision"
+    case audio = "Audio"
+    case tools = "Tool calling"
+
+    var id: String { rawValue }
+
+    var capability: LocalModelCapability? {
+        switch self {
+        case .all: nil
+        case .vision: .vision
+        case .audio: .audio
+        case .tools: .tools
+        }
+    }
+}
+
+private enum HubAccessFilter: String, CaseIterable, Identifiable {
+    case all = "All access"
+    case open = "Open models"
+    case gated = "Gated models"
+
+    var id: String { rawValue }
+}
+
 struct ModelsView: View {
     @ObservedObject var model: MLXServerDemoModel
     @StateObject private var localLibrary = LocalModelLibrary()
@@ -16,6 +42,9 @@ struct ModelsView: View {
     @State private var section: ModelsPageSection = .installed
     @State private var localQuery = ""
     @State private var hubQuery = ""
+    @State private var hubSort: HuggingFaceModelSort = .downloads
+    @State private var hubCapabilityFilter: HubCapabilityFilter = .all
+    @State private var hubAccessFilter: HubAccessFilter = .all
     @State private var showsConfiguration = false
 
     var body: some View {
@@ -38,7 +67,7 @@ struct ModelsView: View {
             guard section == .discover else { return }
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
-            hubLibrary.search(query: hubQuery)
+            hubLibrary.search(query: hubQuery, sort: hubSort)
         }
         .onDisappear {
             localLibrary.cancel()
@@ -164,13 +193,48 @@ struct ModelsView: View {
 
     private var discoverPage: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                ModelsSearchField(prompt: "Search MLX models on Hugging Face", text: $hubQuery)
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    ModelsSearchField(prompt: "Search MLX models on Hugging Face", text: $hubQuery)
 
-                if hubLibrary.isSearching {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 28)
+                    if hubLibrary.isSearching {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 28)
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    Picker("Sort by", selection: $hubSort) {
+                        ForEach(HuggingFaceModelSort.allCases) { sort in
+                            Label(sort.displayName, systemImage: sort.systemImage)
+                                .tag(sort)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .fixedSize()
+
+                    Picker("Capability", selection: $hubCapabilityFilter) {
+                        ForEach(HubCapabilityFilter.allCases) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .fixedSize()
+
+                    Picker("Access", selection: $hubAccessFilter) {
+                        ForEach(HubAccessFilter.allCases) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .fixedSize()
+
+                    Spacer()
+
+                    Text("\(filteredHubModels.count) shown")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, 22)
@@ -197,37 +261,78 @@ struct ModelsView: View {
                         )
                     } else {
                         HStack {
-                            Text(hubQuery.isEmpty ? "Popular on Hugging Face" : "Search results")
+                            Text(hubQuery.isEmpty ? "MLX models on Hugging Face" : "Search results")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                             Spacer()
+                            Label("Sorted by \(hubSort.displayName.lowercased())", systemImage: hubSort.systemImage)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             Link(destination: hubModelsURL) {
                                 Label("Open Hub", systemImage: "arrow.up.right")
                                     .font(.caption)
                             }
                         }
 
-                        ForEach(hubLibrary.models) { hubModel in
-                            HubModelRow(
-                                model: hubModel,
-                                isInstalled: installedModelIDs.contains(hubModel.id),
-                                isDownloading: downloadManager.downloadingModelID == hubModel.id,
-                                anotherDownloadIsActive: downloadManager.downloadingModelID != nil,
-                                downloadError: downloadManager.errorByModelID[hubModel.id],
-                                onDownload: {
-                                    downloadManager.download(
-                                        repoID: hubModel.id,
-                                        cachePath: model.settings.modelSearchPath
-                                    ) {
-                                        localLibrary.scan(path: model.settings.modelSearchPath)
-                                        NotificationCenter.default.post(
-                                            name: .localModelLibraryDidChange,
-                                            object: nil
-                                        )
-                                    }
-                                }
+                        if filteredHubModels.isEmpty {
+                            ModelsEmptyState(
+                                systemImage: "line.3.horizontal.decrease.circle",
+                                title: "No models match these filters",
+                                message: "Try another capability or access filter, or continue to the next page.",
+                                actionTitle: nil,
+                                action: {}
                             )
+                        } else {
+                            ForEach(filteredHubModels) { hubModel in
+                                HubModelRow(
+                                    model: hubModel,
+                                    isInstalled: installedModelIDs.contains(hubModel.id),
+                                    isDownloading: downloadManager.downloadingModelID == hubModel.id,
+                                    anotherDownloadIsActive: downloadManager.downloadingModelID != nil,
+                                    downloadError: downloadManager.errorByModelID[hubModel.id],
+                                    onDownload: {
+                                        downloadManager.download(
+                                            repoID: hubModel.id,
+                                            cachePath: model.settings.modelSearchPath
+                                        ) {
+                                            localLibrary.scan(path: model.settings.modelSearchPath)
+                                            NotificationCenter.default.post(
+                                                name: .localModelLibraryDidChange,
+                                                object: nil
+                                            )
+                                        }
+                                    }
+                                )
+                            }
                         }
+
+                        HStack(spacing: 12) {
+                            Spacer()
+
+                            Button {
+                                hubLibrary.goToPreviousPage()
+                            } label: {
+                                Label("Previous", systemImage: "chevron.left")
+                            }
+                            .disabled(!hubLibrary.canGoToPreviousPage)
+
+                            Text("Page \(hubLibrary.pageNumber) of up to 5")
+                                .font(.callout.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .frame(minWidth: 122)
+
+                            Button {
+                                hubLibrary.goToNextPage()
+                            } label: {
+                                Label("Next", systemImage: "chevron.right")
+                                    .labelStyle(.titleAndIcon)
+                            }
+                            .disabled(!hubLibrary.canGoToNextPage)
+
+                            Spacer()
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.top, 8)
                     }
                 }
                 .padding(.horizontal, 22)
@@ -249,12 +354,30 @@ struct ModelsView: View {
         Set(localLibrary.models.map(\.repoID))
     }
 
+    private var filteredHubModels: [HuggingFaceModel] {
+        hubLibrary.models.filter { hubModel in
+            let matchesCapability = hubCapabilityFilter.capability.map {
+                hubModel.capabilities.contains($0)
+            } ?? true
+            let matchesAccess: Bool
+            switch hubAccessFilter {
+            case .all:
+                matchesAccess = true
+            case .open:
+                matchesAccess = !hubModel.isGated && !hubModel.isPrivate
+            case .gated:
+                matchesAccess = hubModel.isGated
+            }
+            return matchesCapability && matchesAccess
+        }
+    }
+
     private var modelScanPath: String {
         model.settings.normalized().expandedModelSearchPath
     }
 
     private var hubSearchTaskID: String {
-        "\(section.rawValue):\(hubQuery)"
+        "\(section.rawValue):\(hubQuery):\(hubSort.rawValue)"
     }
 
     private var hubModelsURL: URL {
