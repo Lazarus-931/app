@@ -247,13 +247,7 @@ struct StatsView: View {
 
     private var periodFilter: some View {
         DashboardPickerContainer(title: "Period") {
-            Picker("Period", selection: $dashboard.selectedRange) {
-                ForEach(DashboardViewModel.RangeOption.allCases) { option in
-                    Text(option.title).tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            DashboardPeriodSelector(selection: $dashboard.selectedRange)
         }
     }
 
@@ -1140,11 +1134,53 @@ private struct DashboardPickerContainer<Content: View>: View {
             Text(title)
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .frame(width: 52, alignment: .leading)
             content
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .dashboardPanelStyle(cornerRadius: 10)
+    }
+}
+
+private struct DashboardPeriodSelector: View {
+    @Binding var selection: DashboardViewModel.RangeOption
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(DashboardViewModel.RangeOption.allCases) { option in
+                Button {
+                    selection = option
+                } label: {
+                    Text(option.title)
+                        .font(.callout.weight(.medium))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 5)
+                        .foregroundStyle(selection == option ? Color.white : Color.primary)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(selection == option ? Color.accentColor : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == option ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DashboardPalette.panelStroke, lineWidth: 0.5)
+        )
+        .animation(.easeInOut(duration: 0.12), value: selection)
+        .accessibilityLabel("Period")
     }
 }
 
