@@ -11,16 +11,22 @@ struct LogsView: View {
     @State private var selectedEndpointCategory: ServerEndpointCategory = .openAI
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            pageHeader
-            runtimeGrid
-            serverEndpointsPanel
-            logPanel
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    pageHeader
+                    runtimeGrid
+                    serverEndpointsPanel
+                    logPanel
+                        .frame(height: max(320, geometry.size.height - 430))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 22)
+                .padding(.top, 20)
+                .padding(.bottom, 22)
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 20)
-        .padding(.bottom, 22)
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var pageHeader: some View {
@@ -93,44 +99,7 @@ struct LogsView: View {
         )
 
         return VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "terminal")
-                    .foregroundStyle(.secondary)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Server output")
-                        .font(.callout.weight(.semibold))
-                    Text(logSummary(output))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                LogToolbarActionButton(
-                    title: "Copy visible logs",
-                    systemImage: "doc.on.doc",
-                    hoverTint: .blue,
-                    isDisabled: output.visibleLineCount == 0
-                ) {
-                    copyLogs(output.text)
-                }
-
-                LogToolbarActionButton(
-                    title: "Clear logs",
-                    systemImage: "trash",
-                    hoverTint: .red,
-                    isDisabled: model.logText.isEmpty
-                ) {
-                    model.clearLogs()
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            logFilterBar(output)
+            logPanelToolbar(output)
 
             Divider()
 
@@ -167,11 +136,10 @@ struct LogsView: View {
                 HStack(spacing: 14) {
                     endpointPanelTitle
 
-                    Spacer(minLength: 12)
-
                     endpointCategoryPicker
-                        .frame(width: 320)
+                        .frame(width: 300, alignment: .leading)
                 }
+                .frame(width: 560, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 9) {
                     endpointPanelTitle
@@ -184,6 +152,7 @@ struct LogsView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
 
@@ -246,36 +215,76 @@ struct LogsView: View {
         }
     }
 
-    private func logFilterBar(_ output: LogOutput) -> some View {
-        ViewThatFits(in: .horizontal) {
+    private func logPanelToolbar(_ output: LogOutput) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
+                    logPanelTitle(output)
+
+                    severityPicker
+                }
+                .frame(width: 560, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    logPanelTitle(output)
+                    severityPicker
+                }
+            }
+
             HStack(spacing: 10) {
                 LogSearchField(text: $logQuery)
                     .frame(maxWidth: 360)
 
-                severityPicker
+                logPanelActions(output)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 0)
 
                 Text("\(output.visibleLineCount) shown")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize()
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                LogSearchField(text: $logQuery)
-
-                HStack {
-                    severityPicker
-                    Spacer()
-                    Text("\(output.visibleLineCount) shown")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
+    }
+
+    private func logPanelTitle(_ output: LogOutput) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "terminal")
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Server output")
+                    .font(.callout.weight(.semibold))
+                Text(logSummary(output))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .fixedSize()
+    }
+
+    private func logPanelActions(_ output: LogOutput) -> some View {
+        HStack(spacing: 8) {
+            LogToolbarActionButton(
+                title: "Copy visible logs",
+                systemImage: "doc.on.doc",
+                hoverTint: .blue,
+                isDisabled: output.visibleLineCount == 0
+            ) {
+                copyLogs(output.text)
+            }
+
+            LogToolbarActionButton(
+                title: "Clear logs",
+                systemImage: "trash",
+                hoverTint: .red,
+                isDisabled: model.logText.isEmpty
+            ) {
+                model.clearLogs()
+            }
+        }
     }
 
     private var severityPicker: some View {
@@ -286,7 +295,7 @@ struct LogsView: View {
         }
         .labelsHidden()
         .pickerStyle(.segmented)
-        .frame(width: 270)
+        .frame(width: 270, alignment: .leading)
     }
 
     private func logSummary(_ output: LogOutput) -> String {
