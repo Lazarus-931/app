@@ -529,9 +529,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return submenu
         }
 
-        submenu.addItem(disabledMenuItem("Loaded: \(model.loadedModelDisplay)"))
-        submenu.addItem(.separator())
-
         submenu.addItem(modelOptionMenuItem(title: "Load on demand", modelID: nil))
 
         let selectedModelID = model.settings.normalized().languageModelID
