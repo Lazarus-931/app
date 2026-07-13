@@ -2,6 +2,16 @@ import Combine
 import Foundation
 import MLXServerKit
 
+struct SessionTokenActivitySample: Equatable, Sendable {
+    let recordedAt: Date
+    let promptTokens: Int
+    let generatedTokens: Int
+
+    var totalTokens: Int {
+        promptTokens + generatedTokens
+    }
+}
+
 @MainActor
 final class MLXServerDemoModel: ObservableObject {
     @Published private(set) var isRunning = false
@@ -9,7 +19,10 @@ final class MLXServerDemoModel: ObservableObject {
     @Published private(set) var metrics: MLXServerMetrics?
     @Published private(set) var lastMetricsError: String?
     @Published private(set) var lastMetricsFetchAt: Date?
-    @Published private(set) var allTimeStats = MLXServerAllTimeStats.load()
+    @Published private(set) var allTimeStats = MLXServerAllTimeStats()
+    @Published private(set) var sessionTokenActivity: [SessionTokenActivitySample] = []
+    @Published private(set) var modelSwitchInProgress = false
+    @Published private(set) var metricsLoading = false
     @Published var settings = MLXServerSettings.load() {
         didSet {
             settings.save()
@@ -24,12 +37,19 @@ final class MLXServerDemoModel: ObservableObject {
     private var metricsFetchTask: Task<Void, Never>?
     private var metricsTimer: Timer?
     private var metricsStartupGraceUntil: Date?
-    private var lastPersistedSessionTotals: MLXServerSessionTotals?
     private var settingsAppliedAtServerStart: MLXServerSettings?
+    private var previousSessionPromptTokenCount: Int?
+    private var previousSessionGeneratedTokenCount: Int?
+    private var preservedSessionMetrics: MLXServerMetrics?
+    private var preservedSessionTokenActivity: [SessionTokenActivitySample] = []
+    private var isStoppingForModelSwitch = false
 
     private let maxLogCharacters = 250_000
+    private let maxSessionActivitySamples = 120
 
     init() {
+        MLXServerAllTimeStats.removeLegacyStorage()
+        allTimeStats = MLXServerAllTimeStats.load(from: currentAnalyticsDatabaseURL())
         configureServerCallbacks()
         isRunning = server.isRunning
     }
@@ -43,6 +63,26 @@ final class MLXServerDemoModel: ObservableObject {
 
     var loadedModelDisplay: String {
         metrics?.server.displayLoadedModel ?? "None"
+    }
+
+    var sessionStatsDisplayMetrics: MLXServerMetrics? {
+        metrics ?? preservedSessionMetrics
+    }
+
+    var sessionStatsDisplayTokenActivity: [SessionTokenActivitySample] {
+        metrics == nil ? preservedSessionTokenActivity : sessionTokenActivity
+    }
+
+    var sessionStatsArePreserved: Bool {
+        metrics == nil && preservedSessionMetrics != nil
+    }
+
+    var selectedModelDisplay: String {
+        settings.normalized().languageModelID ?? "On demand"
+    }
+
+    var analyticsDatabaseURL: URL {
+        currentAnalyticsDatabaseURL(runtimePath: metrics?.server.analyticsDatabasePath)
     }
 
     var unavailableMetricsText: String {
@@ -59,9 +99,11 @@ final class MLXServerDemoModel: ObservableObject {
     func startServer() {
         var shouldStartMetrics = false
         do {
+            var launchEnvironment = settings.launchEnvironment
+            launchEnvironment["MLX_PLATFORM_ANALYTICS_DB_PATH"] = currentAnalyticsDatabaseURL().path
             try server.start(
                 arguments: settings.launchArguments,
-                environment: settings.launchEnvironment
+                environment: launchEnvironment
             )
             isRunning = true
             settingsAppliedAtServerStart = settings.normalized()
@@ -82,7 +124,14 @@ final class MLXServerDemoModel: ObservableObject {
         notifyMenuStateChanged()
     }
 
-    func stopServer() {
+    func stopServer(preserveSessionStats: Bool = false) {
+        if preserveSessionStats {
+            preserveCurrentSessionStats()
+        } else {
+            modelSwitchInProgress = false
+            clearPreservedSessionStats()
+        }
+
         do {
             appendLog("\nStopping mlx-vlm-server...\n")
             try server.stop()
@@ -108,6 +157,53 @@ final class MLXServerDemoModel: ObservableObject {
         }
     }
 
+    func switchLanguageModel(to modelID: String?) {
+        guard !modelSwitchInProgress else {
+            return
+        }
+
+        var nextSettings = settings
+        nextSettings.languageModelID = modelID
+        let normalizedModelID = nextSettings.normalized().languageModelID
+        let selectionIsAlreadyApplied = settings.normalized().languageModelID == normalizedModelID
+            && server.isRunning
+            && !settingsRequireRestart
+        guard !selectionIsAlreadyApplied else {
+            return
+        }
+
+        settings.languageModelID = normalizedModelID
+        modelSwitchInProgress = true
+        notifyMenuStateChanged()
+
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            if self.server.isRunning {
+                self.isStoppingForModelSwitch = true
+                self.stopServer(preserveSessionStats: true)
+                await Task.yield()
+                self.isStoppingForModelSwitch = false
+            }
+
+            guard !self.server.isRunning else {
+                self.appendLog("\nCould not stop the current server to switch models.\n")
+                self.modelSwitchInProgress = false
+                self.clearPreservedSessionStats()
+                self.notifyMenuStateChanged()
+                return
+            }
+            self.startServer()
+            if !self.server.isRunning {
+                self.modelSwitchInProgress = false
+                self.clearPreservedSessionStats()
+                self.notifyMenuStateChanged()
+            }
+        }
+    }
+
     func applicationWillTerminate() {
         stopMetricsPolling(clearSession: true)
         if server.isRunning {
@@ -119,6 +215,10 @@ final class MLXServerDemoModel: ObservableObject {
 
     func resetSettings() {
         settings = MLXServerSettings()
+    }
+
+    func clearLogs() {
+        logText = ""
     }
 
     func refreshMetricsIfRunning(force: Bool = false) {
@@ -166,6 +266,11 @@ final class MLXServerDemoModel: ObservableObject {
                 self?.isRunning = false
                 self?.settingsAppliedAtServerStart = nil
                 self?.stopMetricsPolling(clearSession: true)
+                self?.metricsLoading = false
+                if self?.isStoppingForModelSwitch != true {
+                    self?.modelSwitchInProgress = false
+                    self?.clearPreservedSessionStats()
+                }
                 self?.notifyMenuStateChanged()
             }
         }
@@ -174,13 +279,19 @@ final class MLXServerDemoModel: ObservableObject {
     private func startMetricsPolling() {
         lastMetricsError = nil
         metrics = nil
+        metricsLoading = true
+        sessionTokenActivity = []
+        previousSessionPromptTokenCount = nil
+        previousSessionGeneratedTokenCount = nil
         metricsStartupGraceUntil = Date().addingTimeInterval(20)
-        lastPersistedSessionTotals = nil
 
         if metricsTimer == nil {
-            let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+            let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in
-                    self?.refreshMetricsIfRunning()
+                    guard let self else {
+                        return
+                    }
+                    self.refreshMetricsIfRunning(force: self.metricsLoading)
                 }
             }
             RunLoop.main.add(timer, forMode: .common)
@@ -188,7 +299,7 @@ final class MLXServerDemoModel: ObservableObject {
         }
 
         Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 250_000_000)
             self?.refreshMetricsIfRunning(force: true)
         }
     }
@@ -201,16 +312,20 @@ final class MLXServerDemoModel: ObservableObject {
         lastMetricsError = nil
         lastMetricsFetchAt = nil
         metricsStartupGraceUntil = nil
+        metricsLoading = false
 
         if clearSession {
             metrics = nil
-            lastPersistedSessionTotals = nil
+            sessionTokenActivity = []
+            previousSessionPromptTokenCount = nil
+            previousSessionGeneratedTokenCount = nil
         }
     }
 
     private func handleMetricsFetchSuccess(_ fetchedMetrics: MLXServerMetrics) {
         metricsFetchTask = nil
         lastMetricsFetchAt = Date()
+        let wasLoading = metricsLoading || modelSwitchInProgress
 
         guard server.isRunning else {
             isRunning = false
@@ -222,19 +337,24 @@ final class MLXServerDemoModel: ObservableObject {
         isRunning = true
         lastMetricsError = nil
         metricsStartupGraceUntil = nil
+        metricsLoading = false
+        recordSessionActivity(
+            promptTokenCount: fetchedMetrics.summary.promptTokensTotal,
+            generatedTokenCount: fetchedMetrics.summary.generatedTokensTotal
+        )
         metrics = fetchedMetrics
-        persistAllTimeDelta(from: fetchedMetrics.summary)
+        modelSwitchInProgress = false
+        clearPreservedSessionStats()
+        refreshAllTimeStats(runtimePath: fetchedMetrics.server.analyticsDatabasePath)
 
-        if !menuIsOpen {
+        if !menuIsOpen || wasLoading {
             notifyMenuStateChanged()
         }
     }
 
     private func handleMetricsFetchFailure(_ error: Error) {
         metricsFetchTask = nil
-        lastMetricsFetchAt = Date()
         lastMetricsError = isTransientStartupMetricsError(error) ? nil : error.localizedDescription
-        metrics = nil
 
         if !menuIsOpen {
             notifyMenuStateChanged()
@@ -257,32 +377,66 @@ final class MLXServerDemoModel: ObservableObject {
         }
     }
 
-    private func persistAllTimeDelta(from summary: MLXServerMetricsSummary) {
-        let current = MLXServerSessionTotals(summary: summary)
-        let previous: MLXServerSessionTotals
-
-        if let last = lastPersistedSessionTotals, !current.appearsReset(comparedTo: last) {
-            previous = last
-        } else {
-            previous = .zero
-        }
-
-        let delta = current.delta(since: previous)
-        lastPersistedSessionTotals = current
-
-        guard delta.hasValues else {
-            return
-        }
-
-        allTimeStats.apply(delta: delta)
-        allTimeStats.save()
-    }
-
     private func appendLog(_ text: String) {
         logText.append(text)
         if logText.count > maxLogCharacters {
             logText.removeFirst(logText.count - maxLogCharacters)
         }
+    }
+
+    private func recordSessionActivity(promptTokenCount: Int, generatedTokenCount: Int) {
+        let promptDelta = tokenDelta(
+            current: promptTokenCount,
+            previous: previousSessionPromptTokenCount
+        )
+        let generatedDelta = tokenDelta(
+            current: generatedTokenCount,
+            previous: previousSessionGeneratedTokenCount
+        )
+
+        sessionTokenActivity.append(SessionTokenActivitySample(
+            recordedAt: Date(),
+            promptTokens: promptDelta,
+            generatedTokens: generatedDelta
+        ))
+        if sessionTokenActivity.count > maxSessionActivitySamples {
+            sessionTokenActivity.removeFirst(sessionTokenActivity.count - maxSessionActivitySamples)
+        }
+        previousSessionPromptTokenCount = promptTokenCount
+        previousSessionGeneratedTokenCount = generatedTokenCount
+    }
+
+    private func tokenDelta(current: Int, previous: Int?) -> Int {
+        guard let previous, current >= previous else {
+            return 0
+        }
+        return current - previous
+    }
+
+    private func preserveCurrentSessionStats() {
+        if let metrics {
+            preservedSessionMetrics = metrics
+            preservedSessionTokenActivity = sessionTokenActivity
+        }
+    }
+
+    private func clearPreservedSessionStats() {
+        preservedSessionMetrics = nil
+        preservedSessionTokenActivity = []
+    }
+
+    private func refreshAllTimeStats(runtimePath: String? = nil) {
+        allTimeStats = MLXServerAllTimeStats.load(
+            from: currentAnalyticsDatabaseURL(runtimePath: runtimePath)
+        )
+    }
+
+    private func currentAnalyticsDatabaseURL(runtimePath: String? = nil) -> URL {
+        if let runtimePath = runtimePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !runtimePath.isEmpty {
+            return URL(fileURLWithPath: runtimePath).standardizedFileURL
+        }
+        return MLXServerAnalyticsStore.defaultDatabaseURL()
     }
 
     private func notifyMenuStateChanged() {

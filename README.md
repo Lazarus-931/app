@@ -63,6 +63,11 @@ from the `MLX` menu bar extra.
 
 When the server is running, the menu also polls
 `http://127.0.0.1:8080/metrics` and shows a read-only `Serving Stats` submenu.
+The menu bar popover includes a visual session summary with recent token
+activity, request counts, decode speed, uptime, and the latest request.
+Its model submenu discovers locally cached models, displays their on-disk size
+and context capacity, and can restart the server to load a different language
+model directly from the menu bar.
 Session values reset with the server process. All-time counters are accumulated
 by the app in `~/Library/Caches/<bundle-id>/MLXServerStats.plist`.
 

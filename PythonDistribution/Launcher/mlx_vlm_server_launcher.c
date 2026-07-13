@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
 
   child_argv[0] = python_exe;
   child_argv[1] = "-m";
-  child_argv[2] = "mlx_vlm.server";
+  child_argv[2] = "mlx_platform_server";
   for (int i = 1; i < argc; i++) {
     child_argv[i + 2] = argv[i];
   }

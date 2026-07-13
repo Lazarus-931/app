@@ -1,11 +1,57 @@
 import Foundation
 
+extension Notification.Name {
+    static let localModelLibraryDidChange = Notification.Name("LocalModelLibraryDidChange")
+}
+
+enum LocalModelCapability: String, CaseIterable, Hashable, Sendable {
+    case text
+    case vision
+    case audio
+    case video
+    case imageGeneration
+    case speechToText
+    case textToSpeech
+    case embeddings
+    case reasoning
+    case tools
+
+    var displayName: String {
+        switch self {
+        case .text:
+            "Text"
+        case .vision:
+            "Vision"
+        case .audio:
+            "Audio"
+        case .video:
+            "Video"
+        case .imageGeneration:
+            "Image generation"
+        case .speechToText:
+            "Speech to text"
+        case .textToSpeech:
+            "Text to speech"
+        case .embeddings:
+            "Embeddings"
+        case .reasoning:
+            "Reasoning"
+        case .tools:
+            "Tool calling"
+        }
+    }
+}
+
 struct LocalModel: Identifiable, Equatable, Sendable {
     var id: String { repoID }
 
     let repoID: String
     let snapshotURL: URL?
     let modifiedAt: Date?
+    let sizeBytes: Int64?
+    let contextSize: Int?
+    let provider: LocalModelProvider?
+    let capabilities: Set<LocalModelCapability>
 }
 
 enum LocalModelDiscovery {
@@ -55,7 +101,19 @@ enum LocalModelDiscovery {
             }
 
             let modifiedAt = (try? snapshotURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-            return LocalModel(repoID: repoID, snapshotURL: snapshotURL, modifiedAt: modifiedAt)
+            return LocalModel(
+                repoID: repoID,
+                snapshotURL: snapshotURL,
+                modifiedAt: modifiedAt,
+                sizeBytes: snapshotSize(at: snapshotURL, fileManager: fileManager),
+                contextSize: contextSize(at: snapshotURL, fileManager: fileManager),
+                provider: modelProvider(
+                    repoID: repoID,
+                    snapshotURL: snapshotURL,
+                    fileManager: fileManager
+                ),
+                capabilities: modelCapabilities(at: snapshotURL, fileManager: fileManager)
+            )
         }
 
         return models.sorted { lhs, rhs in
@@ -149,6 +207,288 @@ enum LocalModelDiscovery {
             return false
         }
         return contents.contains { $0.pathExtension == "safetensors" }
+    }
+
+    private static func snapshotSize(at snapshotURL: URL, fileManager: FileManager) -> Int64? {
+        guard let enumerator = fileManager.enumerator(
+            at: snapshotURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        var visitedFiles = Set<String>()
+        var totalBytes: Int64 = 0
+        var foundFile = false
+
+        for case let fileURL as URL in enumerator {
+            let resolvedURL = fileURL.resolvingSymlinksInPath()
+            guard visitedFiles.insert(resolvedURL.path).inserted,
+                  let values = try? resolvedURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                  values.isRegularFile == true,
+                  let fileSize = values.fileSize
+            else {
+                continue
+            }
+            totalBytes += Int64(fileSize)
+            foundFile = true
+        }
+
+        return foundFile ? totalBytes : nil
+    }
+
+    private static func contextSize(at snapshotURL: URL, fileManager: FileManager) -> Int? {
+        let candidates = ["config.json", "tokenizer_config.json"]
+        for filename in candidates {
+            let url = snapshotURL.appendingPathComponent(filename)
+            guard fileManager.fileExists(atPath: url.path),
+                  let data = try? Data(contentsOf: url),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let contextSize = contextSize(in: json)
+            else {
+                continue
+            }
+            return contextSize
+        }
+        return nil
+    }
+
+    private static func modelCapabilities(
+        at snapshotURL: URL,
+        fileManager: FileManager
+    ) -> Set<LocalModelCapability> {
+        let configURL = snapshotURL.appendingPathComponent("config.json")
+        let config: [String: Any]
+        if fileManager.fileExists(atPath: configURL.path),
+           let data = try? Data(contentsOf: configURL),
+           let parsedConfig = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            config = parsedConfig
+        } else {
+            config = [:]
+        }
+
+        let modelIndexURL = snapshotURL.appendingPathComponent("model_index.json")
+        let modelIndex: [String: Any]
+        if fileManager.fileExists(atPath: modelIndexURL.path),
+           let data = try? Data(contentsOf: modelIndexURL),
+           let parsedModelIndex = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            modelIndex = parsedModelIndex
+        } else {
+            modelIndex = [:]
+        }
+
+        let keys = recursiveKeys(in: config).union(recursiveKeys(in: modelIndex))
+        let descriptors = [modelDescriptors(in: config), modelDescriptors(in: modelIndex)]
+            .joined(separator: " ")
+        var capabilities = Set<LocalModelCapability>()
+
+        let textDescriptors = [
+            "causallm", "conditionalgeneration", "language", "llm", "gpt",
+            "gemma", "qwen", "mistral", "llama", "deepseek", "cohere"
+        ]
+        if textDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.text)
+        }
+
+        let visionKeys: Set<String> = [
+            "vision_config",
+            "vision_tower",
+            "vit_config",
+            "img_processor",
+            "image_token_id",
+            "image_start_token_id"
+        ]
+        let visionDescriptors = [
+            "vision", "llava", "pixtral", "minicpmv", "molmo", "phi3_v", "omni"
+        ]
+        if !keys.isDisjoint(with: visionKeys)
+            || visionDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.vision)
+        }
+
+        let videoDescriptors = ["video", "videollava"]
+        if videoDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.video)
+            capabilities.insert(.vision)
+        }
+
+        let imageGenerationDescriptors = [
+            "diffusion", "stable_diffusion", "fluxpipeline", "imagegeneration"
+        ]
+        if imageGenerationDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.imageGeneration)
+        }
+
+        let audioKeys: Set<String> = [
+            "audio_config",
+            "audio_tower",
+            "audio_token_id",
+            "speech_config",
+            "max_audio_clip_s",
+            "sample_rate",
+            "code2wav_config",
+            "speaker_encoder_config",
+            "tts_model_type"
+        ]
+        let audioDescriptors = [
+            "audio", "speech", "whisper", "asr", "tts", "transcribe", "omni"
+        ]
+        if !keys.isDisjoint(with: audioKeys)
+            || audioDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.audio)
+        }
+
+        let speechToTextDescriptors = ["whisper", "asr", "transcribe", "speechrecognition"]
+        if speechToTextDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.speechToText)
+        }
+
+        let textToSpeechDescriptors = ["tts", "texttospeech", "speechsynthesis"]
+        if textToSpeechDescriptors.contains(where: descriptors.contains) {
+            capabilities.insert(.textToSpeech)
+        }
+
+        if fileManager.fileExists(atPath: snapshotURL.appendingPathComponent("modules.json").path)
+            || descriptors.contains("embedding") {
+            capabilities.insert(.embeddings)
+        }
+
+        if descriptors.contains("reasoning") || keys.contains("thinking_config") {
+            capabilities.insert(.reasoning)
+        }
+
+        if supportsToolCalling(at: snapshotURL, fileManager: fileManager) {
+            capabilities.insert(.tools)
+        }
+
+        return capabilities
+    }
+
+    private static func supportsToolCalling(
+        at snapshotURL: URL,
+        fileManager: FileManager
+    ) -> Bool {
+        let templateURL = snapshotURL.appendingPathComponent("chat_template.jinja")
+        if fileManager.fileExists(atPath: templateURL.path),
+           let template = try? String(contentsOf: templateURL, encoding: .utf8),
+           containsToolCallingMarkers(template) {
+            return true
+        }
+
+        for filename in ["tokenizer_config.json", "processor_config.json"] {
+            let metadataURL = snapshotURL.appendingPathComponent(filename)
+            guard fileManager.fileExists(atPath: metadataURL.path),
+                  let data = try? Data(contentsOf: metadataURL),
+                  let metadata = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let chatTemplate = metadata["chat_template"]
+            else {
+                continue
+            }
+            if templateContainsToolCallingMarkers(chatTemplate) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private static func templateContainsToolCallingMarkers(_ value: Any) -> Bool {
+        if let template = value as? String {
+            return containsToolCallingMarkers(template)
+        }
+        if let templates = value as? [Any] {
+            return templates.contains(where: templateContainsToolCallingMarkers)
+        }
+        if let templates = value as? [String: Any] {
+            return templates.values.contains(where: templateContainsToolCallingMarkers)
+        }
+        return false
+    }
+
+    private static func containsToolCallingMarkers(_ template: String) -> Bool {
+        let normalized = template.lowercased()
+        return normalized.contains("tool_calls") || normalized.contains("tool_call")
+    }
+
+    private static func modelProvider(
+        repoID: String,
+        snapshotURL: URL,
+        fileManager: FileManager
+    ) -> LocalModelProvider? {
+        let configURL = snapshotURL.appendingPathComponent("config.json")
+        guard fileManager.fileExists(atPath: configURL.path),
+              let data = try? Data(contentsOf: configURL),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return LocalModelProviderResolver.resolve(
+                repoID: repoID,
+                modelType: nil,
+                architectures: []
+            )
+        }
+
+        return LocalModelProviderResolver.resolve(
+            repoID: repoID,
+            modelType: config["model_type"] as? String,
+            architectures: config["architectures"] as? [String] ?? []
+        )
+    }
+
+    private static func recursiveKeys(in value: Any) -> Set<String> {
+        if let dictionary = value as? [String: Any] {
+            return dictionary.reduce(into: Set(dictionary.keys)) { result, entry in
+                result.formUnion(recursiveKeys(in: entry.value))
+            }
+        }
+        if let array = value as? [Any] {
+            return array.reduce(into: Set<String>()) { result, entry in
+                result.formUnion(recursiveKeys(in: entry))
+            }
+        }
+        return []
+    }
+
+    private static func modelDescriptors(in config: [String: Any]) -> String {
+        let modelType = config["model_type"] as? String ?? ""
+        let architectures = config["architectures"] as? [String] ?? []
+        let className = config["_class_name"] as? String ?? ""
+        let pipelineTag = config["pipeline_tag"] as? String ?? ""
+        return ([modelType, className, pipelineTag] + architectures)
+            .joined(separator: " ")
+            .lowercased()
+    }
+
+    private static func contextSize(in config: [String: Any]) -> Int? {
+        let nestedConfigurationKeys = ["text_config", "llm_config", "language_config"]
+        let contextKeys = [
+            "max_position_embeddings",
+            "model_max_length",
+            "max_sequence_length",
+            "seq_length",
+            "n_positions",
+            "context_length"
+        ]
+
+        for nestedKey in nestedConfigurationKeys {
+            if let nested = config[nestedKey] as? [String: Any],
+               let value = contextValue(in: nested, keys: contextKeys) {
+                return value
+            }
+        }
+        return contextValue(in: config, keys: contextKeys)
+    }
+
+    private static func contextValue(in config: [String: Any], keys: [String]) -> Int? {
+        for key in keys {
+            guard let number = config[key] as? NSNumber else {
+                continue
+            }
+            let value = number.intValue
+            if value > 0, value <= 10_000_000 {
+                return value
+            }
+        }
+        return nil
     }
 
     private static func isDirectoryURL(_ url: URL, fileManager: FileManager) -> Bool {

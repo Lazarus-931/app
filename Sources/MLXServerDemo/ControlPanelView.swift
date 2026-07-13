@@ -3,9 +3,13 @@ import SwiftUI
 enum ControlPanelTab: String, CaseIterable, Identifiable {
     case chat = "Chat"
     case imageGeneration = "Image Generation"
-    case stats = "Stats"
-    case settings = "Settings"
+    case dashboard = "Dashboard"
+    case models = "Models"
     case logs = "Logs"
+
+    static var allCases: [ControlPanelTab] {
+        [.chat, .dashboard, .models, .logs]
+    }
 
     var id: String { rawValue }
 
@@ -15,20 +19,32 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
             "bubble.left.and.bubble.right"
         case .imageGeneration:
             "photo.on.rectangle"
-        case .stats:
+        case .dashboard:
             "chart.bar.xaxis"
-        case .settings:
-            "gearshape"
+        case .models:
+            "cube.transparent"
         case .logs:
             "doc.text"
         }
     }
 }
 
+@MainActor
+final class ControlPanelNavigation: ObservableObject {
+    @Published private(set) var requestedTab: ControlPanelTab?
+
+    func open(_ tab: ControlPanelTab) {
+        requestedTab = tab
+    }
+}
+
 struct ControlPanelView: View {
     @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var navigation: ControlPanelNavigation
+    @ObservedObject var runtime: SystemRuntimeMonitor
     @StateObject private var chat = ChatViewModel()
     @StateObject private var imageGeneration = ImageGenerationViewModel()
+    @StateObject private var dashboard = DashboardViewModel()
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var splitColumnVisibility: NavigationSplitViewVisibility = .all
@@ -41,9 +57,13 @@ struct ControlPanelView: View {
             detail
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 900, minHeight: 580)
+        .frame(minWidth: 720, minHeight: 520)
         .onAppear {
-            applySidebarSelection(sidebarSelection)
+            applySidebarSelection(navigation.requestedTab.map(ControlPanelSidebarSelection.tab) ?? sidebarSelection)
+        }
+        .onReceive(navigation.$requestedTab) { tab in
+            guard let tab else { return }
+            applySidebarSelection(.tab(tab))
         }
     }
 
@@ -65,46 +85,43 @@ struct ControlPanelView: View {
             }
 
             Section {
-                ForEach(recentSessions) { recent in
-                    let selection = recent.selection
-                    let isDisabled = isRecentDisabled(recent)
-                    Button {
-                        applySidebarSelection(selection)
-                    } label: {
-                        ControlPanelRecentSessionRow(
-                            recent: recent,
-                            isCurrent: isCurrentRecent(recent),
-                            isDisabled: isDisabled,
-                            onDelete: {
-                                deleteRecentSession(recent)
-                            }
-                        )
+                Button {
+                    withAnimation(.snappy(duration: 0.2)) {
+                        createRecentSession()
+                    }
+                } label: {
+                    Label("New chat", systemImage: "plus")
+                        .font(.callout.weight(.semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.accentColor.opacity(0.16))
+                        )
                         .contentShape(.rect)
-                    }
-                    .sidebarRowSelectionStyle(isSelected: sidebarSelection == selection)
-                    .buttonStyle(.plain)
-                    .disabled(isDisabled)
-                    .opacity(isDisabled && !isCurrentRecent(recent) ? 0.55 : 1)
-                    .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                 }
-            } header: {
-                HStack(spacing: 8) {
-                    Text("Recents")
+                .buttonStyle(.plain)
+                .disabled(isNewRecentDisabled)
+                .help(newRecentHelp)
+                .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 8, trailing: 8))
+            }
 
-                    Spacer(minLength: 0)
-
-                    Button {
-                        withAnimation(.snappy(duration: 0.2)) {
-                            createRecentSession()
+            Section("Recents") {
+                ForEach(recentSessions) { recent in
+                    ControlPanelRecentSessionRow(
+                        recent: recent,
+                        isSelected: sidebarSelection == recent.selection,
+                        isCurrent: isCurrentRecent(recent),
+                        isDisabled: isRecentDisabled(recent),
+                        onSelect: {
+                            applySidebarSelection(recent.selection)
+                        },
+                        onDelete: {
+                            deleteRecentSession(recent)
                         }
-                    } label: {
-                        Image(systemName: "plus")
-                            .imageScale(.small)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(isNewRecentDisabled)
-                    .help(newRecentHelp)
+                    )
+                    .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                 }
             }
         }
@@ -114,7 +131,6 @@ struct ControlPanelView: View {
 
     private var recentSessions: [ControlPanelRecentSession] {
         let sessions = chat.sessions.map(ControlPanelRecentSession.init(chat:))
-            + imageGeneration.sessions.map(ControlPanelRecentSession.init(imageGeneration:))
         let sortedSessions = sessions.sorted(by: ControlPanelRecentSession.recencySort)
 
         guard let selectedRecent = sortedSessions.first(where: { $0.selection == sidebarSelection }) else {
@@ -135,12 +151,12 @@ struct ControlPanelView: View {
                     ChatView(model: model, chat: chat)
                 case .imageGeneration:
                     ImageGenerationView(model: model, viewModel: imageGeneration)
-                case .stats:
-                    StatsView(model: model)
-                case .settings:
-                    SettingsView(model: model)
+                case .dashboard:
+                    StatsView(model: model, dashboard: dashboard)
+                case .models:
+                    ModelsView(model: model)
                 case .logs:
-                    LogsView(model: model)
+                    LogsView(model: model, runtime: runtime)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -173,15 +189,6 @@ struct ControlPanelView: View {
     }
 
     private func createRecentSession() {
-        if selectedTab == .imageGeneration {
-            imageGeneration.createSession()
-            applySidebarSelection(
-                imageGeneration.currentSessionID.map(ControlPanelSidebarSelection.imageGeneration)
-                    ?? .tab(.imageGeneration)
-            )
-            return
-        }
-
         chat.createSession()
         applySidebarSelection(chat.currentSessionID.map(ControlPanelSidebarSelection.chat) ?? .tab(.chat))
     }
@@ -231,11 +238,11 @@ struct ControlPanelView: View {
     }
 
     private var isNewRecentDisabled: Bool {
-        selectedTab == .imageGeneration ? imageGeneration.isGenerating : chat.isSending
+        chat.isSending
     }
 
     private var newRecentHelp: String {
-        selectedTab == .imageGeneration ? "New image session" : "New chat"
+        "Create a new chat"
     }
 
     private var header: some View {
@@ -253,8 +260,7 @@ struct ControlPanelView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-
-            Spacer(minLength: 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(model.isRunning ? "Running" : "Start") {
                 model.toggleServer()
@@ -263,6 +269,7 @@ struct ControlPanelView: View {
             .buttonStyle(.glassProminent)
             .tint(model.isRunning ? .white : .accentColor)
             .keyboardShortcut("s", modifiers: .command)
+            .fixedSize()
         }
         .padding(.leading, headerLeadingPadding)
         .padding(.trailing, 18)
@@ -273,7 +280,7 @@ struct ControlPanelView: View {
     private var statusSubtitle: String {
         if model.isRunning {
             if model.settingsRequireRestart {
-                return "Running | \(model.loadedModelDisplay) | Settings pending"
+                return "Running | \(model.loadedModelDisplay) | Model changes pending"
             }
             return "Running | \(model.loadedModelDisplay)"
         }
@@ -347,46 +354,83 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
 
 private struct ControlPanelRecentSessionRow: View {
     let recent: ControlPanelRecentSession
+    let isSelected: Bool
     let isCurrent: Bool
     let isDisabled: Bool
+    let onSelect: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(recent.title)
-                    .font(.callout.weight(isCurrent ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            Button(action: onSelect) {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(recent.title)
+                            .font(.callout.weight(isCurrent ? .semibold : .regular))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
-                HStack(spacing: 6) {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
 
-                    Text(recent.modelKind.badgeTitle)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(
-                            Capsule()
-                                .fill(Color.secondary.opacity(0.12))
-                        )
+                            Text(recent.modelKind.badgeTitle)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.secondary.opacity(0.12))
+                                )
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if isCurrent {
+                        Image(systemName: "checkmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+                )
+                .contentShape(.rect)
             }
+            .buttonStyle(.plain)
+            .disabled(isDisabled)
+            .help(recent.title)
 
-            Spacer(minLength: 0)
-
-            if isCurrent {
-                Image(systemName: "checkmark")
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.secondary.opacity(0.12))
+                    )
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .disabled(isDisabled)
+            .help("Delete \(recent.title)")
         }
-        .help(recent.title)
+        .opacity(isDisabled && !isCurrent ? 0.55 : 1)
         .contextMenu {
+            Button {
+                onSelect()
+            } label: {
+                Label("Open", systemImage: "arrow.up.right.square")
+            }
+
             Button(role: .destructive) {
                 onDelete()
             } label: {
@@ -427,5 +471,5 @@ private extension View {
 }
 
 #Preview {
-    ControlPanelView(model: .init())
+    ControlPanelView(model: .init(), navigation: .init(), runtime: .init())
 }

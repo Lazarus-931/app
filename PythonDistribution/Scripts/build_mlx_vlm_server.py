@@ -23,6 +23,7 @@ from typing import Iterable
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYTHON_DISTRIBUTION_ROOT = REPO_ROOT / "PythonDistribution"
 LAUNCHER_SOURCE = PYTHON_DISTRIBUTION_ROOT / "Launcher" / "mlx_vlm_server_launcher.c"
+OVERLAY_SERVER = PYTHON_DISTRIBUTION_ROOT / "Overlay" / "mlx_platform_server.py"
 DEFAULT_PYTHON_VERSION = "3.12.13"
 DEFAULT_PBS_RELEASE = "20260508"
 DEFAULT_PBS_ASSET = (
@@ -248,7 +249,7 @@ def build_signature(
     skip_install: bool,
 ) -> dict[str, object]:
     return {
-        "version": 2,
+        "version": 3,
         "asset": asset.name,
         "python_version": python_version,
         "pbs_release": pbs_release,
@@ -272,6 +273,8 @@ def build_signature(
             else None
         ),
         "launcher_sha256": file_sha256(LAUNCHER_SOURCE),
+        "overlay_server_sha256": file_sha256(OVERLAY_SERVER),
+        "builder_sha256": file_sha256(Path(__file__)),
         "skip_install": skip_install,
     }
 
@@ -340,7 +343,7 @@ export PYTHONNOUSERSITE=1
 
 PARENT_PID="$PPID"
 LAUNCHER_PID="$$"
-"$ROOT_DIR/python/bin/python3" -m mlx_vlm.server "$@" &
+"$ROOT_DIR/python/bin/python3" -m mlx_platform_server "$@" &
 CHILD_PID="$!"
 
 request_child_shutdown() {
@@ -524,6 +527,19 @@ def install_local_mlx_vlm(
     )
 
 
+def site_packages_dir(output: Path) -> Path:
+    matches = sorted((output / "python" / "lib").glob("python*/site-packages"))
+    if not matches:
+        raise SystemExit(f"Could not locate site-packages under {output / 'python' / 'lib'}")
+    return matches[0]
+
+
+def install_overlay(output: Path) -> None:
+    destination = site_packages_dir(output) / OVERLAY_SERVER.name
+    log(f"Installing metrics overlay {OVERLAY_SERVER.name}")
+    shutil.copy2(OVERLAY_SERVER, destination)
+
+
 def verify_distribution(output: Path, *, expect_mlx_vlm: bool) -> None:
     python = python_executable(output / "python")
     launcher = output / "bin" / "mlx-vlm-server"
@@ -536,6 +552,14 @@ def verify_distribution(output: Path, *, expect_mlx_vlm: bool) -> None:
                 "-c",
                 "import importlib.util; "
                 "raise SystemExit(0 if importlib.util.find_spec('mlx_vlm.server') else 1)",
+            ]
+        )
+        run(
+            [
+                str(python),
+                "-c",
+                "import importlib.util; "
+                "raise SystemExit(0 if importlib.util.find_spec('mlx_platform_server') else 1)",
             ]
         )
     if not launcher.exists():
@@ -691,6 +715,7 @@ def main() -> None:
                 source=mlx_vlm_source,
                 extra_pip_args=args.pip_arg,
             )
+        install_overlay(output)
 
     launcher = write_or_build_launcher(output)
     verify_distribution(output, expect_mlx_vlm=not args.skip_install)

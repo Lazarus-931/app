@@ -20,6 +20,16 @@ enum MLXServerDemoFormatting {
         return formatter
     }()
 
+    private static let decimalFormatters: [Int: NumberFormatter] = {
+        Dictionary(uniqueKeysWithValues: (0...4).map { digits in
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.minimumFractionDigits = digits
+            formatter.maximumFractionDigits = digits
+            return (digits, formatter)
+        })
+    }()
+
     static func compactCount(_ value: Int) -> FormattedCount {
         let raw = integerFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
         let sign = value < 0 ? "-" : ""
@@ -50,6 +60,40 @@ enum MLXServerDemoFormatting {
             return "--"
         }
         return String(format: "%.1f tok/s", value)
+    }
+
+    static func decimal(_ value: Double?, fractionDigits: Int = 2) -> String {
+        guard let value, value.isFinite else {
+            return "--"
+        }
+
+        let digits = min(max(fractionDigits, 0), 4)
+        if let formatter = decimalFormatters[digits] {
+            return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        }
+        return "\(value)"
+    }
+
+    static func integer(_ value: Int?) -> String {
+        guard let value else {
+            return "--"
+        }
+        return integerFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    static func seconds(fromMilliseconds value: Int64?, fractionDigits: Int = 2) -> String {
+        guard let value, value >= 0 else {
+            return "--"
+        }
+        return decimal(Double(value) / 1_000, fractionDigits: fractionDigits)
+    }
+
+    static func gigabytes(fromBytes value: Int64?, fractionDigits: Int = 1) -> String {
+        guard let value, value >= 0 else {
+            return "--"
+        }
+        let gigabytes = Double(value) / Double(1024 * 1024 * 1024)
+        return "\(decimal(gigabytes, fractionDigits: fractionDigits)) GB"
     }
 
     static func duration(_ value: Double?) -> String {
@@ -98,6 +142,32 @@ enum MLXServerDemoFormatting {
         let prefix = value.prefix(keep)
         let suffix = value.suffix(keep)
         return "\(prefix)...\(suffix)"
+    }
+
+    static func timestamp(_ value: Double?) -> String {
+        guard let value, value > 0 else {
+            return "--"
+        }
+        return Date(timeIntervalSince1970: value).formatted(
+            date: .abbreviated,
+            time: .shortened
+        )
+    }
+
+    static func titleizedIdentifier(_ value: String?) -> String {
+        guard let rawValue = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty
+        else {
+            return "--"
+        }
+
+        return rawValue
+            .replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { segment in
+                segment.prefix(1).uppercased() + segment.dropFirst().lowercased()
+            }
+            .joined(separator: " ")
     }
 }
 
@@ -249,6 +319,32 @@ enum MLXServerDemoStats {
         return entries
     }
 
+    static func modelEntries(_ model: MLXServerModelMetrics) -> [StatsEntry] {
+        [
+            statsEntry("Requests completed", model.requestsCompleted),
+            statsEntry("Requests failed", model.requestsFailed),
+            statsEntry("Streamed requests", model.streamingRequests),
+            statsEntry("Prompt tokens", model.promptTokensTotal),
+            statsEntry("Generated tokens", model.generatedTokensTotal),
+            statsEntry("Total processed tokens", model.totalProcessedTokens),
+            StatsEntry(
+                label: "Avg request speed",
+                value: MLXServerDemoFormatting.rate(model.averageRequestTokensPerSecond),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Avg decode speed",
+                value: MLXServerDemoFormatting.rate(model.averageDecodeTokensPerSecond),
+                tooltip: nil
+            ),
+            StatsEntry(
+                label: "Last request",
+                value: MLXServerDemoFormatting.timestamp(model.lastRequestAt),
+                tooltip: nil
+            ),
+        ]
+    }
+
     static func statsEntry(_ label: String, _ value: Int) -> StatsEntry {
         let formatted = MLXServerDemoFormatting.compactCount(value)
         return StatsEntry(label: label, value: formatted.display, tooltip: formatted.tooltip)
@@ -269,86 +365,6 @@ enum MLXServerDemoStats {
     }
 }
 
-struct MLXServerSessionTotals {
-    static let zero = MLXServerSessionTotals(
-        requestsCompleted: 0,
-        requestsFailed: 0,
-        promptTokensTotal: 0,
-        completionTokensTotal: 0,
-        generatedTokensTotal: 0,
-        requestTimeTotalSeconds: 0,
-        decodeTimeTotalSeconds: 0
-    )
-
-    var requestsCompleted: Int
-    var requestsFailed: Int
-    var promptTokensTotal: Int
-    var completionTokensTotal: Int
-    var generatedTokensTotal: Int
-    var requestTimeTotalSeconds: Double
-    var decodeTimeTotalSeconds: Double
-
-    init(
-        requestsCompleted: Int,
-        requestsFailed: Int,
-        promptTokensTotal: Int,
-        completionTokensTotal: Int,
-        generatedTokensTotal: Int,
-        requestTimeTotalSeconds: Double,
-        decodeTimeTotalSeconds: Double
-    ) {
-        self.requestsCompleted = requestsCompleted
-        self.requestsFailed = requestsFailed
-        self.promptTokensTotal = promptTokensTotal
-        self.completionTokensTotal = completionTokensTotal
-        self.generatedTokensTotal = generatedTokensTotal
-        self.requestTimeTotalSeconds = requestTimeTotalSeconds
-        self.decodeTimeTotalSeconds = decodeTimeTotalSeconds
-    }
-
-    init(summary: MLXServerMetricsSummary) {
-        requestsCompleted = summary.requestsCompleted
-        requestsFailed = summary.requestsFailed
-        promptTokensTotal = summary.promptTokensTotal
-        completionTokensTotal = summary.completionTokensTotal
-        generatedTokensTotal = summary.generatedTokensTotal
-        requestTimeTotalSeconds = summary.averageRequestTimeSeconds * Double(summary.requestsCompleted)
-        decodeTimeTotalSeconds = summary.averageDecodeTokensPerSecond > 0
-            ? Double(summary.generatedTokensTotal) / summary.averageDecodeTokensPerSecond
-            : 0
-    }
-
-    var hasValues: Bool {
-        requestsCompleted > 0 ||
-            requestsFailed > 0 ||
-            promptTokensTotal > 0 ||
-            completionTokensTotal > 0 ||
-            generatedTokensTotal > 0 ||
-            requestTimeTotalSeconds > 0 ||
-            decodeTimeTotalSeconds > 0
-    }
-
-    func appearsReset(comparedTo previous: MLXServerSessionTotals) -> Bool {
-        requestsCompleted < previous.requestsCompleted ||
-            requestsFailed < previous.requestsFailed ||
-            promptTokensTotal < previous.promptTokensTotal ||
-            completionTokensTotal < previous.completionTokensTotal ||
-            generatedTokensTotal < previous.generatedTokensTotal
-    }
-
-    func delta(since previous: MLXServerSessionTotals) -> MLXServerSessionTotals {
-        MLXServerSessionTotals(
-            requestsCompleted: max(0, requestsCompleted - previous.requestsCompleted),
-            requestsFailed: max(0, requestsFailed - previous.requestsFailed),
-            promptTokensTotal: max(0, promptTokensTotal - previous.promptTokensTotal),
-            completionTokensTotal: max(0, completionTokensTotal - previous.completionTokensTotal),
-            generatedTokensTotal: max(0, generatedTokensTotal - previous.generatedTokensTotal),
-            requestTimeTotalSeconds: max(0, requestTimeTotalSeconds - previous.requestTimeTotalSeconds),
-            decodeTimeTotalSeconds: max(0, decodeTimeTotalSeconds - previous.decodeTimeTotalSeconds)
-        )
-    }
-}
-
 struct MLXServerAllTimeStats: Codable {
     var requestsCompleted: Int = 0
     var requestsFailed: Int = 0
@@ -361,6 +377,16 @@ struct MLXServerAllTimeStats: Codable {
 
     var totalProcessedTokens: Int {
         promptTokensTotal + generatedTokensTotal
+    }
+
+    var hasValues: Bool {
+        requestsCompleted > 0 ||
+            requestsFailed > 0 ||
+            promptTokensTotal > 0 ||
+            completionTokensTotal > 0 ||
+            generatedTokensTotal > 0 ||
+            requestTimeTotalSeconds > 0 ||
+            decodeTimeTotalSeconds > 0
     }
 
     var averageDecodeTokensPerSecond: Double? {
@@ -377,40 +403,21 @@ struct MLXServerAllTimeStats: Codable {
         return Double(completionTokensTotal) / requestTimeTotalSeconds
     }
 
-    mutating func apply(delta: MLXServerSessionTotals) {
-        requestsCompleted += delta.requestsCompleted
-        requestsFailed += delta.requestsFailed
-        promptTokensTotal += delta.promptTokensTotal
-        completionTokensTotal += delta.completionTokensTotal
-        generatedTokensTotal += delta.generatedTokensTotal
-        requestTimeTotalSeconds += delta.requestTimeTotalSeconds
-        decodeTimeTotalSeconds += delta.decodeTimeTotalSeconds
-        lastUpdated = Date()
+    static func load(from databaseURL: URL = MLXServerAnalyticsStore.defaultDatabaseURL()) -> MLXServerAllTimeStats {
+        MLXServerAnalyticsStore(databaseURL: databaseURL)
+            .fetchSummary(range: .allTime)
+            .asAllTimeStats
     }
 
-    static func load() -> MLXServerAllTimeStats {
-        let url = storageURL()
-        guard let data = try? Data(contentsOf: url) else {
-            return MLXServerAllTimeStats()
+    static func removeLegacyStorage() {
+        let url = legacyStorageURL()
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return
         }
-        return (try? PropertyListDecoder().decode(MLXServerAllTimeStats.self, from: data)) ?? MLXServerAllTimeStats()
+        try? FileManager.default.removeItem(at: url)
     }
 
-    func save() {
-        let url = Self.storageURL()
-        do {
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let data = try PropertyListEncoder().encode(self)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            // Stats are best-effort cache data; keep the in-memory counters.
-        }
-    }
-
-    private static func storageURL() -> URL {
+    private static func legacyStorageURL() -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let bundleID = Bundle.main.bundleIdentifier ?? "dev.local.MLXServerDemo"

@@ -50,6 +50,7 @@ public enum MLXServer {
         var processEnvironment = ProcessInfo.processInfo.environment
         processEnvironment.merge(environment) { _, newValue in newValue }
         processEnvironment["PYTHONNOUSERSITE"] = "1"
+        processEnvironment["PYTHONUNBUFFERED"] = "1"
         process.environment = processEnvironment
         return process
     }
@@ -87,6 +88,22 @@ public struct MLXServerMetrics: Decodable {
     public let latest: MLXServerLatestRequest?
     public let summary: MLXServerMetricsSummary
     public let server: MLXServerRuntimeSnapshot
+    public let models: [MLXServerModelMetrics]
+
+    enum CodingKeys: String, CodingKey {
+        case latest
+        case summary
+        case server
+        case models
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        latest = try container.decodeIfPresent(MLXServerLatestRequest.self, forKey: .latest)
+        summary = (try? container.decode(MLXServerMetricsSummary.self, forKey: .summary)) ?? MLXServerMetricsSummary()
+        server = (try? container.decode(MLXServerRuntimeSnapshot.self, forKey: .server)) ?? MLXServerRuntimeSnapshot()
+        models = (try? container.decode([MLXServerModelMetrics].self, forKey: .models)) ?? []
+    }
 }
 
 public struct MLXServerMetricsSummary: Decodable {
@@ -128,6 +145,22 @@ public struct MLXServerMetricsSummary: Decodable {
         case lastRequestAt = "last_request_at"
     }
 
+    public init() {
+        uptimeSeconds = 0
+        requestsStarted = 0
+        requestsCompleted = 0
+        requestsFailed = 0
+        streamingRequests = 0
+        inFlight = 0
+        promptTokensTotal = 0
+        completionTokensTotal = 0
+        generatedTokensTotal = 0
+        averageRequestTimeSeconds = 0
+        averageRequestTokensPerSecond = 0
+        averageDecodeTokensPerSecond = 0
+        lastRequestAt = nil
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         uptimeSeconds = container.decodeDoubleIfPresent(forKey: .uptimeSeconds)
@@ -136,6 +169,60 @@ public struct MLXServerMetricsSummary: Decodable {
         requestsFailed = container.decodeIntIfPresent(forKey: .requestsFailed)
         streamingRequests = container.decodeIntIfPresent(forKey: .streamingRequests)
         inFlight = container.decodeIntIfPresent(forKey: .inFlight)
+        promptTokensTotal = container.decodeIntIfPresent(forKey: .promptTokensTotal)
+        completionTokensTotal = container.decodeIntIfPresent(forKey: .completionTokensTotal)
+        generatedTokensTotal = container.decodeIntIfPresent(forKey: .generatedTokensTotal)
+        averageRequestTimeSeconds = container.decodeDoubleIfPresent(forKey: .averageRequestTimeSeconds)
+        averageRequestTokensPerSecond = container.decodeDoubleIfPresent(forKey: .averageRequestTokensPerSecond)
+        averageDecodeTokensPerSecond = container.decodeDoubleIfPresent(forKey: .averageDecodeTokensPerSecond)
+        lastRequestAt = try container.decodeIfPresent(Double.self, forKey: .lastRequestAt)
+    }
+}
+
+public struct MLXServerModelMetrics: Decodable, Identifiable {
+    public let model: String
+    public let requestsStarted: Int
+    public let requestsCompleted: Int
+    public let requestsFailed: Int
+    public let streamingRequests: Int
+    public let promptTokensTotal: Int
+    public let completionTokensTotal: Int
+    public let generatedTokensTotal: Int
+    public let averageRequestTimeSeconds: Double
+    public let averageRequestTokensPerSecond: Double
+    public let averageDecodeTokensPerSecond: Double
+    public let lastRequestAt: Double?
+
+    public var id: String {
+        model
+    }
+
+    public var totalProcessedTokens: Int {
+        promptTokensTotal + generatedTokensTotal
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case requestsStarted = "requests_started"
+        case requestsCompleted = "requests_completed"
+        case requestsFailed = "requests_failed"
+        case streamingRequests = "streaming_requests"
+        case promptTokensTotal = "prompt_tokens_total"
+        case completionTokensTotal = "completion_tokens_total"
+        case generatedTokensTotal = "generated_tokens_total"
+        case averageRequestTimeSeconds = "avg_request_time_s"
+        case averageRequestTokensPerSecond = "avg_request_tok_s"
+        case averageDecodeTokensPerSecond = "avg_decode_tok_s"
+        case lastRequestAt = "last_request_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        model = (try? container.decode(String.self, forKey: .model)) ?? "Unknown"
+        requestsStarted = container.decodeIntIfPresent(forKey: .requestsStarted)
+        requestsCompleted = container.decodeIntIfPresent(forKey: .requestsCompleted)
+        requestsFailed = container.decodeIntIfPresent(forKey: .requestsFailed)
+        streamingRequests = container.decodeIntIfPresent(forKey: .streamingRequests)
         promptTokensTotal = container.decodeIntIfPresent(forKey: .promptTokensTotal)
         completionTokensTotal = container.decodeIntIfPresent(forKey: .completionTokensTotal)
         generatedTokensTotal = container.decodeIntIfPresent(forKey: .generatedTokensTotal)
@@ -241,6 +328,7 @@ public struct MLXServerRuntimeSnapshot: Decodable {
     public let configuredContextLimit: Int?
     public let effectiveContextLimit: Int?
     public let loadedToolParser: String?
+    public let analyticsDatabasePath: String?
     public let continuousBatchingEnabled: Bool
     public let requestQueueDepth: Int
     public let apc: MLXServerAPCSnapshot
@@ -256,9 +344,23 @@ public struct MLXServerRuntimeSnapshot: Decodable {
         case configuredContextLimit = "configured_context_limit"
         case effectiveContextLimit = "effective_context_limit"
         case loadedToolParser = "loaded_tool_parser"
+        case analyticsDatabasePath = "analytics_db_path"
         case continuousBatchingEnabled = "continuous_batching_enabled"
         case requestQueueDepth = "request_queue_depth"
         case apc
+    }
+
+    public init() {
+        loadedModel = nil
+        loadedAdapter = nil
+        loadedContextSize = nil
+        configuredContextLimit = nil
+        effectiveContextLimit = nil
+        loadedToolParser = nil
+        analyticsDatabasePath = nil
+        continuousBatchingEnabled = false
+        requestQueueDepth = 0
+        apc = MLXServerAPCSnapshot()
     }
 
     public init(from decoder: Decoder) throws {
@@ -269,6 +371,7 @@ public struct MLXServerRuntimeSnapshot: Decodable {
         configuredContextLimit = try container.decodeIfPresent(Int.self, forKey: .configuredContextLimit)
         effectiveContextLimit = try container.decodeIfPresent(Int.self, forKey: .effectiveContextLimit)
         loadedToolParser = try container.decodeIfPresent(String.self, forKey: .loadedToolParser)
+        analyticsDatabasePath = try container.decodeIfPresent(String.self, forKey: .analyticsDatabasePath)
         continuousBatchingEnabled = container.decodeBoolIfPresent(forKey: .continuousBatchingEnabled)
         requestQueueDepth = container.decodeIntIfPresent(forKey: .requestQueueDepth)
         apc = (try? container.decode(MLXServerAPCSnapshot.self, forKey: .apc)) ?? MLXServerAPCSnapshot()
