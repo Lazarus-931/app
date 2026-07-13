@@ -1051,32 +1051,16 @@ private struct ChatMessageRow: View {
                             .controlSize(.small)
                     }
 
-                    VStack(alignment: contentStackAlignment, spacing: 8) {
+                    VStack(alignment: contentStackAlignment, spacing: 6) {
                         if !message.imageAttachments.isEmpty {
-                            ChatImageAttachmentGrid(
+                            ChatImageAttachmentStack(
                                 attachments: message.imageAttachments,
                                 isUserMessage: message.role == .user
                             )
                         }
 
                         if showsTextContent {
-                            if usesCompactBubble {
-                                ChatMessageText(
-                                    content: displayContent,
-                                    rendersMarkdown: rendersMarkdown
-                                )
-                                    .lineSpacing(2)
-                                    .fixedSize(horizontal: true, vertical: false)
-                            } else {
-                                ChatMessageText(
-                                    content: displayContent,
-                                    rendersMarkdown: rendersMarkdown
-                                )
-                                    .lineSpacing(2)
-                                    .multilineTextAlignment(textAlignment)
-                                    .frame(maxWidth: 560, alignment: alignment)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+                            textBubble
                         }
                     }
 
@@ -1085,18 +1069,6 @@ private struct ChatMessageRow: View {
                             .controlSize(.small)
                     }
                 }
-                .font(.body)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .foregroundStyle(foregroundStyle)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(backgroundColor)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(borderColor, lineWidth: message.role == .error ? 1 : 0.5)
-                )
 
                 if let responseMetrics {
                     ChatResponseMetricsRow(metrics: responseMetrics)
@@ -1108,6 +1080,41 @@ private struct ChatMessageRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: rowAlignment)
+    }
+
+    @ViewBuilder
+    private var textBubble: some View {
+        Group {
+            if usesCompactBubble {
+                ChatMessageText(
+                    content: displayContent,
+                    rendersMarkdown: rendersMarkdown
+                )
+                .lineSpacing(2)
+                .fixedSize(horizontal: true, vertical: false)
+            } else {
+                ChatMessageText(
+                    content: displayContent,
+                    rendersMarkdown: rendersMarkdown
+                )
+                .lineSpacing(2)
+                .multilineTextAlignment(textAlignment)
+                .frame(maxWidth: 560, alignment: alignment)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .font(.body)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .foregroundStyle(foregroundStyle)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(backgroundColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(borderColor, lineWidth: message.role == .error ? 1 : 0.5)
+        )
     }
 
     private var title: String {
@@ -1142,8 +1149,7 @@ private struct ChatMessageRow: View {
     }
 
     private var usesCompactBubble: Bool {
-        message.imageAttachments.isEmpty
-            && !displayContent.contains(where: \.isNewline)
+        !displayContent.contains(where: \.isNewline)
             && displayContent.count <= 72
     }
 
@@ -1255,21 +1261,73 @@ private struct ChatResponseMetricPill: View {
     }
 }
 
-private struct ChatImageAttachmentGrid: View {
+private struct ChatImageAttachmentStack: View {
     let attachments: [ChatImageAttachment]
     let isUserMessage: Bool
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 92, maximum: 132), spacing: 8)
-    ]
-
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+        VStack(alignment: isUserMessage ? .trailing : .leading, spacing: 6) {
             ForEach(attachments) { attachment in
-                ChatImageThumbnail(attachment: attachment, isUserMessage: isUserMessage)
+                ChatImageAttachmentView(attachment: attachment)
             }
         }
-        .frame(maxWidth: min(CGFloat(max(attachments.count, 1)) * 140, 420), alignment: .leading)
+    }
+}
+
+private struct ChatImageAttachmentView: View {
+    let attachment: ChatImageAttachment
+
+    private let maximumSideLength: CGFloat = 300
+
+    var body: some View {
+        Group {
+            if let image {
+                let size = displaySize(for: image)
+
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size.width, height: size.height)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "photo")
+                        .font(.title2)
+                    Text(attachment.filename)
+                        .font(.caption)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundStyle(.secondary)
+                .frame(width: 180, height: 120)
+                .background(Color(nsColor: .controlBackgroundColor))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
+        .help(attachment.filename)
+        .accessibilityLabel(attachment.filename)
+    }
+
+    private var image: NSImage? {
+        guard let data = attachment.imageData else {
+            return nil
+        }
+        return NSImage(data: data)
+    }
+
+    private func displaySize(for image: NSImage) -> CGSize {
+        guard image.size.width > 0, image.size.height > 0 else {
+            return CGSize(width: maximumSideLength, height: maximumSideLength)
+        }
+
+        let scale = min(1, maximumSideLength / max(image.size.width, image.size.height))
+        return CGSize(
+            width: image.size.width * scale,
+            height: image.size.height * scale
+        )
     }
 }
 
