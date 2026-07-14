@@ -64,6 +64,7 @@ struct ControlPanelView: View {
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var splitColumnVisibility: NavigationSplitViewVisibility = .all
     @State private var isFullScreen = false
+    @State private var isNewChatHovering = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $splitColumnVisibility) {
@@ -142,7 +143,14 @@ struct ControlPanelView: View {
                             .frame(width: 30, height: 28)
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.accentColor.opacity(0.12))
+                                    .fill(Color.accentColor.opacity(isNewChatHovering ? 0.22 : 0.12))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(
+                                        Color.accentColor.opacity(isNewChatHovering ? 0.32 : 0.08),
+                                        lineWidth: 0.5
+                                    )
                             )
                     }
                     .buttonStyle(.plain)
@@ -150,6 +158,8 @@ struct ControlPanelView: View {
                     .disabled(isNewRecentDisabled)
                     .help(newRecentHelp)
                     .padding(.trailing, 4)
+                    .onHover { isNewChatHovering = $0 }
+                    .animation(.easeOut(duration: 0.12), value: isNewChatHovering)
                 }
                 .textCase(nil)
             }
@@ -563,6 +573,7 @@ private struct ControlPanelRecentSessionRow: View {
 
 private struct SidebarRowSelectionStyle: ViewModifier {
     let isSelected: Bool
+    @State private var isHovering = false
 
     func body(content: Content) -> some View {
         content
@@ -570,9 +581,29 @@ private struct SidebarRowSelectionStyle: ViewModifier {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+                    .fill(backgroundColor)
             )
-            .foregroundStyle(isSelected ? Color.primary : Color.primary)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(
+                        isSelected ? Color.accentColor.opacity(0.12) : Color.clear,
+                        lineWidth: 0.5
+                    )
+            )
+            .foregroundStyle(Color.primary)
+            .contentShape(.rect)
+            .onHover { isHovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: isHovering)
+    }
+
+    private var backgroundColor: Color {
+        if isSelected {
+            return Color.accentColor.opacity(0.18)
+        }
+        if isHovering {
+            return Color.accentColor.opacity(0.10)
+        }
+        return Color.clear
     }
 }
 
