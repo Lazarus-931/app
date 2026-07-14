@@ -1124,10 +1124,7 @@ private struct ModelPerformanceTable: View {
     private func modelRow(_ row: DashboardViewModel.ModelPerformance) -> some View {
         HStack(spacing: 18) {
             HStack(spacing: 10) {
-                Image(systemName: "cpu")
-                    .foregroundStyle(DashboardPalette.accent)
-                    .frame(width: 28, height: 28)
-                    .background(DashboardPalette.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+                ModelPerformanceProviderBadge(modelID: row.modelID)
 
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(modelColor(for: row.modelID))
@@ -1450,6 +1447,43 @@ private struct DashboardInfoPopover: View {
             .frame(width: 260, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
             .padding(14)
+    }
+}
+
+private struct ModelPerformanceProviderBadge: View {
+    let modelID: String
+
+    private var provider: LocalModelProvider? {
+        LocalModelProviderResolver.resolve(
+            repoID: modelID,
+            modelType: nil,
+            architectures: []
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.secondary.opacity(0.10))
+
+            if let provider, let image = LocalModelProviderIcon.image(for: provider) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 18, height: 18)
+                    .accessibilityLabel(provider.displayName)
+            } else if let provider {
+                Text(provider.monogram)
+                    .font(.system(size: provider.monogram.count > 2 ? 7 : 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "cube.transparent.fill")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 28, height: 28)
+        .help(provider?.displayName ?? "Unknown provider")
     }
 }
 
