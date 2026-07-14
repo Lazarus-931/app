@@ -628,7 +628,7 @@ private struct InstalledModelRow: View {
                 onLoadModel()
             } label: {
                 HStack(spacing: 14) {
-                    ModelProviderBadge(provider: localModel.provider)
+                    ModelProviderBadge(provider: localModel.provider, isHighlighted: isSelected)
 
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 7) {
@@ -919,12 +919,16 @@ private struct ModelDownloadActionButton: View {
 
 private struct ModelProviderBadge: View {
     let provider: LocalModelProvider?
+    var isHighlighted = false
 
     private var color: Color {
         provider?.modelBadgeColor ?? .secondary
     }
 
     private var backgroundColor: Color {
+        if isHighlighted {
+            return Color(nsColor: .controlBackgroundColor)
+        }
         if provider?.preservesIconColors == true {
             return Color.secondary.opacity(0.10)
         }
