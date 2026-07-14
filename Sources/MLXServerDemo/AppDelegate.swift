@@ -6,9 +6,11 @@ import SwiftUI
 private final class ModelMenuIconView: NSView {
     private let imageView = NSImageView()
     private let monogramLabel = NSTextField(labelWithString: "")
+    private let provider: LocalModelProvider?
     private let isSelected: Bool
 
     init(provider: LocalModelProvider?, isSelected: Bool) {
+        self.provider = provider
         self.isSelected = isSelected
         super.init(frame: .zero)
 
@@ -68,8 +70,9 @@ private final class ModelMenuIconView: NSView {
         layer?.backgroundColor = isSelected
             ? NSColor.controlAccentColor.cgColor
             : NSColor.controlBackgroundColor.cgColor
-        imageView.contentTintColor = isSelected ? .white : .secondaryLabelColor
-        monogramLabel.textColor = isSelected ? .white : .secondaryLabelColor
+        let providerColor = provider?.iconTintColor ?? .secondaryLabelColor
+        imageView.contentTintColor = isSelected ? .white : providerColor
+        monogramLabel.textColor = isSelected ? .white : providerColor
     }
 }
 

@@ -12,6 +12,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
     case ai2
     case openBMB
     case openMOSS
+    case poolside
     case nvidia
     case apple
     case ibm
@@ -31,6 +32,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .ai2: "Ai2"
         case .openBMB: "OpenBMB"
         case .openMOSS: "OpenMOSS"
+        case .poolside: "Poolside"
         case .nvidia: "NVIDIA"
         case .apple: "Apple"
         case .ibm: "IBM"
@@ -52,6 +54,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .ai2: "ModelProviderIcon-ai2"
         case .openBMB: "ModelProviderIcon-openbmb"
         case .openMOSS: "ModelProviderIcon-openmoss"
+        case .poolside: "ModelProviderIcon-poolside"
         case .nvidia: "ModelProviderIcon-nvidia"
         case .apple: "ModelProviderIcon-apple"
         case .ibm: "ModelProviderIcon-ibm"
@@ -73,6 +76,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .ai2: "A2"
         case .openBMB: "B"
         case .openMOSS: "M"
+        case .poolside: "P"
         case .nvidia: "N"
         case .apple: "A"
         case .ibm: "IBM"
@@ -83,10 +87,31 @@ enum LocalModelProvider: String, Hashable, Sendable {
 
     var preservesIconColors: Bool {
         switch self {
-        case .google, .mistral, .microsoft, .cohere, .openBMB, .openMOSS:
+        case .google, .mistral, .microsoft, .cohere, .openBMB, .openMOSS, .poolside:
             true
         default:
             false
+        }
+    }
+
+    var iconTintColor: NSColor {
+        switch self {
+        case .google, .openAI, .mistral, .microsoft, .cohere, .apple, .liquidAI, .zAI:
+            .labelColor
+        case .meta:
+            NSColor(srgbRed: 0 / 255, green: 129 / 255, blue: 251 / 255, alpha: 1)
+        case .qwen:
+            NSColor(srgbRed: 0 / 255, green: 46 / 255, blue: 254 / 255, alpha: 1)
+        case .deepSeek:
+            NSColor(srgbRed: 79 / 255, green: 112 / 255, blue: 255 / 255, alpha: 1)
+        case .ai2:
+            NSColor(srgbRed: 255 / 255, green: 103 / 255, blue: 170 / 255, alpha: 1)
+        case .openBMB, .openMOSS, .poolside:
+            .labelColor
+        case .nvidia:
+            NSColor(srgbRed: 118 / 255, green: 185 / 255, blue: 0 / 255, alpha: 1)
+        case .ibm:
+            NSColor(srgbRed: 15 / 255, green: 98 / 255, blue: 254 / 255, alpha: 1)
         }
     }
 }
@@ -114,6 +139,7 @@ enum LocalModelProviderResolver {
         ModelFamilyMapping(provider: .ai2, identifiers: ["olmo", "molmo"]),
         ModelFamilyMapping(provider: .openBMB, identifiers: ["minicpm"]),
         ModelFamilyMapping(provider: .openMOSS, identifiers: ["moss"]),
+        ModelFamilyMapping(provider: .poolside, identifiers: ["laguna"]),
         ModelFamilyMapping(provider: .openAI, identifiers: ["gptoss", "whisper"]),
         ModelFamilyMapping(provider: .meta, identifiers: ["llama"]),
         ModelFamilyMapping(provider: .deepSeek, identifiers: ["deepseek"]),
@@ -145,6 +171,8 @@ enum LocalModelProviderResolver {
         "openbmb": .openBMB,
         "openmoss": .openMOSS,
         "openmossteam": .openMOSS,
+        "poolside": .poolside,
+        "poolsideai": .poolside,
         "nvidia": .nvidia,
         "apple": .apple,
         "ibm": .ibm,

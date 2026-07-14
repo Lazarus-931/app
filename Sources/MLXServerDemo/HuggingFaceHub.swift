@@ -47,6 +47,7 @@ struct HuggingFaceModel: Decodable, Identifiable, Equatable, Sendable {
     let tags: [String]
     let isPrivate: Bool
     let isGated: Bool
+    let safetensors: HuggingFaceSafetensors?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -57,6 +58,7 @@ struct HuggingFaceModel: Decodable, Identifiable, Equatable, Sendable {
         case tags
         case isPrivate = "private"
         case gated
+        case safetensors
     }
 
     init(from decoder: Decoder) throws {
@@ -68,6 +70,7 @@ struct HuggingFaceModel: Decodable, Identifiable, Equatable, Sendable {
         libraryName = try container.decodeIfPresent(String.self, forKey: .libraryName)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         isPrivate = try container.decodeIfPresent(Bool.self, forKey: .isPrivate) ?? false
+        safetensors = try container.decodeIfPresent(HuggingFaceSafetensors.self, forKey: .safetensors)
 
         if let value = try? container.decode(Bool.self, forKey: .gated) {
             isGated = value
@@ -80,6 +83,10 @@ struct HuggingFaceModel: Decodable, Identifiable, Equatable, Sendable {
 
     var provider: LocalModelProvider? {
         LocalModelProviderResolver.resolve(repoID: id, modelType: nil, architectures: [])
+    }
+
+    var sizeBytes: Int64? {
+        safetensors?.sizeBytes
     }
 
     var capabilities: Set<LocalModelCapability> {
@@ -154,6 +161,43 @@ struct HuggingFaceModel: Decodable, Identifiable, Equatable, Sendable {
     }
 }
 
+struct HuggingFaceSafetensors: Decodable, Equatable, Sendable {
+    let parameters: [String: Int64]
+
+    var sizeBytes: Int64? {
+        guard !parameters.isEmpty else { return nil }
+
+        let byteCount = parameters.reduce(0.0) { result, entry in
+            result + (Double(entry.value) * bitsPerParameter(for: entry.key) / 8)
+        }
+        guard byteCount.isFinite, byteCount > 0, byteCount <= Double(Int64.max) else {
+            return nil
+        }
+        return Int64(byteCount.rounded(.up))
+    }
+
+    private func bitsPerParameter(for dataType: String) -> Double {
+        switch dataType.uppercased() {
+        case "F64", "I64", "U64":
+            64
+        case "F32", "I32", "U32":
+            32
+        case "F16", "BF16", "I16", "U16":
+            16
+        case "F8_E4M3", "F8_E5M2", "I8", "U8", "BOOL":
+            8
+        case "F6_E2M3", "F6_E3M2":
+            6
+        case "F4", "I4", "U4":
+            4
+        case "I2", "U2":
+            2
+        default:
+            16
+        }
+    }
+}
+
 enum HuggingFaceHubError: LocalizedError {
     case invalidResponse
     case requestFailed(Int, String)
@@ -185,9 +229,12 @@ private struct HuggingFaceHubClient: Sendable {
             URLQueryItem(name: "filter", value: "mlx"),
             URLQueryItem(name: "sort", value: sort.rawValue),
             URLQueryItem(name: "direction", value: "-1"),
-            URLQueryItem(name: "limit", value: "50"),
-            URLQueryItem(name: "full", value: "true")
+            URLQueryItem(name: "limit", value: "50")
         ]
+        queryItems.append(contentsOf: [
+            "downloads", "likes", "pipeline_tag", "library_name", "tags",
+            "private", "gated", "safetensors"
+        ].map { URLQueryItem(name: "expand[]", value: $0) })
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedQuery.isEmpty {
             queryItems.append(URLQueryItem(name: "search", value: trimmedQuery))

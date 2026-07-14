@@ -762,6 +762,12 @@ private struct HubModelRow: View {
                     HStack(spacing: 6) {
                         ModelPill(title: compactCount(model.downloads), systemImage: "arrow.down.circle")
                         ModelPill(title: compactCount(model.likes), systemImage: "heart")
+                        if let sizeBytes = model.sizeBytes {
+                            ModelPill(
+                                title: ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file),
+                                systemImage: "internaldrive"
+                            )
+                        }
                     }
 
                     if !model.capabilities.isEmpty {
@@ -1154,6 +1160,8 @@ private extension LocalModelProvider {
         case .openBMB:
             Color(red: 68 / 255, green: 119 / 255, blue: 255 / 255)
         case .openMOSS:
+            .primary
+        case .poolside:
             .primary
         case .nvidia:
             Color(red: 118 / 255, green: 185 / 255, blue: 0 / 255)
