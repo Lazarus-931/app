@@ -978,7 +978,17 @@ private struct RequestHealthPanel: View {
                     .foregroundStyle(DashboardPalette.positive.gradient)
                     .cornerRadius(2)
                 }
-                .chartXAxis(.hidden)
+                .chartXAxis {
+                    AxisMarks(values: axisDates) { value in
+                        AxisGridLine().foregroundStyle(Color.clear)
+                        AxisTick().foregroundStyle(DashboardPalette.axisTick)
+                        if let date = value.as(Date.self) {
+                            AxisValueLabel(axisLabel(for: date))
+                                .font(.caption2)
+                                .foregroundStyle(DashboardPalette.axisText)
+                        }
+                    }
+                }
                 .chartYAxis(.hidden)
                 .frame(height: 118)
             }
@@ -996,6 +1006,20 @@ private struct RequestHealthPanel: View {
     }
 
     private var total: Int { completed + failed }
+
+    private var granularity: MLXServerAnalyticsGranularity {
+        points.first?.granularity ?? .hour
+    }
+
+    private var axisDates: [Date] {
+        DashboardChartAxis.markDates(from: points.map(\.bucketStart), maximumCount: 4)
+    }
+
+    private func axisLabel(for date: Date) -> String {
+        granularity == .hour
+            ? DashboardFormatters.hourLabel.string(from: date).lowercased()
+            : DashboardFormatters.dayLabel.string(from: date)
+    }
 }
 
 private struct RequestHealthStat: View {
