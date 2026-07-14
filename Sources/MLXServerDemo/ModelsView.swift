@@ -1153,6 +1153,8 @@ private extension LocalModelProvider {
             Color(red: 255 / 255, green: 103 / 255, blue: 170 / 255)
         case .openBMB:
             Color(red: 68 / 255, green: 119 / 255, blue: 255 / 255)
+        case .openMOSS:
+            .primary
         case .nvidia:
             Color(red: 118 / 255, green: 185 / 255, blue: 0 / 255)
         case .apple:

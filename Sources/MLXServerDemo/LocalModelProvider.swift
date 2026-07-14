@@ -11,6 +11,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
     case deepSeek
     case ai2
     case openBMB
+    case openMOSS
     case nvidia
     case apple
     case ibm
@@ -29,6 +30,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .deepSeek: "DeepSeek"
         case .ai2: "Ai2"
         case .openBMB: "OpenBMB"
+        case .openMOSS: "OpenMOSS"
         case .nvidia: "NVIDIA"
         case .apple: "Apple"
         case .ibm: "IBM"
@@ -48,7 +50,8 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .cohere: "ModelProviderIcon-cohere"
         case .deepSeek: "ModelProviderIcon-deepseek"
         case .ai2: "ModelProviderIcon-ai2"
-        case .openBMB: nil
+        case .openBMB: "ModelProviderIcon-openbmb"
+        case .openMOSS: "ModelProviderIcon-openmoss"
         case .nvidia: "ModelProviderIcon-nvidia"
         case .apple: "ModelProviderIcon-apple"
         case .ibm: "ModelProviderIcon-ibm"
@@ -69,6 +72,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .deepSeek: "D"
         case .ai2: "A2"
         case .openBMB: "B"
+        case .openMOSS: "M"
         case .nvidia: "N"
         case .apple: "A"
         case .ibm: "IBM"
@@ -79,7 +83,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
 
     var preservesIconColors: Bool {
         switch self {
-        case .google, .mistral, .microsoft, .cohere:
+        case .google, .mistral, .microsoft, .cohere, .openBMB, .openMOSS:
             true
         default:
             false
@@ -109,6 +113,7 @@ enum LocalModelProviderResolver {
         ModelFamilyMapping(provider: .cohere, identifiers: ["cohere", "command", "aya"]),
         ModelFamilyMapping(provider: .ai2, identifiers: ["olmo", "molmo"]),
         ModelFamilyMapping(provider: .openBMB, identifiers: ["minicpm"]),
+        ModelFamilyMapping(provider: .openMOSS, identifiers: ["moss"]),
         ModelFamilyMapping(provider: .openAI, identifiers: ["gptoss", "whisper"]),
         ModelFamilyMapping(provider: .meta, identifiers: ["llama"]),
         ModelFamilyMapping(provider: .deepSeek, identifiers: ["deepseek"]),
@@ -138,6 +143,8 @@ enum LocalModelProviderResolver {
         "allenai": .ai2,
         "ai2": .ai2,
         "openbmb": .openBMB,
+        "openmoss": .openMOSS,
+        "openmossteam": .openMOSS,
         "nvidia": .nvidia,
         "apple": .apple,
         "ibm": .ibm,
