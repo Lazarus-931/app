@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct ChatView: View {
     @ObservedObject var model: MLXServerDemoModel
     @ObservedObject var chat: ChatViewModel
+    let showsConfiguration: Bool
     @State private var transcriptScrollPosition = ScrollPosition(edge: .bottom)
     @State private var composerHeight: CGFloat = 0
     @State private var followsLatestMessage = true
@@ -50,14 +51,17 @@ struct ChatView: View {
             }
             .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
 
-            Divider()
+            if showsConfiguration {
+                Divider()
 
-            ChatConfigurationSidebar(
-                settings: $model.settings,
-                settingsRequireRestart: model.settingsRequireRestart,
-                onReset: model.resetSettings
-            )
-            .frame(width: 320)
+                ChatConfigurationSidebar(
+                    settings: $model.settings,
+                    settingsRequireRestart: model.settingsRequireRestart,
+                    onReset: model.resetSettings
+                )
+                .frame(width: 320)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -1049,7 +1053,7 @@ private struct ChatConfigurationSidebar: View {
             Divider()
 
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 20) {
                     modelContextSection
                     kvQuantizationSection
                     thinkingSection
@@ -1058,17 +1062,18 @@ private struct ChatConfigurationSidebar: View {
                     structuredOutputSection
                     prefixCachingSection
                 }
-                .padding(12)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 18)
             }
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Label("Model Configuration", systemImage: "slider.horizontal.3")
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
 
                 Spacer(minLength: 0)
 
@@ -1081,20 +1086,20 @@ private struct ChatConfigurationSidebar: View {
 
             if settingsRequireRestart {
                 Label("Server restart required", systemImage: "arrow.clockwise")
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.orange)
             } else {
                 Text("Request settings apply to the next message.")
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
     }
 
     private var modelContextSection: some View {
-        ChatConfigurationSection(title: "Model Context", systemImage: "text.append") {
+        ChatConfigurationSection(title: "Model Context") {
             ConfigurationIntegerField(
                 title: "Max output",
                 value: $settings.maxTokens,
@@ -1110,16 +1115,16 @@ private struct ChatConfigurationSidebar: View {
             Text("0 uses the model's native context window.")
                 .configurationHintStyle()
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("System prompt")
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
 
                 TextEditor(text: $settings.systemPrompt)
-                    .font(.callout)
+                    .font(.body)
                     .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .frame(minHeight: 76)
+                    .padding(8)
+                    .frame(minHeight: 88)
                     .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
                     .overlay {
                         RoundedRectangle(cornerRadius: 7)
@@ -1130,7 +1135,7 @@ private struct ChatConfigurationSidebar: View {
     }
 
     private var kvQuantizationSection: some View {
-        ChatConfigurationSection(title: "KV Quantization", systemImage: "memorychip") {
+        ChatConfigurationSection(title: "KV Quantization") {
             Toggle("Quantize KV cache", isOn: $settings.kvQuantizationEnabled)
                 .configurationToggleStyle()
 
@@ -1165,7 +1170,7 @@ private struct ChatConfigurationSidebar: View {
     }
 
     private var thinkingSection: some View {
-        ChatConfigurationSection(title: "Thinking", systemImage: "brain.head.profile") {
+        ChatConfigurationSection(title: "Thinking") {
             Toggle("Enable Thinking", isOn: $settings.thinkingEnabled)
                 .configurationToggleStyle()
 
@@ -1182,7 +1187,7 @@ private struct ChatConfigurationSidebar: View {
     }
 
     private var samplingSection: some View {
-        ChatConfigurationSection(title: "Sampling", systemImage: "dial.medium") {
+        ChatConfigurationSection(title: "Sampling") {
             ConfigurationDoubleField(
                 title: "Temperature",
                 value: $settings.temperature,
@@ -1218,7 +1223,7 @@ private struct ChatConfigurationSidebar: View {
     }
 
     private var speculativeDecodingSection: some View {
-        ChatConfigurationSection(title: "Speculative Decoding", systemImage: "hare") {
+        ChatConfigurationSection(title: "Speculative Decoding") {
             Toggle("Enable drafter", isOn: speculativeDecodingBinding)
                 .configurationToggleStyle()
 
@@ -1238,7 +1243,7 @@ private struct ChatConfigurationSidebar: View {
                     .labelsHidden()
                     .frame(width: 112)
                 }
-                .font(.caption)
+                .font(.body)
 
                 ConfigurationIntegerField(
                     title: "Block size",
@@ -1257,17 +1262,17 @@ private struct ChatConfigurationSidebar: View {
     }
 
     private var structuredOutputSection: some View {
-        ChatConfigurationSection(title: "Structured Output", systemImage: "curlybraces") {
+        ChatConfigurationSection(title: "Structured Output") {
             Toggle("Enforce JSON schema", isOn: structuredOutputBinding)
                 .configurationToggleStyle()
 
             if settings.structuredOutputEnabled {
                 ConfigurationTextField(title: "Schema name", text: $settings.structuredOutputName)
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("JSON schema")
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
 
                         Spacer(minLength: 0)
@@ -1276,13 +1281,13 @@ private struct ChatConfigurationSidebar: View {
                             settings.structuredOutputSchema = MLXServerSettings.defaultStructuredOutputSchema
                         }
                         .buttonStyle(.borderless)
-                        .font(.caption)
+                        .font(.subheadline)
                     }
 
                     TextEditor(text: $settings.structuredOutputSchema)
-                        .font(.system(.caption, design: .monospaced))
+                        .font(.system(.body, design: .monospaced))
                         .scrollContentBackground(.hidden)
-                        .padding(6)
+                        .padding(8)
                         .frame(minHeight: 128)
                         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
                         .overlay {
@@ -1305,7 +1310,7 @@ private struct ChatConfigurationSidebar: View {
     }
 
     private var prefixCachingSection: some View {
-        ChatConfigurationSection(title: "Prefix Caching", systemImage: "bolt.horizontal.circle") {
+        ChatConfigurationSection(title: "Prefix Caching") {
             Toggle("Enable automatic caching", isOn: $settings.prefixCachingEnabled)
                 .configurationToggleStyle()
 
@@ -1367,29 +1372,26 @@ private struct ChatConfigurationSidebar: View {
 
 private struct ChatConfigurationSection<Content: View>: View {
     let title: String
-    let systemImage: String
     private let content: Content
 
     init(
         title: String,
-        systemImage: String,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
-        self.systemImage = systemImage
         self.content = content()
     }
 
     var body: some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 2)
+            .padding(8)
         } label: {
-            Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.semibold))
+            Text(title)
+                .font(.headline)
         }
     }
 }
@@ -1402,16 +1404,17 @@ private struct ConfigurationIntegerField: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(title)
+                .font(.body)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
             TextField("", value: $value, format: .number)
+                .font(.body)
                 .multilineTextAlignment(.trailing)
-                .frame(width: 88)
+                .frame(width: 104)
                 .onChange(of: value) { _, newValue in
                     value = min(max(newValue, range.lowerBound), range.upperBound)
                 }
         }
-        .font(.caption)
     }
 }
 
@@ -1423,6 +1426,7 @@ private struct ConfigurationDoubleField: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(title)
+                .font(.body)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
             TextField(
@@ -1430,13 +1434,13 @@ private struct ConfigurationDoubleField: View {
                 value: $value,
                 format: .number.precision(.fractionLength(0...3))
             )
+            .font(.body)
             .multilineTextAlignment(.trailing)
-            .frame(width: 88)
+            .frame(width: 104)
             .onChange(of: value) { _, newValue in
                 value = min(max(newValue, range.lowerBound), range.upperBound)
             }
         }
-        .font(.caption)
     }
 }
 
@@ -1445,12 +1449,12 @@ private struct ConfigurationTextField: View {
     @Binding var text: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             TextField(title, text: $text)
-                .font(.caption)
+                .font(.body)
         }
     }
 }
@@ -1458,12 +1462,12 @@ private struct ConfigurationTextField: View {
 private extension View {
     func configurationToggleStyle() -> some View {
         toggleStyle(.switch)
-            .controlSize(.small)
-            .font(.caption)
+            .controlSize(.regular)
+            .font(.body)
     }
 
     func configurationHintStyle(isError: Bool = false) -> some View {
-        font(.caption2)
+        font(.footnote)
             .foregroundStyle(isError ? Color.red : Color.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -2520,5 +2524,5 @@ private struct ChatEmptyTranscriptView: View {
 }
 
 #Preview {
-    ChatView(model: .init(), chat: ChatViewModel())
+    ChatView(model: .init(), chat: ChatViewModel(), showsConfiguration: true)
 }

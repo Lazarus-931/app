@@ -63,6 +63,7 @@ struct ControlPanelView: View {
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var splitColumnVisibility: NavigationSplitViewVisibility = .all
+    @State private var isChatConfigurationVisible = true
     @State private var isFullScreen = false
     @State private var isNewChatHovering = false
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
@@ -181,7 +182,11 @@ struct ControlPanelView: View {
             Group {
                 switch selectedTab {
                 case .chat:
-                    ChatView(model: model, chat: chat)
+                    ChatView(
+                        model: model,
+                        chat: chat,
+                        showsConfiguration: isChatConfigurationVisible
+                    )
                 case .imageGeneration:
                     ImageGenerationView(model: model, viewModel: imageGeneration)
                 case .dashboard:
@@ -303,11 +308,27 @@ struct ControlPanelView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             serverControlButton
+            
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    isChatConfigurationVisible.toggle()
+                }
+            } label: {
+                Image(systemName: "sidebar.right")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .disabled(selectedTab != .chat)
+            .help(isChatConfigurationVisible ? "Hide model configuration" : "Show model configuration")
+            .accessibilityLabel(
+                isChatConfigurationVisible ? "Hide model configuration" : "Show model configuration"
+            )
         }
         .padding(.leading, headerLeadingPadding)
         .padding(.trailing, 18)
         .padding(.vertical, 14)
         .animation(.snappy(duration: 0.2), value: splitColumnVisibility)
+        .animation(.easeInOut, value: selectedTab)
     }
 
     private var serverControlButton: some View {
