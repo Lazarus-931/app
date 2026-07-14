@@ -10,6 +10,7 @@ struct ChatView: View {
     @ObservedObject var chat: ChatViewModel
     @State private var transcriptScrollPosition = ScrollPosition(edge: .bottom)
     @State private var composerHeight: CGFloat = 0
+    @State private var followsLatestMessage = true
 
     var body: some View {
         HStack(spacing: 0) {
@@ -97,10 +98,22 @@ struct ChatView: View {
             .padding(.bottom, max(18, composerHeight))
         }
         .scrollPosition($transcriptScrollPosition)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.visibleRect.maxY >= geometry.contentSize.height - 160
+        } action: { _, isNearBottom in
+            followsLatestMessage = isNearBottom
+        }
         .onChange(of: chat.scrollToken) { _, _ in
+            if followsLatestMessage {
+                transcriptScrollPosition.scrollTo(edge: .bottom)
+            }
+        }
+        .onChange(of: chat.currentSessionID) { _, _ in
+            followsLatestMessage = true
             transcriptScrollPosition.scrollTo(edge: .bottom)
         }
         .onAppear {
+            followsLatestMessage = true
             transcriptScrollPosition.scrollTo(edge: .bottom)
         }
     }
@@ -269,7 +282,8 @@ final class ChatViewModel: ObservableObject {
             role: .assistant,
             content: "",
             modelID: modelID,
-            isStreaming: true
+            isStreaming: true,
+            isThinkingEnabled: settings.thinkingEnabled
         ))
         isSending = true
         bumpScroll()
@@ -298,14 +312,15 @@ final class ChatViewModel: ObservableObject {
             }
 
             do {
-                let completion = try await client.streamChat(request) { [weak self] delta in
+                let completion = try await client.streamChat(request, onEvent: { [weak self] event in
                     await MainActor.run {
-                        self?.append(delta: delta, to: assistantID)
+                        self?.append(event: event, to: assistantID)
                     }
-                }
+                })
                 finishAssistantMessage(
                     assistantID,
                     fallbackContent: completion.content,
+                    fallbackReasoningContent: completion.reasoningContent,
                     responseMetrics: ChatResponseMetrics(completion: completion),
                     isCancelled: false
                 )
@@ -314,6 +329,7 @@ final class ChatViewModel: ObservableObject {
                 finishAssistantMessage(
                     assistantID,
                     fallbackContent: "Response cancelled.",
+                    fallbackReasoningContent: nil,
                     responseMetrics: nil,
                     isCancelled: true
                 )
@@ -372,17 +388,23 @@ final class ChatViewModel: ObservableObject {
         bumpScroll()
     }
 
-    private func append(delta: String, to id: UUID) {
+    private func append(event: MLXChatStreamDelta, to id: UUID) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else {
             return
         }
-        messages[index].content.append(delta)
+        if let reasoningContent = event.reasoningContent {
+            messages[index].reasoningContent.append(reasoningContent)
+        }
+        if let content = event.content {
+            messages[index].content.append(content)
+        }
         bumpScroll()
     }
 
     private func finishAssistantMessage(
         _ id: UUID,
         fallbackContent: String,
+        fallbackReasoningContent: String?,
         responseMetrics: ChatResponseMetrics?,
         isCancelled: Bool
     ) {
@@ -394,7 +416,13 @@ final class ChatViewModel: ObservableObject {
         if messages[index].content.isEmpty {
             messages[index].content = fallbackContent
         }
-        if isCancelled && messages[index].content == fallbackContent {
+        if messages[index].reasoningContent.isEmpty,
+           let fallbackReasoningContent {
+            messages[index].reasoningContent = fallbackReasoningContent
+        }
+        if isCancelled,
+           messages[index].content == fallbackContent,
+           messages[index].reasoningContent.isEmpty {
             messages[index].role = .error
         }
         messages[index].responseMetrics = responseMetrics?.hasVisibleValues == true
@@ -609,9 +637,11 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
     let id: UUID
     var role: Role
     var content: String
+    var reasoningContent: String
     var modelID: String?
     var createdAt: Date
     var isStreaming: Bool
+    var isThinkingEnabled: Bool
     var imageAttachments: [ChatImageAttachment]
     var responseMetrics: ChatResponseMetrics?
 
@@ -619,18 +649,22 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         id: UUID = UUID(),
         role: Role,
         content: String,
+        reasoningContent: String = "",
         modelID: String? = nil,
         createdAt: Date = Date(),
         isStreaming: Bool = false,
+        isThinkingEnabled: Bool = false,
         imageAttachments: [ChatImageAttachment] = [],
         responseMetrics: ChatResponseMetrics? = nil
     ) {
         self.id = id
         self.role = role
         self.content = content
+        self.reasoningContent = reasoningContent
         self.modelID = modelID
         self.createdAt = createdAt
         self.isStreaming = isStreaming
+        self.isThinkingEnabled = isThinkingEnabled
         self.imageAttachments = imageAttachments
         self.responseMetrics = responseMetrics
     }
@@ -639,9 +673,11 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         case id
         case role
         case content
+        case reasoningContent
         case modelID
         case createdAt
         case isStreaming
+        case isThinkingEnabled
         case imageAttachments
         case responseMetrics
     }
@@ -651,9 +687,11 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         role = try container.decode(Role.self, forKey: .role)
         content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+        reasoningContent = try container.decodeIfPresent(String.self, forKey: .reasoningContent) ?? ""
         modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         isStreaming = false
+        isThinkingEnabled = try container.decodeIfPresent(Bool.self, forKey: .isThinkingEnabled) ?? false
         imageAttachments = try container.decodeIfPresent([ChatImageAttachment].self, forKey: .imageAttachments) ?? []
         responseMetrics = try container.decodeIfPresent(ChatResponseMetrics.self, forKey: .responseMetrics)
     }
@@ -663,9 +701,11 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         try container.encode(id, forKey: .id)
         try container.encode(role, forKey: .role)
         try container.encode(content, forKey: .content)
+        try container.encode(reasoningContent, forKey: .reasoningContent)
         try container.encodeIfPresent(modelID, forKey: .modelID)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(false, forKey: .isStreaming)
+        try container.encode(isThinkingEnabled, forKey: .isThinkingEnabled)
         try container.encode(imageAttachments, forKey: .imageAttachments)
         try container.encodeIfPresent(responseMetrics, forKey: .responseMetrics)
     }
@@ -687,7 +727,11 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
             guard !content.isEmpty else {
                 return nil
             }
-            return MLXChatMessage(role: "assistant", content: content)
+            return MLXChatMessage(
+                role: "assistant",
+                content: content,
+                reasoningContent: reasoningContent.isEmpty ? nil : reasoningContent
+            )
         case .error:
             return nil
         }
@@ -1499,6 +1543,8 @@ private struct ChatStatusPill: View {
 
 private struct ChatMessageRow: View {
     let message: ChatTranscriptMessage
+    @State private var didCopyResponse = false
+    @State private var isHoveringMessage = false
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 10) {
@@ -1512,7 +1558,7 @@ private struct ChatMessageRow: View {
                     .foregroundStyle(.secondary)
 
                 HStack(alignment: .bottom, spacing: 8) {
-                    if message.isStreaming && message.content.isEmpty {
+                    if message.isStreaming && message.content.isEmpty && !showsThinkingBubble {
                         ProgressView()
                             .controlSize(.small)
                     }
@@ -1522,6 +1568,13 @@ private struct ChatMessageRow: View {
                             ChatImageAttachmentStack(
                                 attachments: message.imageAttachments,
                                 isUserMessage: message.role == .user
+                            )
+                        }
+
+                        if showsThinkingBubble {
+                            ChatThinkingBubble(
+                                content: message.reasoningContent,
+                                isThinking: message.isStreaming && message.content.isEmpty
                             )
                         }
 
@@ -1539,6 +1592,22 @@ private struct ChatMessageRow: View {
                 if let responseMetrics {
                     ChatResponseMetricsRow(metrics: responseMetrics)
                 }
+
+                if showsCopyAction {
+                    HStack(spacing: 8) {
+                        ChatCopyResponseButton(
+                            didCopy: didCopyResponse,
+                            onCopy: copyResponse
+                        )
+
+                        Text(message.createdAt, format: .dateTime.hour().minute())
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .monospacedDigit()
+                    }
+                    .opacity(isHoveringMessage || didCopyResponse ? 1 : 0)
+                    .accessibilityHidden(!isHoveringMessage && !didCopyResponse)
+                }
             }
 
             if message.role != .user {
@@ -1546,6 +1615,9 @@ private struct ChatMessageRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: rowAlignment)
+        .contentShape(.rect)
+        .onHover { isHoveringMessage = $0 }
+        .animation(.easeInOut(duration: 0.14), value: isHoveringMessage)
     }
 
     @ViewBuilder
@@ -1572,8 +1644,8 @@ private struct ChatMessageRow: View {
             }
         }
         .font(.body)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.horizontal, message.role == .assistant ? 0 : 12)
+        .padding(.vertical, message.role == .assistant ? 3 : 9)
         .foregroundStyle(foregroundStyle)
         .background(
             RoundedRectangle(cornerRadius: 8)
@@ -1622,7 +1694,16 @@ private struct ChatMessageRow: View {
     }
 
     private var showsTextContent: Bool {
-        !message.content.isEmpty || message.imageAttachments.isEmpty || message.isStreaming
+        !message.content.isEmpty
+            || (!showsThinkingBubble && (message.imageAttachments.isEmpty || message.isStreaming))
+    }
+
+    private var showsThinkingBubble: Bool {
+        guard message.role == .assistant else {
+            return false
+        }
+        return !message.reasoningContent.isEmpty
+            || (message.isThinkingEnabled && message.isStreaming && message.content.isEmpty)
     }
 
     private var rendersMarkdown: Bool {
@@ -1638,7 +1719,7 @@ private struct ChatMessageRow: View {
         case .user:
             return .accentColor
         case .assistant:
-            return Color(nsColor: .controlBackgroundColor)
+            return .clear
         case .error:
             return Color(nsColor: .systemRed).opacity(0.12)
         }
@@ -1649,7 +1730,7 @@ private struct ChatMessageRow: View {
         case .user:
             return .clear
         case .assistant:
-            return Color(nsColor: .separatorColor)
+            return .clear
         case .error:
             return Color(nsColor: .systemRed).opacity(0.45)
         }
@@ -1665,6 +1746,196 @@ private struct ChatMessageRow: View {
         }
 
         return responseMetrics
+    }
+
+    private var showsCopyAction: Bool {
+        message.role == .assistant
+            && !message.isStreaming
+            && !message.content.isEmpty
+    }
+
+    private func copyResponse() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(message.content, forType: .string)
+
+        withAnimation(.easeInOut(duration: 0.15)) {
+            didCopyResponse = true
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation(.easeInOut(duration: 0.15)) {
+                didCopyResponse = false
+            }
+        }
+    }
+}
+
+private struct ChatCopyResponseButton: View {
+    let didCopy: Bool
+    let onCopy: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onCopy) {
+            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(
+                    didCopy
+                        ? Color.green
+                        : (isHovering ? Color.primary : Color.secondary)
+                )
+                .frame(width: 30, height: 28)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help(didCopy ? "Copied" : "Copy response")
+        .accessibilityLabel(didCopy ? "Response copied" : "Copy response")
+        .onHover { isHovering = $0 }
+        .animation(.easeInOut(duration: 0.12), value: isHovering)
+        .animation(.easeInOut(duration: 0.15), value: didCopy)
+    }
+}
+
+private struct ChatThinkingBubble: View {
+    let content: String
+    let isThinking: Bool
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if isThinking {
+                        ChatThinkingShimmerText("Thinking")
+                    } else {
+                        Text("Reasoning")
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? "Show less reasoning" : "Show full reasoning")
+
+            if isExpanded || isThinking {
+                Divider()
+
+                Group {
+                    if isExpanded {
+                        ChatMessageText(
+                            content: content,
+                            rendersMarkdown: !isThinking,
+                            isStreaming: isThinking
+                        )
+                        .font(.callout)
+                        .lineSpacing(2)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: 536, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(12)
+                    } else {
+                        Text(content)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineSpacing(2)
+                            .frame(maxWidth: 536, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(height: 58, alignment: .bottomLeading)
+                            .clipped()
+                            .padding(12)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(Color.primary.opacity(0.075), lineWidth: 0.75)
+        }
+        .animation(.easeInOut(duration: 0.2), value: isThinking)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct ChatThinkingShimmerText: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                label
+                    .foregroundStyle(.secondary)
+            } else {
+                TimelineView(.animation) { context in
+                    let duration = 1.65
+                    let progress = context.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: duration) / duration
+
+                    label
+                        .foregroundStyle(Color.primary.opacity(0.38))
+                        .overlay {
+                            GeometryReader { proxy in
+                                let beamWidth = max(34, proxy.size.width * 0.55)
+
+                                LinearGradient(
+                                    colors: [
+                                        .clear,
+                                        Color.secondary.opacity(0.25),
+                                        Color.primary.opacity(0.75),
+                                        .white,
+                                        Color.primary.opacity(0.75),
+                                        Color.secondary.opacity(0.25),
+                                        .clear
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(width: beamWidth)
+                                .offset(
+                                    x: -beamWidth
+                                        + (proxy.size.width + beamWidth) * progress
+                                )
+                                .blur(radius: 1.1)
+                            }
+                            .mask(label)
+                            .allowsHitTesting(false)
+                        }
+                }
+            }
+        }
+        .fixedSize()
+        .accessibilityLabel("Thinking")
+    }
+
+    private var label: some View {
+        Text(text)
+            .font(.callout.weight(.medium))
     }
 }
 

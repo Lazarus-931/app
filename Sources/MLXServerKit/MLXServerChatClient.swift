@@ -31,19 +31,48 @@ public enum MLXServerChatError: Error, LocalizedError, CustomStringConvertible {
 public struct MLXChatMessage: Codable, Equatable, Sendable {
     public var role: String
     public var content: MLXChatMessageContent?
+    public var reasoningContent: String?
 
-    public init(role: String, content: String?) {
+    public init(role: String, content: String?, reasoningContent: String? = nil) {
         self.role = role
         self.content = content.map(MLXChatMessageContent.text)
+        self.reasoningContent = reasoningContent
     }
 
-    public init(role: String, content: MLXChatMessageContent?) {
+    public init(
+        role: String,
+        content: MLXChatMessageContent?,
+        reasoningContent: String? = nil
+    ) {
         self.role = role
         self.content = content
+        self.reasoningContent = reasoningContent
     }
 
     public var textContent: String? {
         content?.textValue
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case role
+        case content
+        case reasoningContent = "reasoning_content"
+        case reasoning
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        role = try container.decode(String.self, forKey: .role)
+        content = try container.decodeIfPresent(MLXChatMessageContent.self, forKey: .content)
+        reasoningContent = try container.decodeIfPresent(String.self, forKey: .reasoningContent)
+            ?? container.decodeIfPresent(String.self, forKey: .reasoning)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(role, forKey: .role)
+        try container.encodeIfPresent(content, forKey: .content)
+        try container.encodeIfPresent(reasoningContent, forKey: .reasoningContent)
     }
 }
 
@@ -193,6 +222,7 @@ public struct MLXChatUsage: Decodable, Equatable, Sendable {
 public struct MLXChatCompletion: Equatable, Sendable {
     public let model: String?
     public let content: String
+    public let reasoningContent: String?
     public let finishReason: String?
     public let usage: MLXChatUsage?
     public let requestElapsedSeconds: Double?
@@ -201,6 +231,16 @@ public struct MLXChatCompletion: Equatable, Sendable {
         usage?.resolvedDecodeTokensPerSecond(
             requestElapsedSeconds: requestElapsedSeconds
         )
+    }
+}
+
+public struct MLXChatStreamDelta: Equatable, Sendable {
+    public let content: String?
+    public let reasoningContent: String?
+
+    public init(content: String? = nil, reasoningContent: String? = nil) {
+        self.content = content
+        self.reasoningContent = reasoningContent
     }
 }
 
@@ -409,6 +449,7 @@ public final class MLXServerChatClient {
         return MLXChatCompletion(
             model: decoded.model,
             content: content,
+            reasoningContent: choice.message.reasoningContent,
             finishReason: choice.finishReason,
             usage: decoded.resolvedUsage,
             requestElapsedSeconds: Date().timeIntervalSince(requestStartedAt)
@@ -418,6 +459,17 @@ public final class MLXServerChatClient {
     public func streamChat(
         _ request: MLXChatCompletionRequest,
         onDelta: @escaping (String) async -> Void
+    ) async throws -> MLXChatCompletion {
+        try await streamChat(request, onEvent: { event in
+            if let content = event.content, !content.isEmpty {
+                await onDelta(content)
+            }
+        })
+    }
+
+    public func streamChat(
+        _ request: MLXChatCompletionRequest,
+        onEvent: @escaping (MLXChatStreamDelta) async -> Void
     ) async throws -> MLXChatCompletion {
         var payload = request
         payload.stream = true
@@ -435,6 +487,7 @@ public final class MLXServerChatClient {
         }
 
         var content = ""
+        var reasoningContent = ""
         var finishReason: String?
         var usage: MLXChatUsage?
         var timings: MLXChatTimings?
@@ -466,9 +519,21 @@ public final class MLXServerChatClient {
 
             if let choice = chunk.choices.first {
                 finishReason = choice.finishReason ?? finishReason
-                if let delta = choice.delta.textContent, !delta.isEmpty {
-                    content += delta
-                    await onDelta(delta)
+                let contentDelta = choice.delta.textContent
+                let reasoningDelta = choice.delta.reasoningContent
+                if let contentDelta, !contentDelta.isEmpty {
+                    content += contentDelta
+                }
+                if let reasoningDelta, !reasoningDelta.isEmpty {
+                    reasoningContent += reasoningDelta
+                }
+                if contentDelta?.isEmpty == false || reasoningDelta?.isEmpty == false {
+                    await onEvent(
+                        MLXChatStreamDelta(
+                            content: contentDelta,
+                            reasoningContent: reasoningDelta
+                        )
+                    )
                 }
             }
         }
@@ -480,6 +545,7 @@ public final class MLXServerChatClient {
         return MLXChatCompletion(
             model: responseModel,
             content: content,
+            reasoningContent: reasoningContent.isEmpty ? nil : reasoningContent,
             finishReason: finishReason,
             usage: resolvedUsage(usage: usage, timings: timings),
             requestElapsedSeconds: Date().timeIntervalSince(requestStartedAt)
