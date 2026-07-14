@@ -76,6 +76,15 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .zAI: "Z"
         }
     }
+
+    var preservesIconColors: Bool {
+        switch self {
+        case .google, .mistral, .microsoft, .cohere:
+            true
+        default:
+            false
+        }
+    }
 }
 
 enum LocalModelProviderResolver {
@@ -203,7 +212,7 @@ enum LocalModelProviderIcon {
         }
 
         image.size = size
-        image.isTemplate = true
+        image.isTemplate = !provider.preservesIconColors
         cache[provider] = image
         return image
     }

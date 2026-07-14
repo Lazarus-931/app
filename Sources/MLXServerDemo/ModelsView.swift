@@ -914,21 +914,33 @@ private struct ModelDownloadActionButton: View {
 private struct ModelProviderBadge: View {
     let provider: LocalModelProvider?
 
+    private var color: Color {
+        provider?.modelBadgeColor ?? .secondary
+    }
+
+    private var backgroundColor: Color {
+        if provider?.preservesIconColors == true {
+            return Color.secondary.opacity(0.10)
+        }
+        return color.opacity(0.14)
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.secondary.opacity(0.10))
+                .fill(backgroundColor)
 
             if let provider, let image = LocalModelProviderIcon.image(for: provider) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
+                    .foregroundStyle(color)
                     .frame(width: 25, height: 25)
                     .accessibilityLabel(provider.displayName)
             } else if let provider {
                 Text(provider.monogram)
                     .font(.system(size: provider.monogram.count > 2 ? 9 : 12, weight: .bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(color)
             } else {
                 Image(systemName: "cube.transparent.fill")
                     .font(.system(size: 19, weight: .medium))
@@ -1114,6 +1126,43 @@ private extension LocalModelCapability {
         case .embeddings: "circle.grid.3x3"
         case .reasoning: "brain.fill"
         case .tools: "hammer"
+        }
+    }
+}
+
+private extension LocalModelProvider {
+    var modelBadgeColor: Color {
+        switch self {
+        case .google:
+            .primary
+        case .openAI:
+            .primary
+        case .meta:
+            Color(red: 0 / 255, green: 129 / 255, blue: 251 / 255)
+        case .mistral:
+            .primary
+        case .qwen:
+            Color(red: 0 / 255, green: 46 / 255, blue: 254 / 255)
+        case .microsoft:
+            .primary
+        case .cohere:
+            .primary
+        case .deepSeek:
+            Color(red: 79 / 255, green: 112 / 255, blue: 255 / 255)
+        case .ai2:
+            Color(red: 255 / 255, green: 103 / 255, blue: 170 / 255)
+        case .openBMB:
+            Color(red: 68 / 255, green: 119 / 255, blue: 255 / 255)
+        case .nvidia:
+            Color(red: 118 / 255, green: 185 / 255, blue: 0 / 255)
+        case .apple:
+            .primary
+        case .ibm:
+            Color(red: 15 / 255, green: 98 / 255, blue: 254 / 255)
+        case .liquidAI:
+            .primary
+        case .zAI:
+            .primary
         }
     }
 }
