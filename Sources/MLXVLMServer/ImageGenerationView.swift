@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ImageGenerationView: View {
-    @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var model: MLXServerModel
     @ObservedObject var viewModel: ImageGenerationViewModel
     @StateObject private var modelLibrary = LocalModelLibrary()
 

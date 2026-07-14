@@ -17,7 +17,7 @@ private enum HubAccessFilter: String, CaseIterable, Identifiable {
 }
 
 struct ModelsView: View {
-    @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var model: MLXServerModel
     @StateObject private var localLibrary = LocalModelLibrary()
     @StateObject private var hubLibrary = HuggingFaceModelLibrary()
     @StateObject private var downloadManager = HuggingFaceDownloadManager()

@@ -50,7 +50,7 @@ enum Main {
             }
         }
 
-        MLXServerDemoApplication.main()
+        MLXServerApplication.main()
     }
 
     private static func waitForMetricsEndpoint(port: String, timeout: TimeInterval = 5) -> Bool {
@@ -86,7 +86,7 @@ enum Main {
     }
 }
 
-private struct MLXServerDemoApplication: App {
+private struct MLXServerApplication: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {

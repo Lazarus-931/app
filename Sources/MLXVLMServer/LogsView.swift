@@ -4,7 +4,7 @@ import MLXServerKit
 import SwiftUI
 
 struct LogsView: View {
-    @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var model: MLXServerModel
     @ObservedObject var runtime: SystemRuntimeMonitor
     @State private var logQuery = ""
     @State private var logLevelFilter: LogLevelFilter = .all

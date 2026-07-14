@@ -178,7 +178,7 @@ final class ImageGenerationViewModel: ObservableObject {
         }
     }
 
-    func run(using appModel: MLXServerDemoModel) {
+    func run(using appModel: MLXServerModel) {
         guard !isGenerating,
               appModel.isRunning,
               let requestModelID = normalizedModelID,
@@ -825,7 +825,7 @@ private struct ImageGenerationSessionStore {
             ?? fileManager.temporaryDirectory
 
         return caches
-            .appendingPathComponent("MLXServerDemo", isDirectory: true)
+            .appendingPathComponent("MLXServer", isDirectory: true)
             .appendingPathComponent("ImageGeneration", isDirectory: true)
             .appendingPathComponent("Sessions", isDirectory: true)
     }
@@ -955,7 +955,7 @@ struct ImageGenerationReferenceImage: Identifiable, Equatable, Codable, Sendable
         let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
         let directory = caches
-            .appendingPathComponent("MLXServerDemo", isDirectory: true)
+            .appendingPathComponent("MLXServer", isDirectory: true)
             .appendingPathComponent("ImageGeneration", isDirectory: true)
             .appendingPathComponent("References", isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)

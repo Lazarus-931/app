@@ -3,7 +3,7 @@ import MLXServerKit
 import SwiftUI
 
 struct StatsView: View {
-    @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var model: MLXServerModel
     @ObservedObject var dashboard: DashboardViewModel
     @FocusState private var isModelSearchFocused: Bool
     @State private var tokenUsagePanelHeight: CGFloat = 0
@@ -131,7 +131,7 @@ struct StatsView: View {
             )
             AnalyticsMetricCard(
                 title: "Decode speed",
-                value: MLXServerDemoFormatting.rate(
+                value: MLXServerFormatting.rate(
                     dashboard.historicalSummary.averageDecodeTokensPerSecond
                 ),
                 detail: "Average across requests",
@@ -236,7 +236,7 @@ struct StatsView: View {
 
     private var successRateLabel: String {
         guard totalRequests > 0 else { return "--" }
-        return MLXServerDemoFormatting.percent(
+        return MLXServerFormatting.percent(
             Double(dashboard.historicalSummary.requestsCompleted) / Double(totalRequests)
         )
     }
@@ -257,7 +257,7 @@ struct StatsView: View {
     }
 
     private func compact(_ value: Int) -> String {
-        MLXServerDemoFormatting.compactCount(value).display
+        MLXServerFormatting.compactCount(value).display
     }
 
     private var filtersRow: some View {
@@ -325,21 +325,21 @@ struct StatsView: View {
             ),
             SessionCardValue(
                 title: "Decode speed",
-                value: MLXServerDemoFormatting.rate(
+                value: MLXServerFormatting.rate(
                     metrics?.summary.averageDecodeTokensPerSecond
                 ),
                 help: nil
             ),
             SessionCardValue(
                 title: "Request speed",
-                value: MLXServerDemoFormatting.rate(
+                value: MLXServerFormatting.rate(
                     metrics?.summary.averageRequestTokensPerSecond
                 ),
                 help: nil
             ),
             SessionCardValue(
                 title: "Server uptime",
-                value: MLXServerDemoFormatting.duration(metrics?.summary.uptimeSeconds),
+                value: MLXServerFormatting.duration(metrics?.summary.uptimeSeconds),
                 help: nil
             ),
         ]
@@ -349,7 +349,7 @@ struct StatsView: View {
         guard let rawCount else {
             return SessionCardValue(title: title, value: "--", help: nil)
         }
-        let formatted = MLXServerDemoFormatting.compactCount(rawCount)
+        let formatted = MLXServerFormatting.compactCount(rawCount)
         return SessionCardValue(
             title: title,
             value: formatted.display,
@@ -509,7 +509,7 @@ private struct TokenUsagePanel: View {
                         AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
                         AxisTick().foregroundStyle(DashboardPalette.axisTick)
                         if let raw = value.as(Int.self) {
-                            AxisValueLabel(MLXServerDemoFormatting.compactCount(raw).display)
+                            AxisValueLabel(MLXServerFormatting.compactCount(raw).display)
                                 .font(.caption2)
                                 .foregroundStyle(DashboardPalette.axisText)
                         }
@@ -832,7 +832,7 @@ private struct ModelTokenUsageTooltip: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Spacer(minLength: 12)
-                            Text(MLXServerDemoFormatting.integer(point.totalTokens))
+                            Text(MLXServerFormatting.integer(point.totalTokens))
                                 .fontWeight(.medium)
                                 .monospacedDigit()
                         }
@@ -848,7 +848,7 @@ private struct ModelTokenUsageTooltip: View {
                 Text("All models")
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 16)
-                Text(MLXServerDemoFormatting.integer(totalTokens))
+                Text(MLXServerFormatting.integer(totalTokens))
                     .fontWeight(.semibold)
                     .monospacedDigit()
             }
@@ -902,7 +902,7 @@ private struct TokenUsageTooltip: View {
                 Text("Total")
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 22)
-                Text(MLXServerDemoFormatting.integer(point.processedTokensTotal))
+                Text(MLXServerFormatting.integer(point.processedTokensTotal))
                     .fontWeight(.semibold)
                     .monospacedDigit()
             }
@@ -938,7 +938,7 @@ private struct TokenUsageTooltipRow: View {
                 Text(title).foregroundStyle(.secondary)
             }
             Spacer(minLength: 22)
-            Text(MLXServerDemoFormatting.integer(value))
+            Text(MLXServerFormatting.integer(value))
                 .fontWeight(.medium)
                 .monospacedDigit()
         }
@@ -973,7 +973,7 @@ private struct RequestHealthPanel: View {
             )
 
             HStack(alignment: .firstTextBaseline) {
-                Text(total == 0 ? "--" : MLXServerDemoFormatting.percent(Double(completed) / Double(total)))
+                Text(total == 0 ? "--" : MLXServerFormatting.percent(Double(completed) / Double(total)))
                     .font(.system(size: 29, weight: .semibold, design: .rounded).monospacedDigit())
                 Text("successful")
                     .font(.caption)
@@ -1069,7 +1069,7 @@ private struct RequestHealthStat: View {
                 Circle().fill(color).frame(width: 6, height: 6)
                 Text(title).font(.caption2).foregroundStyle(.secondary)
             }
-            Text(MLXServerDemoFormatting.compactCount(value).display)
+            Text(MLXServerFormatting.compactCount(value).display)
                 .font(.callout.weight(.semibold).monospacedDigit())
         }
     }
@@ -1198,11 +1198,11 @@ private struct ModelPerformanceTable: View {
             }
             .frame(minWidth: modelColumnMinimumWidth, maxWidth: .infinity, alignment: .leading)
 
-            tableValue(MLXServerDemoFormatting.compactCount(row.processedTokens).display, width: 105)
-            tableValue(MLXServerDemoFormatting.integer(row.totalRequests), width: 90)
-            tableValue(row.successRate.map(MLXServerDemoFormatting.percent) ?? "--", width: 85)
-            tableValue(MLXServerDemoFormatting.rate(row.averageDecodeTokensPerSecond), width: 105)
-            tableValue(MLXServerDemoFormatting.gigabytes(fromBytes: row.peakMemoryBytes), width: 105)
+            tableValue(MLXServerFormatting.compactCount(row.processedTokens).display, width: 105)
+            tableValue(MLXServerFormatting.integer(row.totalRequests), width: 90)
+            tableValue(row.successRate.map(MLXServerFormatting.percent) ?? "--", width: 85)
+            tableValue(MLXServerFormatting.rate(row.averageDecodeTokensPerSecond), width: 105)
+            tableValue(MLXServerFormatting.gigabytes(fromBytes: row.peakMemoryBytes), width: 105)
         }
         .padding(.vertical, 13)
     }
@@ -1628,12 +1628,12 @@ private struct RequestDetailView: View {
                 columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
                 spacing: 12
             ) {
-                RequestDetailMetric(title: "Prompt tokens", value: MLXServerDemoFormatting.integer(request.promptTokens))
-                RequestDetailMetric(title: "Output tokens", value: MLXServerDemoFormatting.integer(request.generatedTokens))
-                RequestDetailMetric(title: "Elapsed", value: "\(MLXServerDemoFormatting.seconds(fromMilliseconds: request.requestElapsedMilliseconds))s")
-                RequestDetailMetric(title: "Prefill", value: "\(MLXServerDemoFormatting.decimal(request.resolvedPrefillTokensPerSecond)) tok/s")
-                RequestDetailMetric(title: "Decode", value: "\(MLXServerDemoFormatting.decimal(request.resolvedDecodeTokensPerSecond)) tok/s")
-                RequestDetailMetric(title: "Peak memory", value: MLXServerDemoFormatting.gigabytes(fromBytes: request.peakMemoryBytes))
+                RequestDetailMetric(title: "Prompt tokens", value: MLXServerFormatting.integer(request.promptTokens))
+                RequestDetailMetric(title: "Output tokens", value: MLXServerFormatting.integer(request.generatedTokens))
+                RequestDetailMetric(title: "Elapsed", value: "\(MLXServerFormatting.seconds(fromMilliseconds: request.requestElapsedMilliseconds))s")
+                RequestDetailMetric(title: "Prefill", value: "\(MLXServerFormatting.decimal(request.resolvedPrefillTokensPerSecond)) tok/s")
+                RequestDetailMetric(title: "Decode", value: "\(MLXServerFormatting.decimal(request.resolvedDecodeTokensPerSecond)) tok/s")
+                RequestDetailMetric(title: "Peak memory", value: MLXServerFormatting.gigabytes(fromBytes: request.peakMemoryBytes))
             }
 
             HStack(spacing: 10) {
@@ -1729,19 +1729,19 @@ private struct DashboardRecentRequestsDataRow: View {
             )
             .help(modeTitle)
         case .prompt:
-            Text(MLXServerDemoFormatting.integer(request.promptTokens))
+            Text(MLXServerFormatting.integer(request.promptTokens))
         case .completion:
-            Text(MLXServerDemoFormatting.integer(request.completionTokens))
+            Text(MLXServerFormatting.integer(request.completionTokens))
         case .prefill:
-            Text(MLXServerDemoFormatting.decimal(request.resolvedPrefillTokensPerSecond))
+            Text(MLXServerFormatting.decimal(request.resolvedPrefillTokensPerSecond))
         case .decode:
-            Text(MLXServerDemoFormatting.decimal(request.resolvedDecodeTokensPerSecond))
+            Text(MLXServerFormatting.decimal(request.resolvedDecodeTokensPerSecond))
         case .request:
-            Text(MLXServerDemoFormatting.decimal(request.requestTokensPerSecond))
+            Text(MLXServerFormatting.decimal(request.requestTokensPerSecond))
         case .elapsed:
-            Text(MLXServerDemoFormatting.seconds(fromMilliseconds: request.requestElapsedMilliseconds))
+            Text(MLXServerFormatting.seconds(fromMilliseconds: request.requestElapsedMilliseconds))
         case .peakMemory:
-            Text(MLXServerDemoFormatting.gigabytes(fromBytes: request.peakMemoryBytes))
+            Text(MLXServerFormatting.gigabytes(fromBytes: request.peakMemoryBytes))
         }
     }
 
@@ -1752,7 +1752,7 @@ private struct DashboardRecentRequestsDataRow: View {
 
         if let finishReason = request.finishReason,
            !finishReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return MLXServerDemoFormatting.titleizedIdentifier(finishReason)
+            return MLXServerFormatting.titleizedIdentifier(finishReason)
         }
 
         return "Completed"
@@ -1979,7 +1979,7 @@ private struct DashboardTokenChart: View {
     }
 
     private func yAxisLabel(for value: Double) -> String {
-        MLXServerDemoFormatting.compactCount(Int(value.rounded())).display
+        MLXServerFormatting.compactCount(Int(value.rounded())).display
     }
 
     private var chartGranularity: MLXServerAnalyticsGranularity {
@@ -2049,7 +2049,7 @@ private struct DashboardRequestChart: View {
                     AxisTick().foregroundStyle(Color.clear)
                     if let rawValue = value.as(Double.self) {
                         AxisValueLabel(centered: false) {
-                            Text(MLXServerDemoFormatting.compactCount(Int(rawValue.rounded())).display)
+                            Text(MLXServerFormatting.compactCount(Int(rawValue.rounded())).display)
                                 .font(.caption2)
                                 .foregroundStyle(DashboardPalette.axisLabel)
                         }

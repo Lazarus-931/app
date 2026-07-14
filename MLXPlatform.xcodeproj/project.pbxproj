@@ -23,7 +23,7 @@
 		692A0FD8F0A8CDDD3A84FC65 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B3B61F3CE2A6AD37E9D4B0 /* LogsView.swift */; };
 		7460B4A2D36DD1E51A0441D0 /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = 6EC9B105D8EE975D457592E4 /* Textual */; };
 		C0A18CC8E0BEFD868C3B7DC8 /* LocalModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073848524EE19BB3AD25DFD0 /* LocalModelProvider.swift */; };
-		C5CA6A5224840DD6E486A76C /* MLXServerDemoModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6EA8708CC99EBD946D4F76 /* MLXServerDemoModel.swift */; };
+		C5CA6A5224840DD6E486A76C /* MLXServerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6EA8708CC99EBD946D4F76 /* MLXServerModel.swift */; };
 		CF26DBE0698612E6E25251B0 /* HuggingFaceHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F14B2ACF1F955390589CD6 /* HuggingFaceHub.swift */; };
 		DD726A45F5C6AED0FF38E82D /* MLXServerKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6776FF6417E520723AB5D793 /* MLXServerKit.swift */; };
 		ECB7E66C2FBE6D6C01775289 /* ImageGenerationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAEA097D68FBBBB58BCED5A0 /* ImageGenerationViewModel.swift */; };
@@ -64,7 +64,7 @@
 		13F14B2ACF1F955390589CD6 /* HuggingFaceHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceHub.swift; sourceTree = "<group>"; };
 		15AE0B934327136178FAC319 /* MLXServerImageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerImageClient.swift; sourceTree = "<group>"; };
 		16AF7B20AD527C9F2714A3E4 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		1D6EA8708CC99EBD946D4F76 /* MLXServerDemoModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerDemoModel.swift; sourceTree = "<group>"; };
+		1D6EA8708CC99EBD946D4F76 /* MLXServerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerModel.swift; sourceTree = "<group>"; };
 		32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MLXServerKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		369EADCDEDA5A94B20178BDB /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
 		4B449F1D492B0FB584C3307E /* ModelProviderIcons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ModelProviderIcons; path = Sources/MLXVLMServer/ModelProviderIcons; sourceTree = SOURCE_ROOT; };
@@ -142,7 +142,7 @@
 				7BCE86ED81B58ABC9D504A16 /* Main.swift */,
 				FBBF9422024344B5C3B1D582 /* MarkdownFormatting.swift */,
 				5BE48E4ABD67A84ABFE4919E /* MLXServerAnalyticsStore.swift */,
-				1D6EA8708CC99EBD946D4F76 /* MLXServerDemoModel.swift */,
+				1D6EA8708CC99EBD946D4F76 /* MLXServerModel.swift */,
 				687D116C9C28C6413A9549E2 /* MLXServerSettings.swift */,
 				4B449F1D492B0FB584C3307E /* ModelProviderIcons */,
 				797BAC8B09EB35C40B8C4B9E /* ModelsView.swift */,
@@ -211,8 +211,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = A7B987521A587FFC32A46ABC /* Build configuration list for PBXProject "MLXPlatform" */;
 			developmentRegion = en;
@@ -297,7 +295,7 @@
 				C0A18CC8E0BEFD868C3B7DC8 /* LocalModelProvider.swift in Sources */,
 				692A0FD8F0A8CDDD3A84FC65 /* LogsView.swift in Sources */,
 				35083C6334BA99F7659B1C79 /* MLXServerAnalyticsStore.swift in Sources */,
-				C5CA6A5224840DD6E486A76C /* MLXServerDemoModel.swift in Sources */,
+				C5CA6A5224840DD6E486A76C /* MLXServerModel.swift in Sources */,
 				31A731F75D693E46F09F2AB9 /* MLXServerSettings.swift in Sources */,
 				F2D7A645EE478C022C30752E /* Main.swift in Sources */,
 				FB236FACF17AF4FDCD220118 /* MarkdownFormatting.swift in Sources */,

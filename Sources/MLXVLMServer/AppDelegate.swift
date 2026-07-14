@@ -315,7 +315,7 @@ private final class ModelMenuSectionHeaderView: NSView {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let model = MLXServerDemoModel()
+    private let model = MLXServerModel()
     private let controlPanelNavigation = ControlPanelNavigation()
     private let runtime = SystemRuntimeMonitor()
     private var mainWindowOpener: (() -> Void)?
@@ -687,17 +687,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return "On demand"
         }
         let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
-        return MLXServerDemoFormatting.truncateModelName(shortName, maxLength: 28)
+        return MLXServerFormatting.truncateModelName(shortName, maxLength: 28)
     }
 
     private func modelDisplayName(_ modelID: String) -> String {
         let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
-        return MLXServerDemoFormatting.truncateModelName(shortName, maxLength: 34)
+        return MLXServerFormatting.truncateModelName(shortName, maxLength: 34)
     }
 
     private func missingModelMenuLabel(_ modelID: String) -> String {
         let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
-        return "\(MLXServerDemoFormatting.truncateModelName(shortName, maxLength: 34))  ·  Not found"
+        return "\(MLXServerFormatting.truncateModelName(shortName, maxLength: 34))  ·  Not found"
     }
 
     private func modelDetails(_ localModel: LocalModel) -> String {
@@ -811,18 +811,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return submenu
         }
 
-        addSection("Session", entries: MLXServerDemoStats.sessionEntries(metrics), to: submenu)
+        addSection("Session", entries: MLXServerStats.sessionEntries(metrics), to: submenu)
 
         submenu.addItem(.separator())
-        addSection("All-Time", entries: MLXServerDemoStats.allTimeEntries(model.allTimeStats), to: submenu)
+        addSection("All-Time", entries: MLXServerStats.allTimeEntries(model.allTimeStats), to: submenu)
 
         if let latest = metrics.latest {
             submenu.addItem(.separator())
-            addSection("Latest Request", entries: MLXServerDemoStats.latestRequestEntries(latest), to: submenu)
+            addSection("Latest Request", entries: MLXServerStats.latestRequestEntries(latest), to: submenu)
         }
 
         submenu.addItem(.separator())
-        addSection("Runtime", entries: MLXServerDemoStats.runtimeEntries(metrics.server), to: submenu)
+        addSection("Runtime", entries: MLXServerStats.runtimeEntries(metrics.server), to: submenu)
 
         return submenu
     }
@@ -1002,7 +1002,7 @@ private enum SessionStatsSection {
 }
 
 private struct SessionStatsContainerView: View {
-    @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var model: MLXServerModel
     @ObservedObject var runtime: SystemRuntimeMonitor
     @ObservedObject var highlightState: SessionStatsHighlightState
     let section: SessionStatsSection
@@ -1161,7 +1161,7 @@ private struct SessionStatsMenuView: View {
                     Text(isLoading ? "Loading model…" : "Running")
                         .font(.headline)
                 }
-                Text(MLXServerDemoFormatting.truncateModelName(
+                Text(MLXServerFormatting.truncateModelName(
                     displayModel,
                     maxLength: 20
                 ))
@@ -1188,7 +1188,7 @@ private struct SessionStatsMenuView: View {
 
                 metric(
                     "Average decode",
-                    MLXServerDemoFormatting.rate(metrics.summary.averageDecodeTokensPerSecond),
+                    MLXServerFormatting.rate(metrics.summary.averageDecodeTokensPerSecond),
                     alignment: .trailing
                 )
 
@@ -1220,8 +1220,8 @@ private struct SessionStatsMenuView: View {
         ) {
             metric("Completed requests", formatted(metrics.summary.requestsCompleted))
             metric("Failed requests", formatted(metrics.summary.requestsFailed))
-            metric("In flight", MLXServerDemoFormatting.integer(metrics.summary.inFlight))
-            metric("Uptime", MLXServerDemoFormatting.duration(metrics.summary.uptimeSeconds))
+            metric("In flight", MLXServerFormatting.integer(metrics.summary.inFlight))
+            metric("Uptime", MLXServerFormatting.duration(metrics.summary.uptimeSeconds))
         }
     }
 
@@ -1245,13 +1245,13 @@ private struct SessionStatsMenuView: View {
             Spacer(minLength: 8)
             metric(
                 "Prefill speed",
-                MLXServerDemoFormatting.rate(latest.prefillTokensPerSecond),
+                MLXServerFormatting.rate(latest.prefillTokensPerSecond),
                 alignment: .center
             )
             Spacer(minLength: 8)
             metric(
                 "Decode speed",
-                MLXServerDemoFormatting.rate(latest.decodeTokensPerSecond),
+                MLXServerFormatting.rate(latest.decodeTokensPerSecond),
                 alignment: .trailing
             )
         }
@@ -1272,7 +1272,7 @@ private struct SessionStatsMenuView: View {
     }
 
     private func formatted(_ value: Int) -> String {
-        MLXServerDemoFormatting.compactCount(value).display
+        MLXServerFormatting.compactCount(value).display
     }
 }
 
@@ -1357,7 +1357,7 @@ private struct SessionStatsLoadingMenuView: View {
                     Text(statusText)
                         .font(.headline)
                 }
-                Text(MLXServerDemoFormatting.truncateModelName(modelName, maxLength: 20))
+                Text(MLXServerFormatting.truncateModelName(modelName, maxLength: 20))
                     .font(.subheadline)
                     .foregroundStyle(secondaryTextColor)
                     .lineLimit(1)

@@ -11,7 +11,7 @@ final class DashboardViewModel: ObservableObject {
         let title: String
 
         var displayTitle: String {
-            title == "All" ? title : MLXServerDemoFormatting.truncateModelName(title, maxLength: 52)
+            title == "All" ? title : MLXServerFormatting.truncateModelName(title, maxLength: 52)
         }
     }
 

@@ -13,7 +13,7 @@ struct SessionTokenActivitySample: Equatable, Sendable {
 }
 
 @MainActor
-final class MLXServerDemoModel: ObservableObject {
+final class MLXServerModel: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var logText = ""
     @Published private(set) var metrics: MLXServerMetrics?

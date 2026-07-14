@@ -6,7 +6,7 @@ import Textual
 import UniformTypeIdentifiers
 
 struct ChatView: View {
-    @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var model: MLXServerModel
     @ObservedObject var chat: ChatViewModel
     let showsConfiguration: Bool
     @State private var transcriptScrollPosition = ScrollPosition(edge: .bottom)
@@ -250,7 +250,7 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    func send(using appModel: MLXServerDemoModel) {
+    func send(using appModel: MLXServerModel) {
         let settings = appModel.settings.normalized()
         guard canSend(isRunning: appModel.isRunning, selectedModelID: settings.languageModelID),
               let modelID = settings.languageModelID,
@@ -1541,7 +1541,7 @@ private struct ChatStatusPill: View {
     }
 
     private var displayValue: String {
-        MLXServerDemoFormatting.truncateModelName(value, maxLength: 34)
+        MLXServerFormatting.truncateModelName(value, maxLength: 34)
     }
 }
 
@@ -1666,7 +1666,7 @@ private struct ChatMessageRow: View {
         case .user:
             return "You"
         case .assistant:
-            return message.modelID.map { MLXServerDemoFormatting.truncateModelName($0, maxLength: 42) } ?? "Assistant"
+            return message.modelID.map { MLXServerFormatting.truncateModelName($0, maxLength: 42) } ?? "Assistant"
         case .error:
             return "Error"
         }
@@ -1963,15 +1963,15 @@ private struct ChatResponseMetricsRow: View {
     private var metricPills: some View {
         ChatResponseMetricPill(
             label: "Total tokens",
-            value: MLXServerDemoFormatting.integer(metrics.totalTokens)
+            value: MLXServerFormatting.integer(metrics.totalTokens)
         )
         ChatResponseMetricPill(
             label: "Decode tok/s",
-            value: MLXServerDemoFormatting.rate(metrics.decodeTokensPerSecond)
+            value: MLXServerFormatting.rate(metrics.decodeTokensPerSecond)
         )
         ChatResponseMetricPill(
             label: "Peak memory",
-            value: metrics.peakMemoryGB.map(MLXServerDemoFormatting.gigabytes) ?? "--"
+            value: metrics.peakMemoryGB.map(MLXServerFormatting.gigabytes) ?? "--"
         )
     }
 }
@@ -2122,7 +2122,7 @@ private struct ChatMessageText: View {
     var body: some View {
         if rendersMarkdown && !isStreaming {
             StructuredText(
-                markdown: MLXServerDemoMarkdownFormatting.normalizedMathDelimiters(in: content),
+                markdown: MLXServerMarkdownFormatting.normalizedMathDelimiters(in: content),
                 syntaxExtensions: [.math]
             )
             .textual.structuredTextStyle(.gitHub)

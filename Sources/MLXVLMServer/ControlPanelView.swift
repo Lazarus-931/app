@@ -54,7 +54,7 @@ final class ControlPanelNavigation: ObservableObject {
 }
 
 struct ControlPanelView: View {
-    @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var model: MLXServerModel
     @ObservedObject var navigation: ControlPanelNavigation
     @ObservedObject var runtime: SystemRuntimeMonitor
     @StateObject private var chat = ChatViewModel()
@@ -351,7 +351,7 @@ struct ControlPanelView: View {
 }
 
 struct ServerControlButton: View {
-    @ObservedObject var model: MLXServerDemoModel
+    @ObservedObject var model: MLXServerModel
     @State private var isHovering = false
 
     var body: some View {

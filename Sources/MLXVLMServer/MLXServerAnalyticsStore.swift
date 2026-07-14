@@ -209,7 +209,7 @@ final class MLXServerAnalyticsStore {
         ).first ?? FileManager.default.homeDirectoryForCurrentUser
 
         return applicationSupport
-            .appendingPathComponent("MLXServerDemo", isDirectory: true)
+            .appendingPathComponent("MLXServer", isDirectory: true)
             .appendingPathComponent("Analytics.sqlite3")
     }
 

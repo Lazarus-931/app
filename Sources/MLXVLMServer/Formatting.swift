@@ -12,7 +12,7 @@ struct StatsEntry {
     let tooltip: String?
 }
 
-enum MLXServerDemoFormatting {
+enum MLXServerFormatting {
     private static let integerFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
@@ -171,7 +171,7 @@ enum MLXServerDemoFormatting {
     }
 }
 
-enum MLXServerDemoStats {
+enum MLXServerStats {
     static func sessionEntries(_ metrics: MLXServerMetrics) -> [StatsEntry] {
         [
             statsEntry("Requests completed", metrics.summary.requestsCompleted),
@@ -182,17 +182,17 @@ enum MLXServerDemoStats {
             statsEntry("Total processed tokens", metrics.summary.totalProcessedTokens),
             StatsEntry(
                 label: "Avg decode speed",
-                value: MLXServerDemoFormatting.rate(metrics.summary.averageDecodeTokensPerSecond),
+                value: MLXServerFormatting.rate(metrics.summary.averageDecodeTokensPerSecond),
                 tooltip: nil
             ),
             StatsEntry(
                 label: "Avg request speed",
-                value: MLXServerDemoFormatting.rate(metrics.summary.averageRequestTokensPerSecond),
+                value: MLXServerFormatting.rate(metrics.summary.averageRequestTokensPerSecond),
                 tooltip: nil
             ),
             StatsEntry(
                 label: "Uptime",
-                value: MLXServerDemoFormatting.duration(metrics.summary.uptimeSeconds),
+                value: MLXServerFormatting.duration(metrics.summary.uptimeSeconds),
                 tooltip: nil
             ),
         ]
@@ -207,12 +207,12 @@ enum MLXServerDemoStats {
             statsEntry("Total processed tokens", allTimeStats.totalProcessedTokens),
             StatsEntry(
                 label: "Avg decode speed",
-                value: MLXServerDemoFormatting.rate(allTimeStats.averageDecodeTokensPerSecond),
+                value: MLXServerFormatting.rate(allTimeStats.averageDecodeTokensPerSecond),
                 tooltip: nil
             ),
             StatsEntry(
                 label: "Avg request speed",
-                value: MLXServerDemoFormatting.rate(allTimeStats.averageRequestTokensPerSecond),
+                value: MLXServerFormatting.rate(allTimeStats.averageRequestTokensPerSecond),
                 tooltip: nil
             ),
         ]
@@ -223,7 +223,7 @@ enum MLXServerDemoStats {
         var entries: [StatsEntry] = [
             StatsEntry(
                 label: "Model",
-                value: MLXServerDemoFormatting.truncateModelName(fullModel),
+                value: MLXServerFormatting.truncateModelName(fullModel),
                 tooltip: fullModel
             ),
             StatsEntry(label: "Endpoint", value: latest.endpoint ?? "--", tooltip: nil),
@@ -233,22 +233,22 @@ enum MLXServerDemoStats {
             statsEntry("Total tokens", latest.promptTokens + latest.generatedTokens),
             StatsEntry(
                 label: "Time to first token",
-                value: MLXServerDemoFormatting.duration(latest.timeToFirstTokenSeconds),
+                value: MLXServerFormatting.duration(latest.timeToFirstTokenSeconds),
                 tooltip: nil
             ),
             StatsEntry(
                 label: "Prefill speed",
-                value: MLXServerDemoFormatting.rate(latest.prefillTokensPerSecond),
+                value: MLXServerFormatting.rate(latest.prefillTokensPerSecond),
                 tooltip: nil
             ),
             StatsEntry(
                 label: "Decode speed",
-                value: MLXServerDemoFormatting.rate(latest.decodeTokensPerSecond),
+                value: MLXServerFormatting.rate(latest.decodeTokensPerSecond),
                 tooltip: nil
             ),
             StatsEntry(
                 label: "Elapsed time",
-                value: MLXServerDemoFormatting.duration(latest.requestElapsedSeconds),
+                value: MLXServerFormatting.duration(latest.requestElapsedSeconds),
                 tooltip: nil
             ),
         ]
@@ -256,7 +256,7 @@ enum MLXServerDemoStats {
         if let peakMemoryGB = latest.peakMemoryGB {
             entries.append(StatsEntry(
                 label: "Peak memory",
-                value: MLXServerDemoFormatting.gigabytes(peakMemoryGB),
+                value: MLXServerFormatting.gigabytes(peakMemoryGB),
                 tooltip: nil
             ))
         }
@@ -279,7 +279,7 @@ enum MLXServerDemoStats {
         var entries: [StatsEntry] = [
             StatsEntry(
                 label: "Loaded model",
-                value: MLXServerDemoFormatting.truncateModelName(loadedModel),
+                value: MLXServerFormatting.truncateModelName(loadedModel),
                 tooltip: loadedModel
             ),
             statsEntry("Queue depth", runtime.requestQueueDepth),
@@ -293,7 +293,7 @@ enum MLXServerDemoStats {
         if let loadedAdapter = runtime.loadedAdapter {
             entries.append(StatsEntry(
                 label: "Adapter",
-                value: MLXServerDemoFormatting.truncateModelName(loadedAdapter),
+                value: MLXServerFormatting.truncateModelName(loadedAdapter),
                 tooltip: loadedAdapter
             ))
         }
@@ -304,7 +304,7 @@ enum MLXServerDemoStats {
             if let tokenHitRate = runtime.apc.tokenHitRate {
                 entries.append(StatsEntry(
                     label: "APC token hit rate",
-                    value: MLXServerDemoFormatting.percent(tokenHitRate),
+                    value: MLXServerFormatting.percent(tokenHitRate),
                     tooltip: nil
                 ))
             }
@@ -329,24 +329,24 @@ enum MLXServerDemoStats {
             statsEntry("Total processed tokens", model.totalProcessedTokens),
             StatsEntry(
                 label: "Avg request speed",
-                value: MLXServerDemoFormatting.rate(model.averageRequestTokensPerSecond),
+                value: MLXServerFormatting.rate(model.averageRequestTokensPerSecond),
                 tooltip: nil
             ),
             StatsEntry(
                 label: "Avg decode speed",
-                value: MLXServerDemoFormatting.rate(model.averageDecodeTokensPerSecond),
+                value: MLXServerFormatting.rate(model.averageDecodeTokensPerSecond),
                 tooltip: nil
             ),
             StatsEntry(
                 label: "Last request",
-                value: MLXServerDemoFormatting.timestamp(model.lastRequestAt),
+                value: MLXServerFormatting.timestamp(model.lastRequestAt),
                 tooltip: nil
             ),
         ]
     }
 
     static func statsEntry(_ label: String, _ value: Int) -> StatsEntry {
-        let formatted = MLXServerDemoFormatting.compactCount(value)
+        let formatted = MLXServerFormatting.compactCount(value)
         return StatsEntry(label: label, value: formatted.display, tooltip: formatted.tooltip)
     }
 
@@ -420,7 +420,7 @@ struct MLXServerAllTimeStats: Codable {
     private static func legacyStorageURL() -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let bundleID = Bundle.main.bundleIdentifier ?? "dev.local.MLXServerDemo"
+        let bundleID = Bundle.main.bundleIdentifier ?? "dev.local.MLXVLMServer"
         return caches
             .appendingPathComponent(bundleID, isDirectory: true)
             .appendingPathComponent("MLXServerStats.plist")

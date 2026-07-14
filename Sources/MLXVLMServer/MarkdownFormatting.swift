@@ -1,6 +1,6 @@
 import Foundation
 
-enum MLXServerDemoMarkdownFormatting {
+enum MLXServerMarkdownFormatting {
     static func normalizedMathDelimiters(in markdown: String) -> String {
         let lines = markdown.components(separatedBy: "\n")
         var activeFence: CodeFence?
