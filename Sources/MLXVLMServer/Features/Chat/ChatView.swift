@@ -6,6 +6,11 @@ import Textual
 import UniformTypeIdentifiers
 
 struct ChatView: View {
+    private enum Layout {
+        static let contentMaxWidth: CGFloat = 860
+        static let horizontalPadding: CGFloat = 24
+    }
+
     @ObservedObject var model: MLXServerModel
     @ObservedObject var chat: ChatViewModel
     let showsConfiguration: Bool
@@ -35,6 +40,9 @@ struct ChatView: View {
                                 chat.send(using: model)
                             }
                         )
+                        .frame(maxWidth: Layout.contentMaxWidth)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, Layout.horizontalPadding)
                         .onGeometryChange(for: CGFloat.self) { proxy in
                             proxy.size.height
                         } action: { height in
@@ -54,7 +62,7 @@ struct ChatView: View {
             if showsConfiguration {
                 Divider()
 
-                ChatConfigurationSidebar(
+                ChatConfigurationView(
                     settings: $model.settings,
                     settingsRequireRestart: model.settingsRequireRestart,
                     onReset: model.resetSettings
@@ -82,7 +90,7 @@ struct ChatView: View {
 
     private var transcript: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 if chat.messages.isEmpty {
                     ChatEmptyTranscriptView(
                         isRunning: model.isRunning,
@@ -97,7 +105,9 @@ struct ChatView: View {
                     }
                 }
             }
-            .padding(.horizontal, 18)
+            .frame(maxWidth: Layout.contentMaxWidth)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, Layout.horizontalPadding)
             .padding(.top, 18)
             .padding(.bottom, max(18, composerHeight))
         }
@@ -131,6 +141,7 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var pendingImageAttachments: [ChatImageAttachment] = []
     @Published var draft = ""
     @Published private(set) var isSending = false
+    @Published private(set) var sendingStartedAt: Date?
     @Published private(set) var scrollToken = 0
 
     private let client = MLXServerChatClient()
@@ -169,7 +180,7 @@ final class ChatViewModel: ObservableObject {
             return "Select a model in Models."
         }
         if isSending {
-            return "Response in progress."
+            return "Working..."
         }
         return nil
     }
@@ -289,6 +300,7 @@ final class ChatViewModel: ObservableObject {
             isStreaming: true,
             isThinkingEnabled: settings.thinkingEnabled
         ))
+        sendingStartedAt = Date()
         isSending = true
         bumpScroll()
 
@@ -343,6 +355,7 @@ final class ChatViewModel: ObservableObject {
             }
 
             isSending = false
+            sendingStartedAt = nil
             activeTask = nil
             bumpScroll()
         }
@@ -385,6 +398,7 @@ final class ChatViewModel: ObservableObject {
         activeTask?.cancel()
         activeTask = nil
         isSending = false
+        sendingStartedAt = nil
         draft = ""
         pendingImageAttachments.removeAll()
         messages.removeAll()
@@ -400,6 +414,11 @@ final class ChatViewModel: ObservableObject {
             messages[index].reasoningContent.append(reasoningContent)
         }
         if let content = event.content {
+            if !content.isEmpty,
+               !messages[index].reasoningContent.isEmpty,
+               messages[index].thinkingDuration == nil {
+                messages[index].thinkingDuration = Date().timeIntervalSince(messages[index].createdAt)
+            }
             messages[index].content.append(content)
         }
         bumpScroll()
@@ -424,6 +443,10 @@ final class ChatViewModel: ObservableObject {
            let fallbackReasoningContent {
             messages[index].reasoningContent = fallbackReasoningContent
         }
+        if !messages[index].reasoningContent.isEmpty,
+           messages[index].thinkingDuration == nil {
+            messages[index].thinkingDuration = Date().timeIntervalSince(messages[index].createdAt)
+        }
         if isCancelled,
            messages[index].content == fallbackContent,
            messages[index].reasoningContent.isEmpty {
@@ -445,6 +468,10 @@ final class ChatViewModel: ObservableObject {
         messages[index].role = .error
         messages[index].content = error.localizedDescription
         messages[index].isStreaming = false
+        if !messages[index].reasoningContent.isEmpty,
+           messages[index].thinkingDuration == nil {
+            messages[index].thinkingDuration = Date().timeIntervalSince(messages[index].createdAt)
+        }
         persistCurrentSession(updateTimestamp: true)
     }
 
@@ -532,947 +559,6 @@ final class ChatViewModel: ObservableObject {
     }
 }
 
-private struct ChatSession: Identifiable, Equatable, Codable {
-    var id: UUID
-    var title: String
-    var createdAt: Date
-    var updatedAt: Date
-    var messages: [ChatTranscriptMessage]
-
-    var summary: ChatSessionSummary {
-        ChatSessionSummary(
-            id: id,
-            title: displayTitle,
-            createdAt: createdAt,
-            updatedAt: updatedAt,
-            messageCount: messages.count
-        )
-    }
-
-    var displayTitle: String {
-        Self.defaultTitle(for: messages, createdAt: createdAt, fallback: title)
-    }
-
-    static func recencySort(_ lhs: ChatSession, _ rhs: ChatSession) -> Bool {
-        if lhs.updatedAt == rhs.updatedAt {
-            return lhs.createdAt > rhs.createdAt
-        }
-        return lhs.updatedAt > rhs.updatedAt
-    }
-
-    static func timestampTitle(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter.string(from: date)
-    }
-
-    static func defaultTitle(
-        for messages: [ChatTranscriptMessage],
-        createdAt: Date,
-        fallback: String? = nil
-    ) -> String {
-        if let firstUserMessage = messages.first(where: { $0.role == .user }) {
-            if let firstUserTitle = title(fromUserContent: firstUserMessage.content) {
-                return firstUserTitle
-            }
-
-            if !firstUserMessage.imageAttachments.isEmpty {
-                if firstUserMessage.imageAttachments.count == 1 {
-                    return firstUserMessage.imageAttachments[0].filename
-                }
-                return "\(firstUserMessage.imageAttachments.count) images"
-            }
-        }
-
-        let trimmedFallback = fallback?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !trimmedFallback.isEmpty {
-            return trimmedFallback
-        }
-
-        return timestampTitle(for: createdAt)
-    }
-
-    private static func title(fromUserContent content: String) -> String? {
-        let firstLine = content
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty }
-
-        guard let firstLine else {
-            return nil
-        }
-
-        return truncateTitle(firstLine)
-    }
-
-    private static func truncateTitle(_ value: String, maxLength: Int = 56) -> String {
-        guard value.count > maxLength else {
-            return value
-        }
-
-        let keep = max(1, maxLength - 3)
-        return "\(value.prefix(keep))..."
-    }
-}
-
-struct ChatSessionSummary: Identifiable, Equatable {
-    let id: UUID
-    let title: String
-    let createdAt: Date
-    let updatedAt: Date
-    let messageCount: Int
-
-    static func recencySort(_ lhs: ChatSessionSummary, _ rhs: ChatSessionSummary) -> Bool {
-        if lhs.updatedAt == rhs.updatedAt {
-            return lhs.createdAt > rhs.createdAt
-        }
-        return lhs.updatedAt > rhs.updatedAt
-    }
-}
-
-struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
-    enum Role: String, Equatable, Codable {
-        case user
-        case assistant
-        case error
-    }
-
-    let id: UUID
-    var role: Role
-    var content: String
-    var reasoningContent: String
-    var modelID: String?
-    var createdAt: Date
-    var isStreaming: Bool
-    var isThinkingEnabled: Bool
-    var imageAttachments: [ChatImageAttachment]
-    var responseMetrics: ChatResponseMetrics?
-
-    init(
-        id: UUID = UUID(),
-        role: Role,
-        content: String,
-        reasoningContent: String = "",
-        modelID: String? = nil,
-        createdAt: Date = Date(),
-        isStreaming: Bool = false,
-        isThinkingEnabled: Bool = false,
-        imageAttachments: [ChatImageAttachment] = [],
-        responseMetrics: ChatResponseMetrics? = nil
-    ) {
-        self.id = id
-        self.role = role
-        self.content = content
-        self.reasoningContent = reasoningContent
-        self.modelID = modelID
-        self.createdAt = createdAt
-        self.isStreaming = isStreaming
-        self.isThinkingEnabled = isThinkingEnabled
-        self.imageAttachments = imageAttachments
-        self.responseMetrics = responseMetrics
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case role
-        case content
-        case reasoningContent
-        case modelID
-        case createdAt
-        case isStreaming
-        case isThinkingEnabled
-        case imageAttachments
-        case responseMetrics
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        role = try container.decode(Role.self, forKey: .role)
-        content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
-        reasoningContent = try container.decodeIfPresent(String.self, forKey: .reasoningContent) ?? ""
-        modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
-        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
-        isStreaming = false
-        isThinkingEnabled = try container.decodeIfPresent(Bool.self, forKey: .isThinkingEnabled) ?? false
-        imageAttachments = try container.decodeIfPresent([ChatImageAttachment].self, forKey: .imageAttachments) ?? []
-        responseMetrics = try container.decodeIfPresent(ChatResponseMetrics.self, forKey: .responseMetrics)
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(role, forKey: .role)
-        try container.encode(content, forKey: .content)
-        try container.encode(reasoningContent, forKey: .reasoningContent)
-        try container.encodeIfPresent(modelID, forKey: .modelID)
-        try container.encode(createdAt, forKey: .createdAt)
-        try container.encode(false, forKey: .isStreaming)
-        try container.encode(isThinkingEnabled, forKey: .isThinkingEnabled)
-        try container.encode(imageAttachments, forKey: .imageAttachments)
-        try container.encodeIfPresent(responseMetrics, forKey: .responseMetrics)
-    }
-
-    var apiMessage: MLXChatMessage? {
-        switch role {
-        case .user:
-            if !imageAttachments.isEmpty {
-                var parts: [MLXChatContentPart] = []
-                if !content.isEmpty {
-                    parts.append(MLXChatContentPart(text: content))
-                }
-                parts.append(contentsOf: imageAttachments.map { MLXChatContentPart(imageURL: $0.dataURL) })
-                return MLXChatMessage(role: "user", content: .parts(parts))
-            }
-
-            return MLXChatMessage(role: "user", content: content)
-        case .assistant:
-            guard !content.isEmpty else {
-                return nil
-            }
-            return MLXChatMessage(
-                role: "assistant",
-                content: content,
-                reasoningContent: reasoningContent.isEmpty ? nil : reasoningContent
-            )
-        case .error:
-            return nil
-        }
-    }
-}
-
-struct ChatResponseMetrics: Equatable, Codable {
-    let totalTokens: Int?
-    let decodeTokensPerSecond: Double?
-    let peakMemoryGB: Double?
-
-    var hasVisibleValues: Bool {
-        totalTokens != nil || decodeTokensPerSecond != nil || peakMemoryGB != nil
-    }
-
-    init(
-        totalTokens: Int? = nil,
-        decodeTokensPerSecond: Double? = nil,
-        peakMemoryGB: Double? = nil
-    ) {
-        self.totalTokens = totalTokens
-        self.decodeTokensPerSecond = decodeTokensPerSecond
-        self.peakMemoryGB = peakMemoryGB
-    }
-
-    init(completion: MLXChatCompletion) {
-        self.init(
-            totalTokens: completion.usage?.resolvedTotalTokens,
-            decodeTokensPerSecond: completion.resolvedDecodeTokensPerSecond,
-            peakMemoryGB: completion.usage?.peakMemoryGB
-        )
-    }
-}
-
-struct ChatImageAttachment: Identifiable, Equatable, Codable {
-    let id: UUID
-    var filename: String
-    var mimeType: String
-    var base64Data: String
-
-    init(id: UUID = UUID(), filename: String, mimeType: String, base64Data: String) {
-        self.id = id
-        self.filename = filename
-        self.mimeType = mimeType
-        self.base64Data = base64Data
-    }
-
-    init(contentsOf url: URL) throws {
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer {
-            if didAccess {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let data = try Data(contentsOf: url)
-        let type = UTType(filenameExtension: url.pathExtension)
-        self.init(
-            filename: url.lastPathComponent,
-            mimeType: type?.preferredMIMEType ?? "application/octet-stream",
-            base64Data: data.base64EncodedString()
-        )
-    }
-
-    var dataURL: String {
-        "data:\(mimeType);base64,\(base64Data)"
-    }
-
-    var imageData: Data? {
-        Data(base64Encoded: base64Data)
-    }
-}
-
-private struct ChatSessionStore {
-    private let fileManager = FileManager.default
-
-    func loadSessions() -> [ChatSession] {
-        migrateLegacyTranscriptIfNeeded()
-
-        guard let urls = try? fileManager.contentsOfDirectory(
-            at: sessionsDirectory,
-            includingPropertiesForKeys: nil
-        ) else {
-            return []
-        }
-
-        return urls
-            .filter { $0.pathExtension == "json" }
-            .compactMap(loadSession)
-            .sorted(by: ChatSession.recencySort)
-    }
-
-    func loadSession(id: UUID) -> ChatSession? {
-        loadSession(from: sessionURL(for: id))
-    }
-
-    func saveSession(_ session: ChatSession) {
-        do {
-            try fileManager.createDirectory(
-                at: sessionsDirectory,
-                withIntermediateDirectories: true
-            )
-
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(session)
-            try data.write(to: sessionURL(for: session.id), options: .atomic)
-        } catch {
-            // Chat persistence should not block the local server UI.
-        }
-    }
-
-    func deleteSession(id: UUID) {
-        try? fileManager.removeItem(at: sessionURL(for: id))
-    }
-
-    private func loadSession(from url: URL) -> ChatSession? {
-        guard let data = try? Data(contentsOf: url) else {
-            return nil
-        }
-
-        do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(ChatSession.self, from: data)
-        } catch {
-            return nil
-        }
-    }
-
-    private func migrateLegacyTranscriptIfNeeded() {
-        guard existingSessionURLs().isEmpty,
-              let data = try? Data(contentsOf: legacyTranscriptURL)
-        else {
-            return
-        }
-
-        do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let messages = try decoder.decode([ChatTranscriptMessage].self, from: data)
-            guard !messages.isEmpty else {
-                try? fileManager.removeItem(at: legacyTranscriptURL)
-                return
-            }
-
-            let createdAt = messages.first?.createdAt ?? Date()
-            let updatedAt = messages.last?.createdAt ?? createdAt
-            let session = ChatSession(
-                id: UUID(),
-                title: ChatSession.timestampTitle(for: createdAt),
-                createdAt: createdAt,
-                updatedAt: updatedAt,
-                messages: messages
-            )
-            saveSession(session)
-            try? fileManager.removeItem(at: legacyTranscriptURL)
-        } catch {
-            return
-        }
-    }
-
-    private func existingSessionURLs() -> [URL] {
-        ((try? fileManager.contentsOfDirectory(
-            at: sessionsDirectory,
-            includingPropertiesForKeys: nil
-        )) ?? [])
-        .filter { $0.pathExtension == "json" }
-    }
-
-    private func sessionURL(for id: UUID) -> URL {
-        sessionsDirectory.appendingPathComponent("\(id.uuidString).json")
-    }
-
-    private var chatDirectory: URL {
-        let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? fileManager.temporaryDirectory
-
-        return caches
-            .appendingPathComponent("MLXServerDemo", isDirectory: true)
-            .appendingPathComponent("Chat", isDirectory: true)
-    }
-
-    private var sessionsDirectory: URL {
-        chatDirectory.appendingPathComponent("Sessions", isDirectory: true)
-    }
-
-    private var legacyTranscriptURL: URL {
-        chatDirectory.appendingPathComponent("current.json")
-    }
-}
-
-private struct ChatSessionsSidebar: View {
-    @ObservedObject var viewModel: ChatViewModel
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text("Chats")
-                    .font(.headline)
-
-                Spacer(minLength: 0)
-
-                Button {
-                    viewModel.createSession()
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 16, height: 16)
-                }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.isSending)
-                .help("New chat")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(viewModel.sessions) { session in
-                        ChatSessionRow(
-                            session: session,
-                            isSelected: session.id == viewModel.currentSessionID,
-                            isCurrent: session.id == viewModel.currentSessionID,
-                            isDisabled: viewModel.isSending
-                        ) {
-                            viewModel.selectSession(session.id)
-                        } onDelete: {
-                            viewModel.deleteSession(session.id)
-                        }
-                    }
-                }
-                .padding(8)
-            }
-        }
-        .background(Color(nsColor: .controlBackgroundColor))
-    }
-}
-
-private struct ChatSessionRow: View {
-    let session: ChatSessionSummary
-    let isSelected: Bool
-    let isCurrent: Bool
-    let isDisabled: Bool
-    let onSelect: () -> Void
-    let onDelete: () -> Void
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(session.title)
-                        .font(.callout.weight(isSelected ? .semibold : .regular))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                if isCurrent {
-                    Image(systemName: "checkmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
-            )
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .opacity(isDisabled && !isCurrent ? 0.55 : 1)
-        .help(session.title)
-        .contextMenu {
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            .disabled(isDisabled)
-        }
-    }
-
-    private var detail: String {
-        if isCurrent {
-            return "Current"
-        }
-
-        return "\(session.messageCount) \(session.messageCount == 1 ? "message" : "messages")"
-    }
-}
-
-private struct ChatConfigurationSidebar: View {
-    @Binding var settings: MLXServerSettings
-    let settingsRequireRestart: Bool
-    let onReset: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-
-            Divider()
-
-            ScrollView {
-                VStack(spacing: 20) {
-                    modelContextSection
-                    kvQuantizationSection
-                    thinkingSection
-                    samplingSection
-                    speculativeDecodingSection
-                    structuredOutputSection
-                    prefixCachingSection
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 18)
-            }
-        }
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Label("Model Configuration", systemImage: "slider.horizontal.3")
-                    .font(.title3.weight(.semibold))
-
-                Spacer(minLength: 0)
-
-                Button(action: onReset) {
-                    Image(systemName: "arrow.counterclockwise")
-                }
-                .buttonStyle(.borderless)
-                .help("Reset model configuration")
-            }
-
-            if settingsRequireRestart {
-                Label("Server restart required", systemImage: "arrow.clockwise")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-            } else {
-                Text("Request settings apply to the next message.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
-    }
-
-    private var modelContextSection: some View {
-        ChatConfigurationSection(title: "Model Context") {
-            ConfigurationIntegerField(
-                title: "Max output",
-                value: $settings.maxTokens,
-                range: 1...262_144
-            )
-
-            ConfigurationIntegerField(
-                title: "Context window",
-                value: $settings.maxKVSize,
-                range: 0...1_048_576
-            )
-
-            Text("0 uses the model's native context window.")
-                .configurationHintStyle()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("System prompt")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                TextEditor(text: $settings.systemPrompt)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                    .frame(minHeight: 88)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 7)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                    }
-            }
-        }
-    }
-
-    private var kvQuantizationSection: some View {
-        ChatConfigurationSection(title: "KV Quantization") {
-            Toggle("Quantize KV cache", isOn: $settings.kvQuantizationEnabled)
-                .configurationToggleStyle()
-
-            if settings.kvQuantizationEnabled {
-                Toggle("TurboQuant", isOn: turboQuantBinding)
-                    .configurationToggleStyle()
-
-                ConfigurationDoubleField(
-                    title: "KV bits",
-                    value: $settings.kvBits,
-                    range: 2...16
-                )
-
-                if !settings.turboQuantEnabled {
-                    ConfigurationIntegerField(
-                        title: "Group size",
-                        value: $settings.kvGroupSize,
-                        range: 1...1024
-                    )
-                }
-
-                ConfigurationIntegerField(
-                    title: "Quantize after",
-                    value: $settings.quantizedKVStart,
-                    range: 0...1_048_576
-                )
-
-                Text("Changes to the KV cache require a server restart.")
-                    .configurationHintStyle()
-            }
-        }
-    }
-
-    private var thinkingSection: some View {
-        ChatConfigurationSection(title: "Thinking") {
-            Toggle("Enable Thinking", isOn: $settings.thinkingEnabled)
-                .configurationToggleStyle()
-
-            if settings.thinkingEnabled {
-                ConfigurationIntegerField(
-                    title: "Budget",
-                    value: $settings.thinkingBudget,
-                    range: 1...262_144
-                )
-                ConfigurationTextField(title: "Start token", text: $settings.thinkingStartToken)
-                ConfigurationTextField(title: "EOS token", text: $settings.thinkingEndToken)
-            }
-        }
-    }
-
-    private var samplingSection: some View {
-        ChatConfigurationSection(title: "Sampling") {
-            ConfigurationDoubleField(
-                title: "Temperature",
-                value: $settings.temperature,
-                range: 0...2
-            )
-            ConfigurationIntegerField(
-                title: "Top K",
-                value: $settings.topK,
-                range: 0...10_000
-            )
-            ConfigurationDoubleField(
-                title: "Top P",
-                value: $settings.topP,
-                range: 0...1
-            )
-            ConfigurationDoubleField(
-                title: "Min P",
-                value: $settings.minP,
-                range: 0...1
-            )
-
-            Toggle("Repetition penalty", isOn: $settings.repetitionPenaltyEnabled)
-                .configurationToggleStyle()
-
-            if settings.repetitionPenaltyEnabled {
-                ConfigurationDoubleField(
-                    title: "Penalty",
-                    value: $settings.repetitionPenalty,
-                    range: 0...4
-                )
-            }
-        }
-    }
-
-    private var speculativeDecodingSection: some View {
-        ChatConfigurationSection(title: "Speculative Decoding") {
-            Toggle("Enable drafter", isOn: speculativeDecodingBinding)
-                .configurationToggleStyle()
-
-            if settings.speculativeDecodingEnabled {
-                ConfigurationTextField(title: "Draft model", text: $settings.draftModelID)
-
-                HStack(spacing: 8) {
-                    Text("Family")
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 8)
-                    Picker("", selection: $settings.draftKind) {
-                        Text("Auto").tag("auto")
-                        Text("DFlash").tag("dflash")
-                        Text("EAGLE3").tag("eagle3")
-                        Text("MTP").tag("mtp")
-                    }
-                    .labelsHidden()
-                    .frame(width: 112)
-                }
-                .font(.body)
-
-                ConfigurationIntegerField(
-                    title: "Block size",
-                    value: $settings.draftBlockSize,
-                    range: 0...1024
-                )
-
-                Text(settings.draftModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? "Enter a drafter model to activate speculative decoding."
-                    : "The drafter is loaded after the next server restart.")
-                    .configurationHintStyle(
-                        isError: settings.draftModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    )
-            }
-        }
-    }
-
-    private var structuredOutputSection: some View {
-        ChatConfigurationSection(title: "Structured Output") {
-            Toggle("Enforce JSON schema", isOn: structuredOutputBinding)
-                .configurationToggleStyle()
-
-            if settings.structuredOutputEnabled {
-                ConfigurationTextField(title: "Schema name", text: $settings.structuredOutputName)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("JSON schema")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        Spacer(minLength: 0)
-
-                        Button("Reset") {
-                            settings.structuredOutputSchema = MLXServerSettings.defaultStructuredOutputSchema
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.subheadline)
-                    }
-
-                    TextEditor(text: $settings.structuredOutputSchema)
-                        .font(.system(.body, design: .monospaced))
-                        .scrollContentBackground(.hidden)
-                        .padding(8)
-                        .frame(minHeight: 128)
-                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(
-                                    settings.structuredOutputValidationError == nil
-                                        ? Color(nsColor: .separatorColor)
-                                        : Color.red.opacity(0.7),
-                                    lineWidth: 0.5
-                                )
-                        }
-                }
-
-                if let error = settings.structuredOutputValidationError {
-                    Text(error)
-                        .configurationHintStyle(isError: true)
-                }
-            }
-        }
-    }
-
-    private var prefixCachingSection: some View {
-        ChatConfigurationSection(title: "Prefix Caching") {
-            Toggle("Enable automatic caching", isOn: $settings.prefixCachingEnabled)
-                .configurationToggleStyle()
-
-            if settings.prefixCachingEnabled {
-                ConfigurationIntegerField(
-                    title: "Cache blocks",
-                    value: $settings.prefixCacheBlocks,
-                    range: 1...1_048_576
-                )
-                ConfigurationIntegerField(
-                    title: "Tokens per block",
-                    value: $settings.prefixCacheBlockSize,
-                    range: 1...4096
-                )
-                Text("Shared prompt prefixes are reused after a server restart.")
-                    .configurationHintStyle()
-            }
-        }
-    }
-
-    private var turboQuantBinding: Binding<Bool> {
-        Binding(
-            get: { settings.turboQuantEnabled },
-            set: { enabled in
-                settings.turboQuantEnabled = enabled
-                if enabled, settings.kvBits == 8 {
-                    settings.kvBits = 3.5
-                } else if !enabled, settings.kvBits == 3.5 {
-                    settings.kvBits = 8
-                }
-            }
-        )
-    }
-
-    private var speculativeDecodingBinding: Binding<Bool> {
-        Binding(
-            get: { settings.speculativeDecodingEnabled },
-            set: { enabled in
-                settings.speculativeDecodingEnabled = enabled
-                if enabled {
-                    settings.structuredOutputEnabled = false
-                }
-            }
-        )
-    }
-
-    private var structuredOutputBinding: Binding<Bool> {
-        Binding(
-            get: { settings.structuredOutputEnabled },
-            set: { enabled in
-                settings.structuredOutputEnabled = enabled
-                if enabled {
-                    settings.speculativeDecodingEnabled = false
-                }
-            }
-        )
-    }
-}
-
-private struct ChatConfigurationSection<Content: View>: View {
-    let title: String
-    private let content: Content
-
-    init(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.content = content()
-    }
-
-    var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
-                content
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(8)
-        } label: {
-            Text(title)
-                .font(.headline)
-        }
-    }
-}
-
-private struct ConfigurationIntegerField: View {
-    let title: String
-    @Binding var value: Int
-    let range: ClosedRange<Int>
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.body)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            TextField("", value: $value, format: .number)
-                .font(.body)
-                .multilineTextAlignment(.trailing)
-                .frame(width: 104)
-                .onChange(of: value) { _, newValue in
-                    value = min(max(newValue, range.lowerBound), range.upperBound)
-                }
-        }
-    }
-}
-
-private struct ConfigurationDoubleField: View {
-    let title: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.body)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            TextField(
-                "",
-                value: $value,
-                format: .number.precision(.fractionLength(0...3))
-            )
-            .font(.body)
-            .multilineTextAlignment(.trailing)
-            .frame(width: 104)
-            .onChange(of: value) { _, newValue in
-                value = min(max(newValue, range.lowerBound), range.upperBound)
-            }
-        }
-    }
-}
-
-private struct ConfigurationTextField: View {
-    let title: String
-    @Binding var text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            TextField(title, text: $text)
-                .font(.body)
-        }
-    }
-}
-
-private extension View {
-    func configurationToggleStyle() -> some View {
-        toggleStyle(.switch)
-            .controlSize(.regular)
-            .font(.body)
-    }
-
-    func configurationHintStyle(isError: Bool = false) -> some View {
-        font(.footnote)
-            .foregroundStyle(isError ? Color.red : Color.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
 private struct ChatStatusBar: View {
     let isRunning: Bool
     let selectedModelID: String?
@@ -1551,71 +637,52 @@ private struct ChatMessageRow: View {
     @State private var isHoveringMessage = false
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            if message.role == .user {
-                Spacer(minLength: 80)
-            }
-
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+        VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+            if !title.isEmpty {
                 Text(title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
 
-                HStack(alignment: .bottom, spacing: 8) {
-                    if message.isStreaming && message.content.isEmpty && !showsThinkingBubble {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-
-                    VStack(alignment: contentStackAlignment, spacing: 6) {
-                        if !message.imageAttachments.isEmpty {
-                            ChatImageAttachmentStack(
-                                attachments: message.imageAttachments,
-                                isUserMessage: message.role == .user
-                            )
-                        }
-
-                        if showsThinkingBubble {
-                            ChatThinkingBubble(
-                                content: message.reasoningContent,
-                                isThinking: message.isStreaming && message.content.isEmpty
-                            )
-                        }
-
-                        if showsTextContent {
-                            textBubble
-                        }
-                    }
-
-                    if message.isStreaming && !message.content.isEmpty {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
+            VStack(alignment: contentStackAlignment, spacing: 6) {
+                if !message.imageAttachments.isEmpty {
+                    ChatImageAttachmentStack(
+                        attachments: message.imageAttachments,
+                        isUserMessage: message.role == .user
+                    )
                 }
 
-                if let responseMetrics {
-                    ChatResponseMetricsRow(metrics: responseMetrics)
+                if showsThinkingBubble {
+                    ChatThinkingBubble(
+                        content: message.reasoningContent,
+                        isThinking: message.isStreaming && message.content.isEmpty,
+                        thinkingDuration: message.thinkingDuration
+                    )
                 }
 
-                if showsCopyAction {
-                    HStack(spacing: 8) {
-                        ChatCopyResponseButton(
-                            didCopy: didCopyResponse,
-                            onCopy: copyResponse
-                        )
-
-                        Text(message.createdAt, format: .dateTime.hour().minute())
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .monospacedDigit()
-                    }
-                    .opacity(isHoveringMessage || didCopyResponse ? 1 : 0)
-                    .accessibilityHidden(!isHoveringMessage && !didCopyResponse)
+                if showsTextContent {
+                    textBubble
                 }
             }
 
-            if message.role != .user {
-                Spacer(minLength: 80)
+            if let responseMetrics {
+                ChatResponseMetricsRow(metrics: responseMetrics)
+            }
+
+            if showsCopyAction {
+                HStack(spacing: 8) {
+                    ChatCopyResponseButton(
+                        didCopy: didCopyResponse,
+                        onCopy: copyResponse
+                    )
+
+                    Text(message.createdAt, format: .dateTime.hour().minute())
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                }
+                .opacity(isHoveringMessage || didCopyResponse ? 1 : 0)
+                .accessibilityHidden(!isHoveringMessage && !didCopyResponse)
             }
         }
         .frame(maxWidth: .infinity, alignment: rowAlignment)
@@ -1643,7 +710,7 @@ private struct ChatMessageRow: View {
                 )
                 .lineSpacing(2)
                 .multilineTextAlignment(textAlignment)
-                .frame(maxWidth: 560, alignment: alignment)
+                .frame(maxWidth: .infinity, alignment: alignment)
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -1664,7 +731,7 @@ private struct ChatMessageRow: View {
     private var title: String {
         switch message.role {
         case .user:
-            return "You"
+            return ""
         case .assistant:
             return message.modelID.map { MLXServerFormatting.truncateModelName($0, maxLength: 42) } ?? "Assistant"
         case .error:
@@ -1805,6 +872,7 @@ private struct ChatCopyResponseButton: View {
 private struct ChatThinkingBubble: View {
     let content: String
     let isThinking: Bool
+    let thinkingDuration: TimeInterval?
     @State private var isExpanded = false
 
     var body: some View {
@@ -1816,9 +884,9 @@ private struct ChatThinkingBubble: View {
             } label: {
                 HStack(spacing: 8) {
                     if isThinking {
-                        ChatThinkingShimmerText("Thinking")
+                        ChatThinkingShimmerText("Working")
                     } else {
-                        Text("Reasoning")
+                        Text(completedTitle)
                             .font(.callout.weight(.medium))
                             .foregroundStyle(.secondary)
                     }
@@ -1850,7 +918,7 @@ private struct ChatThinkingBubble: View {
                         .font(.callout)
                         .lineSpacing(2)
                         .textSelection(.enabled)
-                        .frame(maxWidth: 536, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(12)
                     } else {
@@ -1858,7 +926,7 @@ private struct ChatThinkingBubble: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .lineSpacing(2)
-                            .frame(maxWidth: 536, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(height: 58, alignment: .bottomLeading)
                             .clipped()
@@ -1868,7 +936,7 @@ private struct ChatThinkingBubble: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .frame(maxWidth: 560, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(Color.primary.opacity(0.035))
@@ -1879,6 +947,13 @@ private struct ChatThinkingBubble: View {
         }
         .animation(.easeInOut(duration: 0.2), value: isThinking)
         .accessibilityElement(children: .contain)
+    }
+
+    private var completedTitle: String {
+        guard let thinkingDuration else {
+            return "Worked"
+        }
+        return "Worked for \(MLXServerFormatting.elapsedDuration(thinkingDuration))"
     }
 }
 
@@ -1934,7 +1009,7 @@ private struct ChatThinkingShimmerText: View {
             }
         }
         .fixedSize()
-        .accessibilityLabel("Thinking")
+        .accessibilityLabel(text)
     }
 
     private var label: some View {
@@ -2074,45 +1149,6 @@ private struct ChatImageAttachmentView: View {
     }
 }
 
-private struct ChatImageThumbnail: View {
-    let attachment: ChatImageAttachment
-    let isUserMessage: Bool
-    var width: CGFloat = 120
-    var height: CGFloat = 90
-
-    var body: some View {
-        Group {
-            if let data = attachment.imageData,
-               let image = NSImage(data: data) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                VStack(spacing: 6) {
-                    Image(systemName: "photo")
-                        .font(.title3)
-                    Text(attachment.filename)
-                        .font(.caption2)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                }
-                .foregroundStyle(isUserMessage ? Color.white.opacity(0.82) : Color(nsColor: .secondaryLabelColor))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .frame(width: width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(
-                    isUserMessage ? Color.white.opacity(0.3) : Color(nsColor: .separatorColor),
-                    lineWidth: 0.5
-                )
-        )
-        .help(attachment.filename)
-    }
-}
-
 private struct ChatMessageText: View {
     let content: String
     let rendersMarkdown: Bool
@@ -2144,347 +1180,6 @@ private struct ChatMessageText: View {
         }
 
         return Text(attributed)
-    }
-}
-
-private struct ChatComposer: View {
-    @ObservedObject var viewModel: ChatViewModel
-    let unavailableReason: String?
-    let canSend: Bool
-    let onSend: () -> Void
-    @State private var editorContentHeight: CGFloat = 0
-    private let textInset = EdgeInsets(top: 14, leading: 14, bottom: 10, trailing: 14)
-    private let editorMinimumHeight: CGFloat = 64
-    private let editorMaximumHeight: CGFloat = 120
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let unavailableReason {
-                Text(unavailableReason)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topLeading) {
-                    ChatComposerTextEditor(
-                        text: $viewModel.draft,
-                        isEnabled: unavailableReason == nil,
-                        onSubmit: onSend,
-                        onContentHeightChange: { height in
-                            editorContentHeight = height
-                        }
-                    )
-
-                    if viewModel.draft.isEmpty {
-                        Text("Message")
-                            .font(.body)
-                            .foregroundStyle(.tertiary)
-                            .padding(textInset)
-                            .offset(x: 4)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .frame(height: editorHeight)
-
-                if !viewModel.pendingImageAttachments.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(viewModel.pendingImageAttachments) { attachment in
-                                ChatPendingImageAttachmentView(attachment: attachment) {
-                                    viewModel.removePendingImageAttachment(attachment.id)
-                                }
-                            }
-                        }
-                        .padding(.vertical, 1)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                }
-
-                HStack {
-                    Menu {
-                        Button {
-                            viewModel.chooseImageAttachments()
-                        } label: {
-                            Label("Attach Image", systemImage: "photo.badge.plus")
-                        }
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .regular))
-                            .frame(width: 30, height: 30)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .disabled(unavailableReason != nil)
-                    .help("Add attachment")
-
-                    Spacer(minLength: 12)
-
-                    Button {
-                        if viewModel.isSending {
-                            viewModel.cancel()
-                        } else {
-                            onSend()
-                        }
-                    } label: {
-                        Image(systemName: viewModel.isSending ? "stop.fill" : "arrow.up")
-                            .font(.system(size: viewModel.isSending ? 10 : 15, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(actionButtonColor, in: Circle())
-                            .contentShape(.circle)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!viewModel.isSending && !canSend)
-                    .help(viewModel.isSending ? "Stop response" : "Send (Return)")
-                }
-                .padding(.leading, 10)
-                .padding(.trailing, 12)
-                .padding(.bottom, 10)
-            }
-            .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.75)
-            }
-            .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
-        }
-        .padding(18)
-    }
-
-    private var actionButtonColor: Color {
-        if viewModel.isSending || canSend {
-            return .accentColor
-        }
-        return Color(nsColor: .tertiaryLabelColor)
-    }
-
-    private var editorHeight: CGFloat {
-        min(max(editorContentHeight, editorMinimumHeight), editorMaximumHeight)
-    }
-}
-
-private struct ChatComposerTextEditor: NSViewRepresentable {
-    @Binding var text: String
-    let isEnabled: Bool
-    let onSubmit: () -> Void
-    let onContentHeightChange: (CGFloat) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(
-            text: $text,
-            onSubmit: onSubmit,
-            onContentHeightChange: onContentHeightChange
-        )
-    }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let textView = ChatComposerNSTextView()
-        textView.delegate = context.coordinator
-        textView.onSubmit = context.coordinator.handleSubmit
-        textView.isEditable = isEnabled
-        textView.isSelectable = isEnabled
-        textView.font = NSFont.preferredFont(forTextStyle: .body)
-        textView.textColor = NSColor.labelColor
-        textView.backgroundColor = .clear
-        textView.drawsBackground = false
-        textView.allowsUndo = true
-        textView.isRichText = false
-        textView.importsGraphics = false
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainerInset = NSSize(width: 14, height: 12)
-        textView.textContainer?.widthTracksTextView = true
-        textView.string = text
-
-        let scrollView = ChatComposerNSScrollView()
-        scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.borderType = .noBorder
-        scrollView.documentView = textView
-        scrollView.onLayout = context.coordinator.reportContentHeight
-
-        context.coordinator.textView = textView
-        context.coordinator.reportContentHeight()
-        return scrollView
-    }
-
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        context.coordinator.onSubmit = onSubmit
-        context.coordinator.onContentHeightChange = onContentHeightChange
-
-        guard let textView = context.coordinator.textView else {
-            return
-        }
-
-        textView.isEditable = isEnabled
-        textView.isSelectable = isEnabled
-
-        guard textView.string != text else {
-            context.coordinator.reportContentHeight()
-            return
-        }
-
-        textView.string = text
-        context.coordinator.reportContentHeight()
-    }
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        @Binding private var text: String
-        var onSubmit: () -> Void
-        var onContentHeightChange: (CGFloat) -> Void
-        weak var textView: NSTextView?
-        private var lastReportedHeight: CGFloat?
-
-        init(
-            text: Binding<String>,
-            onSubmit: @escaping () -> Void,
-            onContentHeightChange: @escaping (CGFloat) -> Void
-        ) {
-            _text = text
-            self.onSubmit = onSubmit
-            self.onContentHeightChange = onContentHeightChange
-        }
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView else {
-                return
-            }
-
-            text = textView.string
-            reportContentHeight()
-        }
-
-        func handleSubmit() {
-            onSubmit()
-        }
-
-        func reportContentHeight() {
-            guard let textView,
-                  let layoutManager = textView.layoutManager,
-                  let textContainer = textView.textContainer,
-                  textContainer.containerSize.width > 0
-            else {
-                return
-            }
-
-            layoutManager.ensureLayout(for: textContainer)
-            let usedRect = layoutManager.usedRect(for: textContainer)
-            let measuredHeight = ceil(usedRect.maxY + (textView.textContainerInset.height * 2))
-
-            guard lastReportedHeight.map({ abs($0 - measuredHeight) >= 0.5 }) ?? true else {
-                return
-            }
-
-            lastReportedHeight = measuredHeight
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.lastReportedHeight == measuredHeight else {
-                    return
-                }
-                self.onContentHeightChange(measuredHeight)
-            }
-        }
-    }
-}
-
-private final class ChatComposerNSScrollView: NSScrollView {
-    var onLayout: (() -> Void)?
-
-    override func layout() {
-        super.layout()
-        onLayout?()
-    }
-}
-
-private final class ChatComposerNSTextView: NSTextView {
-    var onSubmit: (() -> Void)?
-
-    override func keyDown(with event: NSEvent) {
-        switch ComposerReturnBehavior.resolve(for: event) {
-        case .submit:
-            onSubmit?()
-        case .insertNewline:
-            insertText("\n", replacementRange: selectedRange())
-        case .passthrough:
-            super.keyDown(with: event)
-        }
-    }
-}
-
-private enum ComposerReturnBehavior {
-    case submit
-    case insertNewline
-    case passthrough
-
-    static func resolve(for event: NSEvent) -> ComposerReturnBehavior {
-        guard isReturnKey(event) else {
-            return .passthrough
-        }
-
-        let modifiers = relevantModifiers(for: event)
-        if modifiers == [.command] {
-            return .insertNewline
-        }
-        if modifiers.isEmpty {
-            return .submit
-        }
-        return .passthrough
-    }
-
-    private static func isReturnKey(_ event: NSEvent) -> Bool {
-        event.keyCode == 36 || event.keyCode == 76
-    }
-
-    private static func relevantModifiers(for event: NSEvent) -> NSEvent.ModifierFlags {
-        event.modifierFlags.intersection([.command, .control, .option, .shift])
-    }
-}
-
-private struct ChatPendingImageAttachmentView: View {
-    let attachment: ChatImageAttachment
-    let onRemove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ChatImageThumbnail(
-                attachment: attachment,
-                isUserMessage: false,
-                width: 42,
-                height: 32
-            )
-
-            Text(attachment.filename)
-                .font(.caption)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 180)
-
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 14, height: 14)
-            }
-            .buttonStyle(.plain)
-            .help("Remove image")
-        }
-        .padding(.leading, 5)
-        .padding(.trailing, 7)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 7)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
     }
 }
 

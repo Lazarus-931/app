@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0742C765B9160A29FCD9478D /* ChatConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8ECD51410493D4D5463DEAB /* ChatConfigurationView.swift */; };
 		09BD37A10A985C7C9F7B7C6E /* MLXServerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00894697C171C6B288BF0103 /* MLXServerModel.swift */; };
 		0E204CDE3A896369EB992489 /* MLXServerKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; };
 		1ACD7C1CA60EA1DEDE1FF275 /* MLXServerImageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15AE0B934327136178FAC319 /* MLXServerImageClient.swift */; };
@@ -18,6 +19,8 @@
 		559891D535CC6A05E036008C /* ModelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF697E2D43BA29469CD8D488 /* ModelsView.swift */; };
 		56D7E25EDF2B04A4C5286C60 /* ModelProviderIcons in Resources */ = {isa = PBXBuildFile; fileRef = 4B449F1D492B0FB584C3307E /* ModelProviderIcons */; };
 		7460B4A2D36DD1E51A0441D0 /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = 6EC9B105D8EE975D457592E4 /* Textual */; };
+		76BE29583173613B38297801 /* ChatSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3568182FCF0ED02196B011 /* ChatSessionStore.swift */; };
+		809CFC3BDFF7CDDE361A1BD1 /* ChatComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DAA68101502BE47E4CCEF98 /* ChatComposer.swift */; };
 		95F147527789271CC67FED1F /* MarkdownFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB6A9FBC8B4784C12A43E62 /* MarkdownFormatting.swift */; };
 		9B00223459B5BABD8FBF7F18 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAD0A768C3DCB10992FDEA4C /* DashboardViewModel.swift */; };
 		CFC0A56F9A08055DB13D8007 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E990F983103BE071A5DFE51 /* Formatting.swift */; };
@@ -65,6 +68,7 @@
 		16AF7B20AD527C9F2714A3E4 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		18A3D8D901D1BC7264782096 /* MLXServerAnalyticsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerAnalyticsStore.swift; sourceTree = "<group>"; };
 		1C8044F4520242259F93D5C5 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
+		1E3568182FCF0ED02196B011 /* ChatSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionStore.swift; sourceTree = "<group>"; };
 		29DBC04420F64DAD6CBF90ED /* LocalModelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelProvider.swift; sourceTree = "<group>"; };
 		2B61BAD9813F4D87AC7898E8 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MLXServerKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -75,6 +79,7 @@
 		687D116C9C28C6413A9549E2 /* MLXServerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerSettings.swift; sourceTree = "<group>"; };
 		72AA66BACD7905E1AE7CA4A0 /* HuggingFaceHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceHub.swift; sourceTree = "<group>"; };
 		7BCE86ED81B58ABC9D504A16 /* Main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Main.swift; sourceTree = "<group>"; };
+		7DAA68101502BE47E4CCEF98 /* ChatComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposer.swift; sourceTree = "<group>"; };
 		8B046C28CBCFB7E4FA8610E3 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		96E4D31D5B9C910FF22A43EC /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelView.swift; sourceTree = "<group>"; };
 		AF697E2D43BA29469CD8D488 /* ModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsView.swift; sourceTree = "<group>"; };
@@ -83,6 +88,7 @@
 		E269C7A536273D317B712940 /* MLXVLMServer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MLXVLMServer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EAD0A768C3DCB10992FDEA4C /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		ECB6A9FBC8B4784C12A43E62 /* MarkdownFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatting.swift; sourceTree = "<group>"; };
+		F8ECD51410493D4D5463DEAB /* ChatConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConfigurationView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -193,6 +199,9 @@
 		CFF6D3036968B28984A6174C /* Chat */ = {
 			isa = PBXGroup;
 			children = (
+				7DAA68101502BE47E4CCEF98 /* ChatComposer.swift */,
+				F8ECD51410493D4D5463DEAB /* ChatConfigurationView.swift */,
+				1E3568182FCF0ED02196B011 /* ChatSessionStore.swift */,
 				8B046C28CBCFB7E4FA8610E3 /* ChatView.swift */,
 			);
 			path = Chat;
@@ -342,6 +351,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				24B14A116264942BB1614491 /* AppDelegate.swift in Sources */,
+				809CFC3BDFF7CDDE361A1BD1 /* ChatComposer.swift in Sources */,
+				0742C765B9160A29FCD9478D /* ChatConfigurationView.swift in Sources */,
+				76BE29583173613B38297801 /* ChatSessionStore.swift in Sources */,
 				D135AA987095DBF4C55C3A0D /* ChatView.swift in Sources */,
 				F2ADAC6876A9A40B87E0FA3E /* ControlPanelView.swift in Sources */,
 				9B00223459B5BABD8FBF7F18 /* DashboardViewModel.swift in Sources */,

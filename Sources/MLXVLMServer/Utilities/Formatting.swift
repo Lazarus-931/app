@@ -118,6 +118,25 @@ enum MLXServerFormatting {
         return "\(minutes)m \(seconds)s"
     }
 
+    static func elapsedDuration(_ value: TimeInterval) -> String {
+        guard value.isFinite else {
+            return "0s"
+        }
+
+        let totalSeconds = max(0, Int(value.rounded(.down)))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
+        }
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        }
+        return "\(seconds)s"
+    }
+
     static func gigabytes(_ value: Double) -> String {
         guard value.isFinite else {
             return "--"
