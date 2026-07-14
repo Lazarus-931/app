@@ -13,6 +13,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
     case openBMB
     case openMOSS
     case poolside
+    case prismML
     case nvidia
     case apple
     case ibm
@@ -33,6 +34,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .openBMB: "OpenBMB"
         case .openMOSS: "OpenMOSS"
         case .poolside: "Poolside"
+        case .prismML: "Prism ML"
         case .nvidia: "NVIDIA"
         case .apple: "Apple"
         case .ibm: "IBM"
@@ -55,6 +57,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .openBMB: "ModelProviderIcon-openbmb"
         case .openMOSS: "ModelProviderIcon-openmoss"
         case .poolside: "ModelProviderIcon-poolside"
+        case .prismML: "ModelProviderIcon-prism-ml"
         case .nvidia: "ModelProviderIcon-nvidia"
         case .apple: "ModelProviderIcon-apple"
         case .ibm: "ModelProviderIcon-ibm"
@@ -77,6 +80,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .openBMB: "B"
         case .openMOSS: "M"
         case .poolside: "P"
+        case .prismML: "P"
         case .nvidia: "N"
         case .apple: "A"
         case .ibm: "IBM"
@@ -87,7 +91,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
 
     var preservesIconColors: Bool {
         switch self {
-        case .google, .mistral, .microsoft, .cohere, .openBMB, .openMOSS, .poolside:
+        case .google, .mistral, .microsoft, .cohere, .openBMB, .openMOSS, .poolside, .prismML:
             true
         default:
             false
@@ -106,7 +110,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
             NSColor(srgbRed: 79 / 255, green: 112 / 255, blue: 255 / 255, alpha: 1)
         case .ai2:
             NSColor(srgbRed: 255 / 255, green: 103 / 255, blue: 170 / 255, alpha: 1)
-        case .openBMB, .openMOSS, .poolside:
+        case .openBMB, .openMOSS, .poolside, .prismML:
             .labelColor
         case .nvidia:
             NSColor(srgbRed: 118 / 255, green: 185 / 255, blue: 0 / 255, alpha: 1)
@@ -122,8 +126,8 @@ enum LocalModelProviderResolver {
         let identifiers: [String]
     }
 
-    // Family mappings intentionally run before organization mappings. Converted and
-    // quantized models are commonly republished by mlx-community or another account.
+    // Recognized first-party organizations are authoritative. Family mappings handle
+    // converted and quantized models republished by mlx-community or another account.
     private static let modelFamilyMappings: [ModelFamilyMapping] = [
         ModelFamilyMapping(
             provider: .google,
@@ -140,6 +144,7 @@ enum LocalModelProviderResolver {
         ModelFamilyMapping(provider: .openBMB, identifiers: ["minicpm"]),
         ModelFamilyMapping(provider: .openMOSS, identifiers: ["moss"]),
         ModelFamilyMapping(provider: .poolside, identifiers: ["laguna"]),
+        ModelFamilyMapping(provider: .prismML, identifiers: ["bonsai"]),
         ModelFamilyMapping(provider: .openAI, identifiers: ["gptoss", "whisper"]),
         ModelFamilyMapping(provider: .meta, identifiers: ["llama"]),
         ModelFamilyMapping(provider: .deepSeek, identifiers: ["deepseek"]),
@@ -173,6 +178,7 @@ enum LocalModelProviderResolver {
         "openmossteam": .openMOSS,
         "poolside": .poolside,
         "poolsideai": .poolside,
+        "prismml": .prismML,
         "nvidia": .nvidia,
         "apple": .apple,
         "ibm": .ibm,
@@ -190,6 +196,11 @@ enum LocalModelProviderResolver {
         modelType: String?,
         architectures: [String]
     ) -> LocalModelProvider? {
+        if let organization = repoID.split(separator: "/").first,
+           let provider = organizationMappings[normalizedKey(String(organization))] {
+            return provider
+        }
+
         let repositoryName = repoID.split(separator: "/").last.map(String.init) ?? repoID
         let modelDescriptors = [modelType ?? ""] + architectures + [repositoryName]
         let candidates = modelDescriptors.flatMap(normalizedCandidates)
@@ -200,11 +211,7 @@ enum LocalModelProviderResolver {
             }) {
             return mapping.provider
         }
-
-        guard let organization = repoID.split(separator: "/").first else {
-            return nil
-        }
-        return organizationMappings[normalizedKey(String(organization))]
+        return nil
     }
 
     private static func normalizedCandidates(_ value: String) -> [String] {

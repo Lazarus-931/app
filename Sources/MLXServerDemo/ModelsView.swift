@@ -1167,6 +1167,8 @@ private extension LocalModelProvider {
             .primary
         case .poolside:
             .primary
+        case .prismML:
+            .primary
         case .nvidia:
             Color(red: 118 / 255, green: 185 / 255, blue: 0 / 255)
         case .apple:
