@@ -12,39 +12,51 @@ struct ChatView: View {
     @State private var composerHeight: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            ChatStatusBar(
-                isRunning: model.isRunning,
-                selectedModelID: selectedModelID,
-                loadedModel: model.loadedModelDisplay,
-                settingsRequireRestart: model.settingsRequireRestart
-            )
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                ChatStatusBar(
+                    isRunning: model.isRunning,
+                    selectedModelID: selectedModelID,
+                    loadedModel: model.loadedModelDisplay,
+                    settingsRequireRestart: model.settingsRequireRestart
+                )
 
-            Divider()
+                Divider()
 
-            transcript
-                .overlay(alignment: .bottom) {
-                    ChatComposer(
-                        viewModel: chat,
-                        unavailableReason: unavailableReason,
-                        canSend: canSend,
-                        onSend: {
-                            chat.send(using: model)
-                        }
-                    )
-                    .onGeometryChange(for: CGFloat.self) { proxy in
-                        proxy.size.height
-                    } action: { height in
-                        let isInitialMeasurement = composerHeight == 0
-                        composerHeight = height
-                        if isInitialMeasurement {
-                            Task { @MainActor in
-                                try? await Task.sleep(for: .milliseconds(50))
-                                transcriptScrollPosition.scrollTo(edge: .bottom)
+                transcript
+                    .overlay(alignment: .bottom) {
+                        ChatComposer(
+                            viewModel: chat,
+                            unavailableReason: unavailableReason,
+                            canSend: canSend,
+                            onSend: {
+                                chat.send(using: model)
+                            }
+                        )
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            let isInitialMeasurement = composerHeight == 0
+                            composerHeight = height
+                            if isInitialMeasurement {
+                                Task { @MainActor in
+                                    try? await Task.sleep(for: .milliseconds(50))
+                                    transcriptScrollPosition.scrollTo(edge: .bottom)
+                                }
                             }
                         }
                     }
-                }
+            }
+            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            ChatConfigurationSidebar(
+                settings: $model.settings,
+                settingsRequireRestart: model.settingsRequireRestart,
+                onReset: model.resetSettings
+            )
+            .frame(width: 320)
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -54,11 +66,13 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        chat.canSend(isRunning: model.isRunning, selectedModelID: selectedModelID)
+        model.settings.structuredOutputValidationError == nil
+            && chat.canSend(isRunning: model.isRunning, selectedModelID: selectedModelID)
     }
 
     private var unavailableReason: String? {
         chat.unavailableReason(isRunning: model.isRunning, selectedModelID: selectedModelID)
+            ?? model.settings.structuredOutputValidationError
     }
 
     private var transcript: some View {
@@ -242,7 +256,13 @@ final class ChatViewModel: ObservableObject {
         messages.append(userMessage)
         persistCurrentSession(updateTimestamp: true)
 
-        let requestMessages = messages.compactMap(\.apiMessage)
+        var requestMessages = messages.compactMap(\.apiMessage)
+        if !settings.systemPrompt.isEmpty {
+            requestMessages.insert(
+                MLXChatMessage(role: "system", content: settings.systemPrompt),
+                at: 0
+            )
+        }
         let assistantID = UUID()
         messages.append(ChatTranscriptMessage(
             id: assistantID,
@@ -263,6 +283,11 @@ final class ChatViewModel: ObservableObject {
             topP: settings.topP,
             minP: settings.minP,
             repetitionPenalty: settings.repetitionPenaltyEnabled ? settings.repetitionPenalty : nil,
+            enableThinking: settings.thinkingEnabled,
+            thinkingBudget: settings.thinkingEnabled ? settings.thinkingBudget : nil,
+            thinkingStartToken: settings.thinkingEnabled ? settings.thinkingStartToken : nil,
+            thinkingEndToken: settings.thinkingEnabled ? settings.thinkingEndToken : nil,
+            responseFormat: settings.chatResponseFormat,
             stream: true
         )
 
@@ -965,6 +990,438 @@ private struct ChatSessionRow: View {
         }
 
         return "\(session.messageCount) \(session.messageCount == 1 ? "message" : "messages")"
+    }
+}
+
+private struct ChatConfigurationSidebar: View {
+    @Binding var settings: MLXServerSettings
+    let settingsRequireRestart: Bool
+    let onReset: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 12) {
+                    modelContextSection
+                    kvQuantizationSection
+                    thinkingSection
+                    samplingSection
+                    speculativeDecodingSection
+                    structuredOutputSection
+                    prefixCachingSection
+                }
+                .padding(12)
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("Model Configuration", systemImage: "slider.horizontal.3")
+                    .font(.headline)
+
+                Spacer(minLength: 0)
+
+                Button(action: onReset) {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("Reset model configuration")
+            }
+
+            if settingsRequireRestart {
+                Label("Server restart required", systemImage: "arrow.clockwise")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else {
+                Text("Request settings apply to the next message.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+
+    private var modelContextSection: some View {
+        ChatConfigurationSection(title: "Model Context", systemImage: "text.append") {
+            ConfigurationIntegerField(
+                title: "Max output",
+                value: $settings.maxTokens,
+                range: 1...262_144
+            )
+
+            ConfigurationIntegerField(
+                title: "Context window",
+                value: $settings.maxKVSize,
+                range: 0...1_048_576
+            )
+
+            Text("0 uses the model's native context window.")
+                .configurationHintStyle()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("System prompt")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextEditor(text: $settings.systemPrompt)
+                    .font(.callout)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .frame(minHeight: 76)
+                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                    }
+            }
+        }
+    }
+
+    private var kvQuantizationSection: some View {
+        ChatConfigurationSection(title: "KV Quantization", systemImage: "memorychip") {
+            Toggle("Quantize KV cache", isOn: $settings.kvQuantizationEnabled)
+                .configurationToggleStyle()
+
+            if settings.kvQuantizationEnabled {
+                Toggle("TurboQuant", isOn: turboQuantBinding)
+                    .configurationToggleStyle()
+
+                ConfigurationDoubleField(
+                    title: "KV bits",
+                    value: $settings.kvBits,
+                    range: 2...16
+                )
+
+                if !settings.turboQuantEnabled {
+                    ConfigurationIntegerField(
+                        title: "Group size",
+                        value: $settings.kvGroupSize,
+                        range: 1...1024
+                    )
+                }
+
+                ConfigurationIntegerField(
+                    title: "Quantize after",
+                    value: $settings.quantizedKVStart,
+                    range: 0...1_048_576
+                )
+
+                Text("Changes to the KV cache require a server restart.")
+                    .configurationHintStyle()
+            }
+        }
+    }
+
+    private var thinkingSection: some View {
+        ChatConfigurationSection(title: "Thinking", systemImage: "brain.head.profile") {
+            Toggle("Enable Thinking", isOn: $settings.thinkingEnabled)
+                .configurationToggleStyle()
+
+            if settings.thinkingEnabled {
+                ConfigurationIntegerField(
+                    title: "Budget",
+                    value: $settings.thinkingBudget,
+                    range: 1...262_144
+                )
+                ConfigurationTextField(title: "Start token", text: $settings.thinkingStartToken)
+                ConfigurationTextField(title: "EOS token", text: $settings.thinkingEndToken)
+            }
+        }
+    }
+
+    private var samplingSection: some View {
+        ChatConfigurationSection(title: "Sampling", systemImage: "dial.medium") {
+            ConfigurationDoubleField(
+                title: "Temperature",
+                value: $settings.temperature,
+                range: 0...2
+            )
+            ConfigurationIntegerField(
+                title: "Top K",
+                value: $settings.topK,
+                range: 0...10_000
+            )
+            ConfigurationDoubleField(
+                title: "Top P",
+                value: $settings.topP,
+                range: 0...1
+            )
+            ConfigurationDoubleField(
+                title: "Min P",
+                value: $settings.minP,
+                range: 0...1
+            )
+
+            Toggle("Repetition penalty", isOn: $settings.repetitionPenaltyEnabled)
+                .configurationToggleStyle()
+
+            if settings.repetitionPenaltyEnabled {
+                ConfigurationDoubleField(
+                    title: "Penalty",
+                    value: $settings.repetitionPenalty,
+                    range: 0...4
+                )
+            }
+        }
+    }
+
+    private var speculativeDecodingSection: some View {
+        ChatConfigurationSection(title: "Speculative Decoding", systemImage: "hare") {
+            Toggle("Enable drafter", isOn: speculativeDecodingBinding)
+                .configurationToggleStyle()
+
+            if settings.speculativeDecodingEnabled {
+                ConfigurationTextField(title: "Draft model", text: $settings.draftModelID)
+
+                HStack(spacing: 8) {
+                    Text("Family")
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Picker("", selection: $settings.draftKind) {
+                        Text("Auto").tag("auto")
+                        Text("DFlash").tag("dflash")
+                        Text("EAGLE3").tag("eagle3")
+                        Text("MTP").tag("mtp")
+                    }
+                    .labelsHidden()
+                    .frame(width: 112)
+                }
+                .font(.caption)
+
+                ConfigurationIntegerField(
+                    title: "Block size",
+                    value: $settings.draftBlockSize,
+                    range: 0...1024
+                )
+
+                Text(settings.draftModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "Enter a drafter model to activate speculative decoding."
+                    : "The drafter is loaded after the next server restart.")
+                    .configurationHintStyle(
+                        isError: settings.draftModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+            }
+        }
+    }
+
+    private var structuredOutputSection: some View {
+        ChatConfigurationSection(title: "Structured Output", systemImage: "curlybraces") {
+            Toggle("Enforce JSON schema", isOn: structuredOutputBinding)
+                .configurationToggleStyle()
+
+            if settings.structuredOutputEnabled {
+                ConfigurationTextField(title: "Schema name", text: $settings.structuredOutputName)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("JSON schema")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Spacer(minLength: 0)
+
+                        Button("Reset") {
+                            settings.structuredOutputSchema = MLXServerSettings.defaultStructuredOutputSchema
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                    }
+
+                    TextEditor(text: $settings.structuredOutputSchema)
+                        .font(.system(.caption, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .padding(6)
+                        .frame(minHeight: 128)
+                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(
+                                    settings.structuredOutputValidationError == nil
+                                        ? Color(nsColor: .separatorColor)
+                                        : Color.red.opacity(0.7),
+                                    lineWidth: 0.5
+                                )
+                        }
+                }
+
+                if let error = settings.structuredOutputValidationError {
+                    Text(error)
+                        .configurationHintStyle(isError: true)
+                }
+            }
+        }
+    }
+
+    private var prefixCachingSection: some View {
+        ChatConfigurationSection(title: "Prefix Caching", systemImage: "bolt.horizontal.circle") {
+            Toggle("Enable automatic caching", isOn: $settings.prefixCachingEnabled)
+                .configurationToggleStyle()
+
+            if settings.prefixCachingEnabled {
+                ConfigurationIntegerField(
+                    title: "Cache blocks",
+                    value: $settings.prefixCacheBlocks,
+                    range: 1...1_048_576
+                )
+                ConfigurationIntegerField(
+                    title: "Tokens per block",
+                    value: $settings.prefixCacheBlockSize,
+                    range: 1...4096
+                )
+                Text("Shared prompt prefixes are reused after a server restart.")
+                    .configurationHintStyle()
+            }
+        }
+    }
+
+    private var turboQuantBinding: Binding<Bool> {
+        Binding(
+            get: { settings.turboQuantEnabled },
+            set: { enabled in
+                settings.turboQuantEnabled = enabled
+                if enabled, settings.kvBits == 8 {
+                    settings.kvBits = 3.5
+                } else if !enabled, settings.kvBits == 3.5 {
+                    settings.kvBits = 8
+                }
+            }
+        )
+    }
+
+    private var speculativeDecodingBinding: Binding<Bool> {
+        Binding(
+            get: { settings.speculativeDecodingEnabled },
+            set: { enabled in
+                settings.speculativeDecodingEnabled = enabled
+                if enabled {
+                    settings.structuredOutputEnabled = false
+                }
+            }
+        )
+    }
+
+    private var structuredOutputBinding: Binding<Bool> {
+        Binding(
+            get: { settings.structuredOutputEnabled },
+            set: { enabled in
+                settings.structuredOutputEnabled = enabled
+                if enabled {
+                    settings.speculativeDecodingEnabled = false
+                }
+            }
+        )
+    }
+}
+
+private struct ChatConfigurationSection<Content: View>: View {
+    let title: String
+    let systemImage: String
+    private let content: Content
+
+    init(
+        title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.content = content()
+    }
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 2)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+        }
+    }
+}
+
+private struct ConfigurationIntegerField: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            TextField("", value: $value, format: .number)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 88)
+                .onChange(of: value) { _, newValue in
+                    value = min(max(newValue, range.lowerBound), range.upperBound)
+                }
+        }
+        .font(.caption)
+    }
+}
+
+private struct ConfigurationDoubleField: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            TextField(
+                "",
+                value: $value,
+                format: .number.precision(.fractionLength(0...3))
+            )
+            .multilineTextAlignment(.trailing)
+            .frame(width: 88)
+            .onChange(of: value) { _, newValue in
+                value = min(max(newValue, range.lowerBound), range.upperBound)
+            }
+        }
+        .font(.caption)
+    }
+}
+
+private struct ConfigurationTextField: View {
+    let title: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField(title, text: $text)
+                .font(.caption)
+        }
+    }
+}
+
+private extension View {
+    func configurationToggleStyle() -> some View {
+        toggleStyle(.switch)
+            .controlSize(.small)
+            .font(.caption)
+    }
+
+    func configurationHintStyle(isError: Bool = false) -> some View {
+        font(.caption2)
+            .foregroundStyle(isError ? Color.red : Color.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -216,6 +216,81 @@ public struct MLXChatStreamOptions: Encodable, Equatable, Sendable {
     }
 }
 
+public enum MLXJSONValue: Codable, Equatable, Sendable {
+    case object([String: MLXJSONValue])
+    case array([MLXJSONValue])
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+    case null
+
+    public init(jsonData: Data) throws {
+        self = try JSONDecoder().decode(Self.self, from: jsonData)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([MLXJSONValue].self) {
+            self = .array(value)
+        } else {
+            self = .object(try container.decode([String: MLXJSONValue].self))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .object(let value):
+            try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
+        case .string(let value):
+            try container.encode(value)
+        case .number(let value):
+            try container.encode(value)
+        case .bool(let value):
+            try container.encode(value)
+        case .null:
+            try container.encodeNil()
+        }
+    }
+}
+
+public struct MLXChatResponseFormat: Encodable, Equatable, Sendable {
+    public var type: String
+    public var jsonSchema: MLXChatJSONSchema
+
+    public init(name: String, schema: MLXJSONValue, strict: Bool = true) {
+        self.type = "json_schema"
+        self.jsonSchema = MLXChatJSONSchema(name: name, strict: strict, schema: schema)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case jsonSchema = "json_schema"
+    }
+}
+
+public struct MLXChatJSONSchema: Encodable, Equatable, Sendable {
+    public var name: String
+    public var strict: Bool
+    public var schema: MLXJSONValue
+
+    public init(name: String, strict: Bool, schema: MLXJSONValue) {
+        self.name = name
+        self.strict = strict
+        self.schema = schema
+    }
+}
+
 public struct MLXChatCompletionRequest: Encodable, Equatable, Sendable {
     public var model: String
     public var messages: [MLXChatMessage]
@@ -225,6 +300,11 @@ public struct MLXChatCompletionRequest: Encodable, Equatable, Sendable {
     public var topP: Double
     public var minP: Double
     public var repetitionPenalty: Double?
+    public var enableThinking: Bool?
+    public var thinkingBudget: Int?
+    public var thinkingStartToken: String?
+    public var thinkingEndToken: String?
+    public var responseFormat: MLXChatResponseFormat?
     public var stream: Bool
     public var streamOptions: MLXChatStreamOptions?
 
@@ -237,6 +317,11 @@ public struct MLXChatCompletionRequest: Encodable, Equatable, Sendable {
         topP: Double,
         minP: Double,
         repetitionPenalty: Double? = nil,
+        enableThinking: Bool? = nil,
+        thinkingBudget: Int? = nil,
+        thinkingStartToken: String? = nil,
+        thinkingEndToken: String? = nil,
+        responseFormat: MLXChatResponseFormat? = nil,
         stream: Bool = false,
         streamOptions: MLXChatStreamOptions? = nil
     ) {
@@ -248,6 +333,11 @@ public struct MLXChatCompletionRequest: Encodable, Equatable, Sendable {
         self.topP = topP
         self.minP = minP
         self.repetitionPenalty = repetitionPenalty
+        self.enableThinking = enableThinking
+        self.thinkingBudget = thinkingBudget
+        self.thinkingStartToken = thinkingStartToken
+        self.thinkingEndToken = thinkingEndToken
+        self.responseFormat = responseFormat
         self.stream = stream
         self.streamOptions = streamOptions
     }
@@ -261,6 +351,11 @@ public struct MLXChatCompletionRequest: Encodable, Equatable, Sendable {
         case topP = "top_p"
         case minP = "min_p"
         case repetitionPenalty = "repetition_penalty"
+        case enableThinking = "enable_thinking"
+        case thinkingBudget = "thinking_budget"
+        case thinkingStartToken = "thinking_start_token"
+        case thinkingEndToken = "thinking_end_token"
+        case responseFormat = "response_format"
         case stream
         case streamOptions = "stream_options"
     }

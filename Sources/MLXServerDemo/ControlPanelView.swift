@@ -74,7 +74,7 @@ struct ControlPanelView: View {
             detail
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 720, minHeight: 520)
+        .frame(minWidth: 1040, minHeight: 600)
         .onAppear {
             applySidebarSelection(navigation.requestedTab.map(ControlPanelSidebarSelection.tab) ?? sidebarSelection)
             handleNewChatRequest()

@@ -93,7 +93,7 @@ private struct MLXServerDemoApplication: App {
         Window("MLX Server", id: "main") {
             MLXServerDemoRootView(appDelegate: appDelegate)
         }
-        .defaultSize(width: 920, height: 620)
+        .defaultSize(width: 1240, height: 720)
         .defaultPosition(.center)
         .windowStyle(.hiddenTitleBar)
         .windowBackgroundDragBehavior(.enabled)
