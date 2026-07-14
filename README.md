@@ -7,7 +7,7 @@ The primary targets are:
 
 - `MLXServerKit`: a framework that embeds a relocatable `mlx-vlm` server bundle
   and exposes Swift APIs to locate, launch, monitor, and stop it.
-- `MLXServerDemo`: a macOS app that uses `MLXServerKit`, starts the bundled
+- `MLXVLMServer`: a macOS app that uses `MLXServerKit`, starts the bundled
   server, streams its log output, and exposes Start/Stop actions from a menu bar
   extra.
 
@@ -28,7 +28,7 @@ framework resources.
 
 ```text
 Sources/
-├── MLXServerDemo/
+├── MLXVLMServer/
 └── MLXServerKit/
 PythonDistribution/
 ├── Launcher/
@@ -53,10 +53,10 @@ make xcode-build
 Run the demo app from Xcode, or launch the built app directly:
 
 ```sh
-open build/XcodeDerivedData/Build/Products/Debug/MLXServerDemo.app
+open build/XcodeDerivedData/Build/Products/Debug/MLXVLMServer.app
 ```
 
-When launched normally, `MLXServerDemo` starts `mlx-vlm-server` without
+When launched normally, `MLXVLMServer` starts `mlx-vlm-server` without
 arguments. The app keeps a reference to the long-running process, streams
 stdout/stderr into the window, and provides `Start`, `Stop`, and `Quit` actions
 from the `MLX` menu bar extra.

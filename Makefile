@@ -19,10 +19,10 @@ xcode-generate:
 	xcodegen generate
 
 xcode-build: xcode-generate
-	xcodebuild -project MLXPlatform.xcodeproj -scheme MLXServerDemo -configuration Debug -derivedDataPath $(XCODE_DERIVED_DATA) CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project MLXPlatform.xcodeproj -scheme MLXVLMServer -configuration Debug -derivedDataPath $(XCODE_DERIVED_DATA) CODE_SIGNING_ALLOWED=NO build
 
 xcode-smoke: xcode-build
-	$(XCODE_DERIVED_DATA)/Build/Products/Debug/MLXServerDemo.app/Contents/MacOS/MLXServerDemo --smoke-test
+$(XCODE_DERIVED_DATA)/Build/Products/Debug/MLXVLMServer.app/Contents/MacOS/MLXVLMServer --smoke-test
 
 xcode-lifecycle-smoke: xcode-build
-	$(XCODE_DERIVED_DATA)/Build/Products/Debug/MLXServerDemo.app/Contents/MacOS/MLXServerDemo --lifecycle-smoke-test
+$(XCODE_DERIVED_DATA)/Build/Products/Debug/MLXVLMServer.app/Contents/MacOS/MLXVLMServer --lifecycle-smoke-test

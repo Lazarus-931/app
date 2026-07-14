@@ -35,14 +35,14 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerKit
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: NO
-  MLXServerDemo:
+  MLXVLMServer:
     type: application
     platform: macOS
     sources:
-      - path: Sources/MLXServerDemo
+      - path: Sources/MLXVLMServer
         excludes:
           - ModelProviderIcons
-      - path: Sources/MLXServerDemo/ModelProviderIcons
+      - path: Sources/MLXVLMServer/ModelProviderIcons
         type: folder
         buildPhase: resources
     dependencies:
@@ -55,5 +55,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerDemo
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: MLX Server
+        INFOPLIST_KEY_CFBundleShortVersionString: $(MARKETING_VERSION)
+        INFOPLIST_KEY_CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        INFOPLIST_KEY_NSHumanReadableCopyright: Copyright © 2025 Prince Canuma & contributors
         INFOPLIST_KEY_NSPrincipalClass: NSApplication
         INFOPLIST_KEY_NSHighResolutionCapable: YES
+        MARKETING_VERSION: 0.1
+        CURRENT_PROJECT_VERSION: 1
