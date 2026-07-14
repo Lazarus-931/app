@@ -117,8 +117,7 @@ private final class ModelMenuRowView: NSView {
             let description: String
             switch capability {
             case .text:
-                symbolName = "text.alignleft"
-                description = capability.displayName
+                continue
             case .vision:
                 symbolName = "eye.fill"
                 description = capability.displayName

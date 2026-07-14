@@ -268,11 +268,19 @@ struct ModelsView: View {
 
     private var filteredLocalModels: [LocalModel] {
         let query = localQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return localLibrary.models }
-        return localLibrary.models.filter {
-            $0.repoID.localizedCaseInsensitiveContains(query)
-                || $0.provider?.displayName.localizedCaseInsensitiveContains(query) == true
+        var models = query.isEmpty
+            ? localLibrary.models
+            : localLibrary.models.filter {
+                $0.repoID.localizedCaseInsensitiveContains(query)
+                    || $0.provider?.displayName.localizedCaseInsensitiveContains(query) == true
+            }
+
+        let selectedModelID = model.settings.normalized().languageModelID
+        if let selectedIndex = models.firstIndex(where: { $0.repoID == selectedModelID }) {
+            let selectedModel = models.remove(at: selectedIndex)
+            models.insert(selectedModel, at: 0)
         }
+        return models
     }
 
     private var installedModelIDs: Set<String> {
@@ -362,7 +370,7 @@ struct ModelsView: View {
 
                 Divider()
 
-                ForEach(LocalModelCapability.allCases, id: \.self) { capability in
+                ForEach(LocalModelCapability.visibleModelTags, id: \.self) { capability in
                     Toggle(
                         capability.displayName,
                         isOn: capabilitySelectionBinding(for: capability)
@@ -562,6 +570,8 @@ private struct InstalledModelRow: View {
     let isModelSwitchInProgress: Bool
     let onLoadModel: () -> Void
 
+    @State private var isHovered = false
+
     private var isSelected: Bool {
         selectedLanguageModelID == localModel.repoID
     }
@@ -571,70 +581,67 @@ private struct InstalledModelRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 14) {
-            ModelProviderBadge(provider: localModel.provider)
+        HStack(spacing: 10) {
+            Button {
+                guard !isSelected, !isModelSwitchInProgress else { return }
+                onLoadModel()
+            } label: {
+                HStack(spacing: 14) {
+                    ModelProviderBadge(provider: localModel.provider)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 7) {
-                    Text(modelName(localModel.repoID))
-                        .font(.body.weight(.semibold))
-                        .lineLimit(1)
-                    if isLoading {
-                        ModelPill(
-                            title: "Loading model",
-                            systemImage: "arrow.triangle.2.circlepath",
-                            color: .orange
-                        )
-                    } else if isSelected {
-                        ModelPill(title: "Chat model", systemImage: "checkmark", color: .accentColor)
-                    }
-                }
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 7) {
+                            Text(modelName(localModel.repoID))
+                                .font(.body.weight(.semibold))
+                                .lineLimit(1)
+                            if isLoading {
+                                ModelPill(
+                                    title: "Loading model",
+                                    systemImage: "arrow.triangle.2.circlepath",
+                                    color: .orange
+                                )
+                            }
+                        }
 
-                Text(localModel.repoID)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                        Text(localModel.repoID)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
 
-                HStack(spacing: 6) {
-                    if let contextSize = localModel.contextSize {
-                        ModelPill(
-                            title: "\(compactContextSize(contextSize)) context",
-                            systemImage: "text.line.first.and.arrowtriangle.forward"
-                        )
-                    }
-                    if let sizeBytes = localModel.sizeBytes {
-                        ModelPill(
-                            title: ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file),
-                            systemImage: "internaldrive"
-                        )
-                    }
-                }
+                        HStack(spacing: 6) {
+                            if let contextSize = localModel.contextSize {
+                                ModelPill(
+                                    title: "\(compactContextSize(contextSize)) context",
+                                    systemImage: "text.line.first.and.arrowtriangle.forward"
+                                )
+                            }
+                            if let sizeBytes = localModel.sizeBytes {
+                                ModelPill(
+                                    title: ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file),
+                                    systemImage: "internaldrive"
+                                )
+                            }
+                        }
 
-                HStack(spacing: 6) {
-                    ForEach(LocalModelCapability.allCases, id: \.self) { capability in
-                        if localModel.capabilities.contains(capability) {
-                            CapabilityPill(capability: capability)
+                        HStack(spacing: 6) {
+                            ForEach(LocalModelCapability.visibleModelTags, id: \.self) { capability in
+                                if localModel.capabilities.contains(capability) {
+                                    CapabilityPill(capability: capability)
+                                }
+                            }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Spacer(minLength: 12)
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            Spacer(minLength: 12)
-
-            Button(action: onLoadModel) {
-                HStack(spacing: 7) {
-                    if isLoading {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    Text(isLoading ? "Loading Model…" : isSelected ? "Loaded" : "Load Model")
-                }
-            }
-                .buttonStyle(.borderedProminent)
-                .disabled(isSelected)
-                .fixedSize()
+            .help(isSelected ? "Selected model" : "Load \(localModel.repoID)")
+            .accessibilityLabel(isSelected ? "Selected model, \(localModel.repoID)" : "Load \(localModel.repoID)")
 
             if let snapshotURL = localModel.snapshotURL {
                 Button {
@@ -649,7 +656,10 @@ private struct InstalledModelRow: View {
             }
         }
         .padding(14)
-        .modelRowBackground(isHighlighted: isSelected)
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.14), value: isHovered)
+        .modelRowBackground(isHighlighted: isSelected, isHovered: isHovered)
     }
 }
 
@@ -689,7 +699,7 @@ private struct HubModelRow: View {
 
                     if !model.capabilities.isEmpty {
                         HStack(spacing: 6) {
-                            ForEach(LocalModelCapability.allCases, id: \.self) { capability in
+                            ForEach(LocalModelCapability.visibleModelTags, id: \.self) { capability in
                                 if model.capabilities.contains(capability) {
                                     CapabilityPill(capability: capability)
                                 }
@@ -979,34 +989,54 @@ private struct ConfigurationRow<Content: View>: View {
 
 private struct ModelRowBackground: ViewModifier {
     let isHighlighted: Bool
+    let isHovered: Bool
 
     func body(content: Content) -> some View {
         content
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        isHighlighted
-                            ? Color.accentColor.opacity(0.08)
-                            : Color(nsColor: .controlBackgroundColor)
-                    )
+                    .fill(backgroundColor)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(
-                        isHighlighted ? Color.accentColor.opacity(0.45) : Color(nsColor: .separatorColor),
-                        lineWidth: isHighlighted ? 1 : 0.5
-                    )
+                    .stroke(borderColor, lineWidth: borderWidth)
             )
+    }
+
+    private var backgroundColor: Color {
+        if isHighlighted {
+            return Color.accentColor.opacity(0.38)
+        }
+        if isHovered {
+            return Color.accentColor.opacity(0.08)
+        }
+        return Color(nsColor: .controlBackgroundColor)
+    }
+
+    private var borderColor: Color {
+        if isHighlighted {
+            return Color.accentColor.opacity(0.90)
+        }
+        if isHovered {
+            return Color.accentColor.opacity(0.40)
+        }
+        return Color(nsColor: .separatorColor)
+    }
+
+    private var borderWidth: CGFloat {
+        isHighlighted ? 1.5 : (isHovered ? 1 : 0.5)
     }
 }
 
 private extension View {
-    func modelRowBackground(isHighlighted: Bool) -> some View {
-        modifier(ModelRowBackground(isHighlighted: isHighlighted))
+    func modelRowBackground(isHighlighted: Bool, isHovered: Bool = false) -> some View {
+        modifier(ModelRowBackground(isHighlighted: isHighlighted, isHovered: isHovered))
     }
 }
 
 private extension LocalModelCapability {
+    static let visibleModelTags = allCases.filter { $0 != .text }
+
     var systemImage: String {
         switch self {
         case .text: "text.alignleft"
@@ -1017,7 +1047,7 @@ private extension LocalModelCapability {
         case .speechToText: "captions.bubble"
         case .textToSpeech: "speaker.wave.2"
         case .embeddings: "circle.grid.3x3"
-        case .reasoning: "brain"
+        case .reasoning: "brain.fill"
         case .tools: "hammer"
         }
     }

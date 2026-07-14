@@ -354,7 +354,10 @@ enum LocalModelDiscovery {
             capabilities.insert(.embeddings)
         }
 
-        if descriptors.contains("reasoning") || keys.contains("thinking_config") {
+        if descriptors.contains("reasoning")
+            || descriptors.contains("thinking")
+            || keys.contains("thinking_config")
+            || supportsThinkingMode(at: snapshotURL, fileManager: fileManager) {
             capabilities.insert(.reasoning)
         }
 
@@ -363,6 +366,63 @@ enum LocalModelDiscovery {
         }
 
         return capabilities
+    }
+
+    private static func supportsThinkingMode(
+        at snapshotURL: URL,
+        fileManager: FileManager
+    ) -> Bool {
+        let templateURL = snapshotURL.appendingPathComponent("chat_template.jinja")
+        if fileManager.fileExists(atPath: templateURL.path),
+           let template = try? String(contentsOf: templateURL, encoding: .utf8),
+           containsThinkingMarkers(template) {
+            return true
+        }
+
+        for filename in ["tokenizer_config.json", "processor_config.json"] {
+            let metadataURL = snapshotURL.appendingPathComponent(filename)
+            guard fileManager.fileExists(atPath: metadataURL.path),
+                  let data = try? Data(contentsOf: metadataURL),
+                  let metadata = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let chatTemplate = metadata["chat_template"]
+            else {
+                continue
+            }
+            if templateContainsThinkingMarkers(chatTemplate) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private static func templateContainsThinkingMarkers(_ value: Any) -> Bool {
+        if let template = value as? String {
+            return containsThinkingMarkers(template)
+        }
+        if let templates = value as? [Any] {
+            return templates.contains(where: templateContainsThinkingMarkers)
+        }
+        if let templates = value as? [String: Any] {
+            return templates.values.contains(where: templateContainsThinkingMarkers)
+        }
+        return false
+    }
+
+    private static func containsThinkingMarkers(_ template: String) -> Bool {
+        let normalized = template.lowercased()
+        let markers = [
+            "enable_thinking",
+            "thinking_config",
+            "reasoning_content",
+            "reasoning_prompt",
+            "thought_instructions",
+            "<think>",
+            "</think>",
+            "<thinking>",
+            "</thinking>"
+        ]
+        return markers.contains(where: normalized.contains)
     }
 
     private static func supportsToolCalling(
