@@ -7,31 +7,31 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09BD37A10A985C7C9F7B7C6E /* MLXServerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00894697C171C6B288BF0103 /* MLXServerModel.swift */; };
 		0E204CDE3A896369EB992489 /* MLXServerKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; };
 		1ACD7C1CA60EA1DEDE1FF275 /* MLXServerImageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15AE0B934327136178FAC319 /* MLXServerImageClient.swift */; };
 		1B49400F4523A4F61CBCAF9E /* MLXServerKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		24B14A116264942BB1614491 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16AF7B20AD527C9F2714A3E4 /* AppDelegate.swift */; };
-		25318970699E3518373FE0FA /* LocalModelDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0912378176D66DA61DD1B45 /* LocalModelDiscovery.swift */; };
 		31A731F75D693E46F09F2AB9 /* MLXServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 687D116C9C28C6413A9549E2 /* MLXServerSettings.swift */; };
-		321F1417C805DBF83F0E9489 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F26176A464A44AE93CEA14F5 /* ChatView.swift */; };
-		35083C6334BA99F7659B1C79 /* MLXServerAnalyticsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BE48E4ABD67A84ABFE4919E /* MLXServerAnalyticsStore.swift */; };
-		373BD096B989DB5A8B9B6468 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE85C4C6CA5721BD0F76CE94 /* DashboardViewModel.swift */; };
-		3FA73733E1BDDAB36209949F /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED2C518BDD296B6F0C1510B /* StatsView.swift */; };
+		35AB8B41E6BDAC29B2B35AC7 /* LocalModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29DBC04420F64DAD6CBF90ED /* LocalModelProvider.swift */; };
+		48A224C95E9B112859EAE0CC /* ImageGenerationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CAD4146AC9719AD9863EF4D /* ImageGenerationViewModel.swift */; };
+		559891D535CC6A05E036008C /* ModelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF697E2D43BA29469CD8D488 /* ModelsView.swift */; };
 		56D7E25EDF2B04A4C5286C60 /* ModelProviderIcons in Resources */ = {isa = PBXBuildFile; fileRef = 4B449F1D492B0FB584C3307E /* ModelProviderIcons */; };
-		5E0A9293A3A6B563A02AF452 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04EAF957AE27320D9E618EF3 /* Formatting.swift */; };
-		5F1E26CD0C26B4B862D8A86B /* ModelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797BAC8B09EB35C40B8C4B9E /* ModelsView.swift */; };
-		692A0FD8F0A8CDDD3A84FC65 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B3B61F3CE2A6AD37E9D4B0 /* LogsView.swift */; };
 		7460B4A2D36DD1E51A0441D0 /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = 6EC9B105D8EE975D457592E4 /* Textual */; };
-		C0A18CC8E0BEFD868C3B7DC8 /* LocalModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073848524EE19BB3AD25DFD0 /* LocalModelProvider.swift */; };
-		C5CA6A5224840DD6E486A76C /* MLXServerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6EA8708CC99EBD946D4F76 /* MLXServerModel.swift */; };
-		CF26DBE0698612E6E25251B0 /* HuggingFaceHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F14B2ACF1F955390589CD6 /* HuggingFaceHub.swift */; };
+		95F147527789271CC67FED1F /* MarkdownFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB6A9FBC8B4784C12A43E62 /* MarkdownFormatting.swift */; };
+		9B00223459B5BABD8FBF7F18 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAD0A768C3DCB10992FDEA4C /* DashboardViewModel.swift */; };
+		CFC0A56F9A08055DB13D8007 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E990F983103BE071A5DFE51 /* Formatting.swift */; };
+		D135AA987095DBF4C55C3A0D /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B046C28CBCFB7E4FA8610E3 /* ChatView.swift */; };
+		D4BE8ECD5487055B1E9B0ED1 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B61BAD9813F4D87AC7898E8 /* LogsView.swift */; };
 		DD726A45F5C6AED0FF38E82D /* MLXServerKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6776FF6417E520723AB5D793 /* MLXServerKit.swift */; };
-		ECB7E66C2FBE6D6C01775289 /* ImageGenerationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAEA097D68FBBBB58BCED5A0 /* ImageGenerationViewModel.swift */; };
+		DFB0FFEF8B4D3CD98E3B2F6E /* MLXServerAnalyticsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18A3D8D901D1BC7264782096 /* MLXServerAnalyticsStore.swift */; };
+		E00C9A2448D11F1DEEE214A3 /* HuggingFaceHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72AA66BACD7905E1AE7CA4A0 /* HuggingFaceHub.swift */; };
+		E53B4D1ACAC317E37B697C53 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8044F4520242259F93D5C5 /* StatsView.swift */; };
 		EF5912E2A9204612E3945098 /* MLXServerChatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57AF974FB413126871D42D8 /* MLXServerChatClient.swift */; };
+		F0263DC32270CDA7D3AA6CB7 /* LocalModelDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42B2F073842042B04E4BB7F2 /* LocalModelDiscovery.swift */; };
 		F2ADAC6876A9A40B87E0FA3E /* ControlPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4D31D5B9C910FF22A43EC /* ControlPanelView.swift */; };
 		F2D7A645EE478C022C30752E /* Main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCE86ED81B58ABC9D504A16 /* Main.swift */; };
-		FB236FACF17AF4FDCD220118 /* MarkdownFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBBF9422024344B5C3B1D582 /* MarkdownFormatting.swift */; };
-		FB76C856BC511A3F5D04D515 /* ImageGenerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369EADCDEDA5A94B20178BDB /* ImageGenerationView.swift */; };
+		FEFF2E8D7A1DF229ED25D214 /* ImageGenerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE692233F7535968F19D4052 /* ImageGenerationView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,30 +59,30 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		04EAF957AE27320D9E618EF3 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
-		073848524EE19BB3AD25DFD0 /* LocalModelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelProvider.swift; sourceTree = "<group>"; };
-		13F14B2ACF1F955390589CD6 /* HuggingFaceHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceHub.swift; sourceTree = "<group>"; };
+		00894697C171C6B288BF0103 /* MLXServerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerModel.swift; sourceTree = "<group>"; };
+		0CAD4146AC9719AD9863EF4D /* ImageGenerationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationViewModel.swift; sourceTree = "<group>"; };
 		15AE0B934327136178FAC319 /* MLXServerImageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerImageClient.swift; sourceTree = "<group>"; };
 		16AF7B20AD527C9F2714A3E4 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		1D6EA8708CC99EBD946D4F76 /* MLXServerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerModel.swift; sourceTree = "<group>"; };
+		18A3D8D901D1BC7264782096 /* MLXServerAnalyticsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerAnalyticsStore.swift; sourceTree = "<group>"; };
+		1C8044F4520242259F93D5C5 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
+		29DBC04420F64DAD6CBF90ED /* LocalModelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelProvider.swift; sourceTree = "<group>"; };
+		2B61BAD9813F4D87AC7898E8 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MLXServerKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		369EADCDEDA5A94B20178BDB /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
+		42B2F073842042B04E4BB7F2 /* LocalModelDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelDiscovery.swift; sourceTree = "<group>"; };
 		4B449F1D492B0FB584C3307E /* ModelProviderIcons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ModelProviderIcons; path = Sources/MLXVLMServer/ModelProviderIcons; sourceTree = SOURCE_ROOT; };
-		5BE48E4ABD67A84ABFE4919E /* MLXServerAnalyticsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerAnalyticsStore.swift; sourceTree = "<group>"; };
+		5E990F983103BE071A5DFE51 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		6776FF6417E520723AB5D793 /* MLXServerKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerKit.swift; sourceTree = "<group>"; };
 		687D116C9C28C6413A9549E2 /* MLXServerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerSettings.swift; sourceTree = "<group>"; };
-		797BAC8B09EB35C40B8C4B9E /* ModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsView.swift; sourceTree = "<group>"; };
+		72AA66BACD7905E1AE7CA4A0 /* HuggingFaceHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceHub.swift; sourceTree = "<group>"; };
 		7BCE86ED81B58ABC9D504A16 /* Main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Main.swift; sourceTree = "<group>"; };
-		7ED2C518BDD296B6F0C1510B /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
+		8B046C28CBCFB7E4FA8610E3 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		96E4D31D5B9C910FF22A43EC /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelView.swift; sourceTree = "<group>"; };
-		D0912378176D66DA61DD1B45 /* LocalModelDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelDiscovery.swift; sourceTree = "<group>"; };
+		AF697E2D43BA29469CD8D488 /* ModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsView.swift; sourceTree = "<group>"; };
+		CE692233F7535968F19D4052 /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
 		D57AF974FB413126871D42D8 /* MLXServerChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerChatClient.swift; sourceTree = "<group>"; };
 		E269C7A536273D317B712940 /* MLXVLMServer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MLXVLMServer.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E5B3B61F3CE2A6AD37E9D4B0 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
-		EAEA097D68FBBBB58BCED5A0 /* ImageGenerationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationViewModel.swift; sourceTree = "<group>"; };
-		F26176A464A44AE93CEA14F5 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
-		FBBF9422024344B5C3B1D582 /* MarkdownFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatting.swift; sourceTree = "<group>"; };
-		FE85C4C6CA5721BD0F76CE94 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		EAD0A768C3DCB10992FDEA4C /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		ECB6A9FBC8B4784C12A43E62 /* MarkdownFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatting.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -107,6 +107,34 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		13DC51C6F3D2E4CCFB2E2E67 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				5E990F983103BE071A5DFE51 /* Formatting.swift */,
+				ECB6A9FBC8B4784C12A43E62 /* MarkdownFormatting.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		18C60A57A1B164CE5772A698 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				72AA66BACD7905E1AE7CA4A0 /* HuggingFaceHub.swift */,
+				42B2F073842042B04E4BB7F2 /* LocalModelDiscovery.swift */,
+				29DBC04420F64DAD6CBF90ED /* LocalModelProvider.swift */,
+				AF697E2D43BA29469CD8D488 /* ModelsView.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		564F627D343CACAB2E5976D3 /* Logs */ = {
+			isa = PBXGroup;
+			children = (
+				2B61BAD9813F4D87AC7898E8 /* LogsView.swift */,
+			);
+			path = Logs;
+			sourceTree = "<group>";
+		};
 		67EB185605F5572E9547B0AD = {
 			isa = PBXGroup;
 			children = (
@@ -125,30 +153,58 @@
 			path = MLXServerKit;
 			sourceTree = "<group>";
 		};
+		9CBA415AADC587E610B8DEA1 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				CFF6D3036968B28984A6174C /* Chat */,
+				A0752B43774B46808A356B00 /* Dashboard */,
+				EB247939D5DBEF9E466D5E09 /* ImageGeneration */,
+				564F627D343CACAB2E5976D3 /* Logs */,
+				18C60A57A1B164CE5772A698 /* Models */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		A0752B43774B46808A356B00 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				EAD0A768C3DCB10992FDEA4C /* DashboardViewModel.swift */,
+				18A3D8D901D1BC7264782096 /* MLXServerAnalyticsStore.swift */,
+				1C8044F4520242259F93D5C5 /* StatsView.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
 		B8E0B913F58F550A06804B77 /* MLXVLMServer */ = {
 			isa = PBXGroup;
 			children = (
 				16AF7B20AD527C9F2714A3E4 /* AppDelegate.swift */,
-				F26176A464A44AE93CEA14F5 /* ChatView.swift */,
 				96E4D31D5B9C910FF22A43EC /* ControlPanelView.swift */,
-				FE85C4C6CA5721BD0F76CE94 /* DashboardViewModel.swift */,
-				04EAF957AE27320D9E618EF3 /* Formatting.swift */,
-				13F14B2ACF1F955390589CD6 /* HuggingFaceHub.swift */,
-				369EADCDEDA5A94B20178BDB /* ImageGenerationView.swift */,
-				EAEA097D68FBBBB58BCED5A0 /* ImageGenerationViewModel.swift */,
-				D0912378176D66DA61DD1B45 /* LocalModelDiscovery.swift */,
-				073848524EE19BB3AD25DFD0 /* LocalModelProvider.swift */,
-				E5B3B61F3CE2A6AD37E9D4B0 /* LogsView.swift */,
 				7BCE86ED81B58ABC9D504A16 /* Main.swift */,
-				FBBF9422024344B5C3B1D582 /* MarkdownFormatting.swift */,
-				5BE48E4ABD67A84ABFE4919E /* MLXServerAnalyticsStore.swift */,
-				1D6EA8708CC99EBD946D4F76 /* MLXServerModel.swift */,
+				00894697C171C6B288BF0103 /* MLXServerModel.swift */,
 				687D116C9C28C6413A9549E2 /* MLXServerSettings.swift */,
 				4B449F1D492B0FB584C3307E /* ModelProviderIcons */,
-				797BAC8B09EB35C40B8C4B9E /* ModelsView.swift */,
-				7ED2C518BDD296B6F0C1510B /* StatsView.swift */,
+				9CBA415AADC587E610B8DEA1 /* Features */,
+				13DC51C6F3D2E4CCFB2E2E67 /* Utilities */,
 			);
 			path = MLXVLMServer;
+			sourceTree = "<group>";
+		};
+		CFF6D3036968B28984A6174C /* Chat */ = {
+			isa = PBXGroup;
+			children = (
+				8B046C28CBCFB7E4FA8610E3 /* ChatView.swift */,
+			);
+			path = Chat;
+			sourceTree = "<group>";
+		};
+		EB247939D5DBEF9E466D5E09 /* ImageGeneration */ = {
+			isa = PBXGroup;
+			children = (
+				CE692233F7535968F19D4052 /* ImageGenerationView.swift */,
+				0CAD4146AC9719AD9863EF4D /* ImageGenerationViewModel.swift */,
+			);
+			path = ImageGeneration;
 			sourceTree = "<group>";
 		};
 		FE26E9FE6B1514774EBADEBF /* Sources */ = {
@@ -211,6 +267,8 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
 			};
 			buildConfigurationList = A7B987521A587FFC32A46ABC /* Build configuration list for PBXProject "MLXPlatform" */;
 			developmentRegion = en;
@@ -284,23 +342,23 @@
 			buildActionMask = 2147483647;
 			files = (
 				24B14A116264942BB1614491 /* AppDelegate.swift in Sources */,
-				321F1417C805DBF83F0E9489 /* ChatView.swift in Sources */,
+				D135AA987095DBF4C55C3A0D /* ChatView.swift in Sources */,
 				F2ADAC6876A9A40B87E0FA3E /* ControlPanelView.swift in Sources */,
-				373BD096B989DB5A8B9B6468 /* DashboardViewModel.swift in Sources */,
-				5E0A9293A3A6B563A02AF452 /* Formatting.swift in Sources */,
-				CF26DBE0698612E6E25251B0 /* HuggingFaceHub.swift in Sources */,
-				FB76C856BC511A3F5D04D515 /* ImageGenerationView.swift in Sources */,
-				ECB7E66C2FBE6D6C01775289 /* ImageGenerationViewModel.swift in Sources */,
-				25318970699E3518373FE0FA /* LocalModelDiscovery.swift in Sources */,
-				C0A18CC8E0BEFD868C3B7DC8 /* LocalModelProvider.swift in Sources */,
-				692A0FD8F0A8CDDD3A84FC65 /* LogsView.swift in Sources */,
-				35083C6334BA99F7659B1C79 /* MLXServerAnalyticsStore.swift in Sources */,
-				C5CA6A5224840DD6E486A76C /* MLXServerModel.swift in Sources */,
+				9B00223459B5BABD8FBF7F18 /* DashboardViewModel.swift in Sources */,
+				CFC0A56F9A08055DB13D8007 /* Formatting.swift in Sources */,
+				E00C9A2448D11F1DEEE214A3 /* HuggingFaceHub.swift in Sources */,
+				FEFF2E8D7A1DF229ED25D214 /* ImageGenerationView.swift in Sources */,
+				48A224C95E9B112859EAE0CC /* ImageGenerationViewModel.swift in Sources */,
+				F0263DC32270CDA7D3AA6CB7 /* LocalModelDiscovery.swift in Sources */,
+				35AB8B41E6BDAC29B2B35AC7 /* LocalModelProvider.swift in Sources */,
+				D4BE8ECD5487055B1E9B0ED1 /* LogsView.swift in Sources */,
+				DFB0FFEF8B4D3CD98E3B2F6E /* MLXServerAnalyticsStore.swift in Sources */,
+				09BD37A10A985C7C9F7B7C6E /* MLXServerModel.swift in Sources */,
 				31A731F75D693E46F09F2AB9 /* MLXServerSettings.swift in Sources */,
 				F2D7A645EE478C022C30752E /* Main.swift in Sources */,
-				FB236FACF17AF4FDCD220118 /* MarkdownFormatting.swift in Sources */,
-				5F1E26CD0C26B4B862D8A86B /* ModelsView.swift in Sources */,
-				3FA73733E1BDDAB36209949F /* StatsView.swift in Sources */,
+				95F147527789271CC67FED1F /* MarkdownFormatting.swift in Sources */,
+				559891D535CC6A05E036008C /* ModelsView.swift in Sources */,
+				E53B4D1ACAC317E37B697C53 /* StatsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

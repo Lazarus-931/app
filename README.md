@@ -29,6 +29,14 @@ framework resources.
 ```text
 Sources/
 ├── MLXVLMServer/
+│   ├── Features/
+│   │   ├── Chat/
+│   │   ├── Dashboard/
+│   │   ├── ImageGeneration/
+│   │   ├── Logs/
+│   │   └── Models/
+│   ├── Utilities/
+│   └── ModelProviderIcons/
 └── MLXServerKit/
 PythonDistribution/
 ├── Launcher/
@@ -37,9 +45,10 @@ PythonDistribution/
 project.yml
 ```
 
-`Sources/` contains the app and framework Swift sources. `PythonDistribution/`
-contains the implementation details for generating the framework's embedded
-`mlx-vlm-server` resource.
+`Sources/` contains the app and framework Swift sources. App features are
+grouped by domain under `Features/`, while shared presentation helpers live in
+`Utilities/`. `PythonDistribution/` contains the implementation details for
+generating the framework's embedded `mlx-vlm-server` resource.
 
 ## Build And Run
 
