@@ -6,6 +6,7 @@ struct StatsView: View {
     @ObservedObject var model: MLXServerDemoModel
     @ObservedObject var dashboard: DashboardViewModel
     @FocusState private var isModelSearchFocused: Bool
+    @State private var tokenUsagePanelHeight: CGFloat = 0
 
     var body: some View {
         ScrollView {
@@ -149,13 +150,20 @@ struct StatsView: View {
                     range: dashboard.selectedRange,
                     showsAllModels: dashboard.appliedModelID == DashboardViewModel.ModelOption.allID
                 )
-                    .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity)
+                .background(TokenUsagePanelHeightReader())
                 RequestHealthPanel(
                     points: dashboard.bucketPoints,
                     completed: dashboard.historicalSummary.requestsCompleted,
-                    failed: dashboard.historicalSummary.requestsFailed
+                    failed: dashboard.historicalSummary.requestsFailed,
+                    range: dashboard.selectedRange,
+                    minimumHeight: tokenUsagePanelHeight
                 )
                 .frame(width: 330)
+            }
+            .onPreferenceChange(TokenUsagePanelHeightPreferenceKey.self) { height in
+                guard height > 0, height != tokenUsagePanelHeight else { return }
+                tokenUsagePanelHeight = height
             }
 
             VStack(spacing: 16) {
@@ -168,7 +176,9 @@ struct StatsView: View {
                 RequestHealthPanel(
                     points: dashboard.bucketPoints,
                     completed: dashboard.historicalSummary.requestsCompleted,
-                    failed: dashboard.historicalSummary.requestsFailed
+                    failed: dashboard.historicalSummary.requestsFailed,
+                    range: dashboard.selectedRange,
+                    minimumHeight: 0
                 )
             }
         }
@@ -726,9 +736,11 @@ private struct TokenUsagePanel: View {
     }
 
     private func axisLabel(for date: Date) -> String {
-        granularity == .hour
-            ? DashboardFormatters.hourLabel.string(from: date).lowercased()
-            : DashboardFormatters.dayLabel.string(from: date)
+        DashboardChartAxis.label(
+            for: date,
+            granularity: granularity,
+            range: range
+        )
     }
 
     private func updateHoveredPoint(
@@ -950,6 +962,8 @@ private struct RequestHealthPanel: View {
     let points: [DashboardViewModel.BucketPoint]
     let completed: Int
     let failed: Int
+    let range: DashboardViewModel.RangeOption
+    let minimumHeight: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -968,7 +982,7 @@ private struct RequestHealthPanel: View {
 
             if points.isEmpty {
                 DashboardEmptyChart()
-                    .frame(minHeight: 120)
+                    .frame(minHeight: 120, maxHeight: .infinity)
             } else {
                 Chart(points) { point in
                     BarMark(
@@ -990,7 +1004,7 @@ private struct RequestHealthPanel: View {
                     }
                 }
                 .chartYAxis(.hidden)
-                .frame(height: 118)
+                .frame(minHeight: 118, maxHeight: .infinity)
             }
 
             Divider()
@@ -1002,6 +1016,7 @@ private struct RequestHealthPanel: View {
             }
         }
         .padding(18)
+        .frame(minHeight: minimumHeight, alignment: .top)
         .dashboardPanelStyle(cornerRadius: 14)
     }
 
@@ -1016,9 +1031,30 @@ private struct RequestHealthPanel: View {
     }
 
     private func axisLabel(for date: Date) -> String {
-        granularity == .hour
-            ? DashboardFormatters.hourLabel.string(from: date).lowercased()
-            : DashboardFormatters.dayLabel.string(from: date)
+        DashboardChartAxis.label(
+            for: date,
+            granularity: granularity,
+            range: range
+        )
+    }
+}
+
+private struct TokenUsagePanelHeightReader: View {
+    var body: some View {
+        GeometryReader { geometry in
+            Color.clear.preference(
+                key: TokenUsagePanelHeightPreferenceKey.self,
+                value: geometry.size.height
+            )
+        }
+    }
+}
+
+private struct TokenUsagePanelHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -2097,6 +2133,23 @@ private enum DashboardChartAxis {
         return indexes
             .sorted()
             .map { dates[$0] }
+    }
+
+    static func label(
+        for date: Date,
+        granularity: MLXServerAnalyticsGranularity,
+        range: DashboardViewModel.RangeOption
+    ) -> String {
+        switch granularity {
+        case .hour where range == .allTime:
+            let day = DashboardFormatters.dayLabel.string(from: date)
+            let hour = DashboardFormatters.hourLabel.string(from: date).lowercased()
+            return "\(day)\n\(hour)"
+        case .hour:
+            return DashboardFormatters.hourLabel.string(from: date).lowercased()
+        case .day:
+            return DashboardFormatters.dayLabel.string(from: date)
+        }
     }
 }
 

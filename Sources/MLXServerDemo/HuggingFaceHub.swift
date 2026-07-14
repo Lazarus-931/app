@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import MLXServerKit
 
@@ -24,6 +25,15 @@ enum HuggingFaceModelSort: String, CaseIterable, Identifiable, Sendable {
         case .trending: "flame"
         case .likes: "heart"
         case .recentlyUpdated: "clock.arrow.circlepath"
+        }
+    }
+
+    var hubWebValue: String {
+        switch self {
+        case .downloads: "downloads"
+        case .trending: "trending"
+        case .likes: "likes"
+        case .recentlyUpdated: "modified"
         }
     }
 }
@@ -341,9 +351,14 @@ final class HuggingFaceModelLibrary: ObservableObject {
 @MainActor
 final class HuggingFaceDownloadManager: ObservableObject {
     @Published private(set) var downloadingModelID: String?
+    @Published private(set) var downloadProgress = 0.0
+    @Published private(set) var isDownloadPaused = false
     @Published private(set) var errorByModelID: [String: String] = [:]
 
     private var downloadTask: Task<Void, Never>?
+    private var activeOperation: HuggingFaceDownloadOperation?
+    private var activeCachePath: String?
+    private var activeCompletion: (() -> Void)?
 
     deinit {
         downloadTask?.cancel()
@@ -352,39 +367,101 @@ final class HuggingFaceDownloadManager: ObservableObject {
     func download(repoID: String, cachePath: String, onCompletion: @escaping () -> Void) {
         guard downloadingModelID == nil else { return }
         downloadingModelID = repoID
+        downloadProgress = 0
+        isDownloadPaused = false
         errorByModelID[repoID] = nil
+        activeCachePath = LocalModelDiscovery.expandedPath(cachePath)
+        activeCompletion = onCompletion
 
-        let expandedCachePath = LocalModelDiscovery.expandedPath(cachePath)
-        downloadTask = Task { [weak self] in
-            do {
-                try await HuggingFaceSnapshotDownloader.download(
-                    repoID: repoID,
-                    cachePath: expandedCachePath
-                )
-                guard !Task.isCancelled else { return }
-                self?.downloadingModelID = nil
-                onCompletion()
-            } catch is CancellationError {
-                self?.downloadingModelID = nil
-            } catch {
-                guard !Task.isCancelled else { return }
-                self?.errorByModelID[repoID] =
-                    (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                self?.downloadingModelID = nil
-            }
+        startActiveDownload()
+    }
+
+    func pauseDownload() {
+        guard downloadingModelID != nil, !isDownloadPaused else { return }
+        activeOperation?.pause()
+        isDownloadPaused = true
+    }
+
+    func resumeDownload() {
+        guard downloadingModelID != nil, isDownloadPaused else { return }
+        activeOperation?.resume()
+        isDownloadPaused = false
+    }
+
+    func removeDownload() {
+        guard let repoID = downloadingModelID, let cachePath = activeCachePath else { return }
+        let task = downloadTask
+        task?.cancel()
+        downloadTask = nil
+        clearActiveDownload()
+
+        Task {
+            await task?.value
+            await Task.detached(priority: .utility) {
+                HuggingFaceSnapshotDownloader.removeDownload(repoID: repoID, cachePath: cachePath)
+            }.value
         }
     }
 
     func cancelDownload() {
         downloadTask?.cancel()
         downloadTask = nil
+        clearActiveDownload()
+    }
+
+    private func startActiveDownload() {
+        guard let repoID = downloadingModelID, let cachePath = activeCachePath else { return }
+
+        let operation: HuggingFaceDownloadOperation
+        do {
+            operation = try HuggingFaceDownloadOperation(
+                repoID: repoID,
+                cachePath: cachePath
+            ) { progress in
+                Task { @MainActor [weak self] in
+                    guard self?.downloadingModelID == repoID else { return }
+                    self?.downloadProgress = progress
+                }
+            }
+            activeOperation = operation
+        } catch {
+            errorByModelID[repoID] =
+                (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            clearActiveDownload()
+            return
+        }
+
+        downloadTask = Task { [weak self] in
+            do {
+                try await HuggingFaceSnapshotDownloader.download(operation: operation)
+                guard !Task.isCancelled else { return }
+                self?.downloadProgress = 1
+                let completion = self?.activeCompletion
+                self?.clearActiveDownload()
+                completion?()
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.errorByModelID[repoID] =
+                    (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                self?.clearActiveDownload()
+            }
+        }
+    }
+
+    private func clearActiveDownload() {
         downloadingModelID = nil
+        downloadProgress = 0
+        isDownloadPaused = false
+        activeOperation = nil
+        activeCachePath = nil
+        activeCompletion = nil
     }
 }
 
 private enum HuggingFaceSnapshotDownloader {
-    static func download(repoID: String, cachePath: String) async throws {
-        let operation = try HuggingFaceDownloadOperation(repoID: repoID, cachePath: cachePath)
+    static func download(operation: HuggingFaceDownloadOperation) async throws {
         try await withTaskCancellationHandler {
             try await Task.detached(priority: .userInitiated) {
                 try operation.run()
@@ -393,14 +470,32 @@ private enum HuggingFaceSnapshotDownloader {
             operation.cancel()
         }
     }
+
+    static func removeDownload(repoID: String, cachePath: String) {
+        let repositoryDirectory = "models--" + repoID.replacingOccurrences(of: "/", with: "--")
+        let cacheURL = URL(fileURLWithPath: cachePath, isDirectory: true)
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: cacheURL.appendingPathComponent(repositoryDirectory, isDirectory: true))
+        try? fileManager.removeItem(
+            at: cacheURL
+                .appendingPathComponent(".locks", isDirectory: true)
+                .appendingPathComponent(repositoryDirectory, isDirectory: true)
+        )
+    }
 }
 
 private final class HuggingFaceDownloadOperation: @unchecked Sendable {
     private let process: Process
+    private let progress: @Sendable (Double) -> Void
     private let lock = NSLock()
     private var wasCancelled = false
+    private var isPaused = false
 
-    init(repoID: String, cachePath: String) throws {
+    init(
+        repoID: String,
+        cachePath: String,
+        progress: @escaping @Sendable (Double) -> Void
+    ) throws {
         let distributionURL = try MLXServer.distributionURL()
         let pythonURL = distributionURL.appendingPathComponent("python/bin/python3")
         guard FileManager.default.isExecutableFile(atPath: pythonURL.path) else {
@@ -409,8 +504,54 @@ private final class HuggingFaceDownloadOperation: @unchecked Sendable {
 
         let script = """
         import sys
+        from tqdm.auto import tqdm
         from huggingface_hub import snapshot_download
-        snapshot_download(repo_id=sys.argv[1], cache_dir=sys.argv[2])
+
+        expected_bytes = 0
+        try:
+            pending_files = snapshot_download(
+                repo_id=sys.argv[1],
+                cache_dir=sys.argv[2],
+                dry_run=True,
+            )
+            expected_bytes = sum(
+                item.file_size for item in pending_files if item.will_download
+            )
+        except Exception:
+            pass
+
+        class MLXProgressTqdm(tqdm):
+            def __init__(self, *args, **kwargs):
+                self._mlx_reports_bytes = kwargs.get("unit") == "B"
+                self._mlx_last_progress = -1.0
+                super().__init__(*args, **kwargs)
+                self._mlx_report()
+
+            def update(self, n=1):
+                result = super().update(n)
+                self._mlx_report()
+                return result
+
+            def refresh(self, *args, **kwargs):
+                result = super().refresh(*args, **kwargs)
+                self._mlx_report()
+                return result
+
+            def _mlx_report(self):
+                if not self._mlx_reports_bytes:
+                    return
+                total = float(expected_bytes or self.total or 0)
+                value = float(self.n or 0)
+                progress = min(max(value / total, 0.0), 1.0) if total > 0 else 0.0
+                if abs(progress - self._mlx_last_progress) >= 0.002 or progress >= 1.0:
+                    self._mlx_last_progress = progress
+                    print(f"__MLX_PROGRESS__:{progress:.6f}", flush=True)
+
+        snapshot_download(
+            repo_id=sys.argv[1],
+            cache_dir=sys.argv[2],
+            tqdm_class=MLXProgressTqdm,
+        )
         """
 
         let process = Process()
@@ -424,6 +565,7 @@ private final class HuggingFaceDownloadOperation: @unchecked Sendable {
         environment["HF_HUB_DISABLE_TELEMETRY"] = "1"
         process.environment = environment
         self.process = process
+        self.progress = progress
     }
 
     func run() throws {
@@ -442,16 +584,41 @@ private final class HuggingFaceDownloadOperation: @unchecked Sendable {
         let outputLock = NSLock()
         var output = Data()
         outputGroup.enter()
-        DispatchQueue.global(qos: .utility).async {
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            outputLock.lock()
-            output = data
-            outputLock.unlock()
+        DispatchQueue.global(qos: .utility).async { [progress] in
+            var lineBuffer = ""
+            while true {
+                let data = pipe.fileHandleForReading.availableData
+                guard !data.isEmpty else { break }
+
+                outputLock.lock()
+                output.append(data)
+                outputLock.unlock()
+
+                lineBuffer += String(decoding: data, as: UTF8.self)
+                let lines = lineBuffer.components(separatedBy: "\n")
+                lineBuffer = lines.last ?? ""
+                for line in lines.dropLast() {
+                    guard let markerRange = line.range(of: "__MLX_PROGRESS__:") else { continue }
+                    let value = line[markerRange.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let fraction = Double(value) {
+                        progress(min(max(fraction, 0), 1))
+                    }
+                }
+            }
             outputGroup.leave()
         }
 
         do {
             try process.run()
+            lock.lock()
+            let cancelledAfterLaunch = wasCancelled
+            let pausedAfterLaunch = isPaused
+            lock.unlock()
+            if cancelledAfterLaunch {
+                process.terminate()
+            } else if pausedAfterLaunch {
+                Darwin.kill(process.processIdentifier, SIGSTOP)
+            }
         } catch {
             try? pipe.fileHandleForWriting.close()
             outputGroup.wait()
@@ -481,10 +648,35 @@ private final class HuggingFaceDownloadOperation: @unchecked Sendable {
     func cancel() {
         lock.lock()
         wasCancelled = true
+        let wasPaused = isPaused
+        isPaused = false
         let shouldTerminate = process.isRunning
         lock.unlock()
+        if shouldTerminate, wasPaused {
+            Darwin.kill(process.processIdentifier, SIGCONT)
+        }
         if shouldTerminate {
             process.terminate()
+        }
+    }
+
+    func pause() {
+        lock.lock()
+        isPaused = true
+        let shouldPause = process.isRunning
+        lock.unlock()
+        if shouldPause {
+            Darwin.kill(process.processIdentifier, SIGSTOP)
+        }
+    }
+
+    func resume() {
+        lock.lock()
+        isPaused = false
+        let shouldResume = process.isRunning
+        lock.unlock()
+        if shouldResume {
+            Darwin.kill(process.processIdentifier, SIGCONT)
         }
     }
 }

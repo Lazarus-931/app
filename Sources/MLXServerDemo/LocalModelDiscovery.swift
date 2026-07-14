@@ -62,6 +62,26 @@ enum LocalModelDiscovery {
         }.value
     }
 
+    static func delete(repoID: String, path: String) async throws {
+        let expandedPath = Self.expandedPath(path)
+        try await Task.detached(priority: .utility) {
+            let directoryName = "models--" + repoID.replacingOccurrences(of: "/", with: "--")
+            let cacheURL = URL(fileURLWithPath: expandedPath, isDirectory: true)
+            let fileManager = FileManager.default
+            let repositoryURL = cacheURL.appendingPathComponent(directoryName, isDirectory: true)
+            let lockURL = cacheURL
+                .appendingPathComponent(".locks", isDirectory: true)
+                .appendingPathComponent(directoryName, isDirectory: true)
+
+            if fileManager.fileExists(atPath: repositoryURL.path) {
+                try fileManager.removeItem(at: repositoryURL)
+            }
+            if fileManager.fileExists(atPath: lockURL.path) {
+                try fileManager.removeItem(at: lockURL)
+            }
+        }.value
+    }
+
     static func expandedPath(_ path: String) -> String {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         let effectivePath = trimmed.isEmpty ? MLXServerSettings.defaultModelSearchPath : trimmed
@@ -575,6 +595,7 @@ enum LocalModelDiscoveryError: LocalizedError, Equatable {
 final class LocalModelLibrary: ObservableObject {
     @Published private(set) var models: [LocalModel] = []
     @Published private(set) var isScanning = false
+    @Published private(set) var deletingModelIDs = Set<String>()
     @Published private(set) var error: String?
 
     private var scanTask: Task<Void, Never>?
@@ -617,5 +638,27 @@ final class LocalModelLibrary: ObservableObject {
         scanTask?.cancel()
         scanTask = nil
         isScanning = false
+    }
+
+    func delete(
+        model: LocalModel,
+        path: String,
+        onCompletion: @escaping () -> Void
+    ) {
+        guard !deletingModelIDs.contains(model.repoID) else { return }
+        deletingModelIDs.insert(model.repoID)
+        error = nil
+
+        Task { [weak self] in
+            do {
+                try await LocalModelDiscovery.delete(repoID: model.repoID, path: path)
+                self?.models.removeAll { $0.repoID == model.repoID }
+                self?.deletingModelIDs.remove(model.repoID)
+                onCompletion()
+            } catch {
+                self?.deletingModelIDs.remove(model.repoID)
+                self?.error = "Couldn’t delete \(model.repoID): \(error.localizedDescription)"
+            }
+        }
     }
 }

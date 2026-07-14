@@ -14,6 +14,8 @@ enum LocalModelProvider: String, Hashable, Sendable {
     case nvidia
     case apple
     case ibm
+    case liquidAI
+    case zAI
 
     var displayName: String {
         switch self {
@@ -30,6 +32,8 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .nvidia: "NVIDIA"
         case .apple: "Apple"
         case .ibm: "IBM"
+        case .liquidAI: "Liquid AI"
+        case .zAI: "Z.ai"
         }
     }
 
@@ -48,6 +52,8 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .nvidia: "ModelProviderIcon-nvidia"
         case .apple: "ModelProviderIcon-apple"
         case .ibm: "ModelProviderIcon-ibm"
+        case .liquidAI: "ModelProviderIcon-liquid"
+        case .zAI: "ModelProviderIcon-zai"
         }
     }
 
@@ -66,6 +72,8 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .nvidia: "N"
         case .apple: "A"
         case .ibm: "IBM"
+        case .liquidAI: "L"
+        case .zAI: "Z"
         }
     }
 }
@@ -97,7 +105,9 @@ enum LocalModelProviderResolver {
         ModelFamilyMapping(provider: .deepSeek, identifiers: ["deepseek"]),
         ModelFamilyMapping(provider: .nvidia, identifiers: ["nemotron"]),
         ModelFamilyMapping(provider: .apple, identifiers: ["openelm"]),
-        ModelFamilyMapping(provider: .ibm, identifiers: ["granite"])
+        ModelFamilyMapping(provider: .ibm, identifiers: ["granite"]),
+        ModelFamilyMapping(provider: .liquidAI, identifiers: ["lfm"]),
+        ModelFamilyMapping(provider: .zAI, identifiers: ["glm", "cogvlm", "cogvideo"])
     ]
 
     private static let organizationMappings: [String: LocalModelProvider] = [
@@ -122,7 +132,13 @@ enum LocalModelProviderResolver {
         "nvidia": .nvidia,
         "apple": .apple,
         "ibm": .ibm,
-        "ibmgranite": .ibm
+        "ibmgranite": .ibm,
+        "liquidai": .liquidAI,
+        "liquid": .liquidAI,
+        "zai": .zAI,
+        "zaiorg": .zAI,
+        "zhipuai": .zAI,
+        "thudm": .zAI
     ]
 
     static func resolve(

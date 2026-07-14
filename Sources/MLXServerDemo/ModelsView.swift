@@ -27,7 +27,6 @@ struct ModelsView: View {
     @State private var hubSort: HuggingFaceModelSort = .downloads
     @State private var hubCapabilityFilters = Set<LocalModelCapability>()
     @State private var hubAccessFilter: HubAccessFilter = .all
-    @State private var showsConfiguration = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -92,14 +91,6 @@ struct ModelsView: View {
                 .buttonStyle(.bordered)
                 .disabled(localLibrary.isScanning)
 
-                Button {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        showsConfiguration.toggle()
-                    }
-                } label: {
-                    Label("Configure", systemImage: "slider.horizontal.3")
-                }
-                .buttonStyle(.bordered)
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 14)
@@ -143,14 +134,12 @@ struct ModelsView: View {
                                 localModel: localModel,
                                 selectedLanguageModelID: model.settings.normalized().languageModelID,
                                 isModelSwitchInProgress: model.modelSwitchInProgress,
-                                onLoadModel: { model.switchLanguageModel(to: localModel.repoID) }
+                                isDeleting: localLibrary.deletingModelIDs.contains(localModel.repoID),
+                                canDelete: !model.modelSwitchInProgress && !isModelInUse(localModel.repoID),
+                                onLoadModel: { model.switchLanguageModel(to: localModel.repoID) },
+                                onDelete: { deleteInstalledModel(localModel) }
                             )
                         }
-                    }
-
-                    if showsConfiguration {
-                        ModelConfigurationCard(model: model, onChooseCache: chooseModelCache)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
                 .padding(.horizontal, 22)
@@ -213,6 +202,11 @@ struct ModelsView: View {
                                     model: hubModel,
                                     isInstalled: installedModelIDs.contains(hubModel.id),
                                     isDownloading: downloadManager.downloadingModelID == hubModel.id,
+                                    downloadProgress: downloadManager.downloadingModelID == hubModel.id
+                                        ? downloadManager.downloadProgress
+                                        : 0,
+                                    isDownloadPaused: downloadManager.downloadingModelID == hubModel.id
+                                        && downloadManager.isDownloadPaused,
                                     anotherDownloadIsActive: downloadManager.downloadingModelID != nil,
                                     downloadError: downloadManager.errorByModelID[hubModel.id],
                                     onDownload: {
@@ -226,6 +220,16 @@ struct ModelsView: View {
                                                 object: nil
                                             )
                                         }
+                                    },
+                                    onPauseResume: {
+                                        if downloadManager.isDownloadPaused {
+                                            downloadManager.resumeDownload()
+                                        } else {
+                                            downloadManager.pauseDownload()
+                                        }
+                                    },
+                                    onRemoveDownload: {
+                                        downloadManager.removeDownload()
                                     }
                                 )
                             }
@@ -263,6 +267,42 @@ struct ModelsView: View {
                 .padding(.horizontal, 22)
                 .padding(.bottom, 22)
             }
+        }
+    }
+
+    private func isModelInUse(_ repoID: String) -> Bool {
+        guard model.isRunning else { return false }
+        let settings = model.settings.normalized()
+        let configuredModelIDs = [
+            settings.languageModelID,
+            settings.imageGenerationModelID,
+            settings.textToSpeechModelID,
+            settings.speechToTextModelID,
+            model.metrics?.server.loadedModel
+        ]
+        return configuredModelIDs.contains(repoID)
+    }
+
+    private func deleteInstalledModel(_ localModel: LocalModel) {
+        localLibrary.delete(
+            model: localModel,
+            path: model.settings.modelSearchPath
+        ) {
+            var settings = model.settings
+            if settings.languageModelID == localModel.repoID {
+                settings.languageModelID = nil
+            }
+            if settings.imageGenerationModelID == localModel.repoID {
+                settings.imageGenerationModelID = nil
+            }
+            if settings.textToSpeechModelID == localModel.repoID {
+                settings.textToSpeechModelID = nil
+            }
+            if settings.speechToTextModelID == localModel.repoID {
+                settings.speechToTextModelID = nil
+            }
+            model.settings = settings
+            NotificationCenter.default.post(name: .localModelLibraryDidChange, object: nil)
         }
     }
 
@@ -498,36 +538,33 @@ struct ModelsView: View {
 
     private var hubModelsURL: URL {
         var components = URLComponents(string: "https://huggingface.co/models")!
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "library", value: "mlx"),
-            URLQueryItem(name: "sort", value: "downloads")
+            URLQueryItem(name: "sort", value: hubSort.hubWebValue),
+            URLQueryItem(name: "p", value: String(hubLibrary.pageNumber - 1))
         ]
+
+        let query = hubQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            queryItems.append(URLQueryItem(name: "search", value: query))
+        }
+        queryItems.append(contentsOf: hubCapabilityFilters
+            .sorted { $0.rawValue < $1.rawValue }
+            .map(\.hubQueryItem))
+
+        switch hubAccessFilter {
+        case .all:
+            break
+        case .open:
+            queryItems.append(URLQueryItem(name: "gated", value: "false"))
+        case .gated:
+            queryItems.append(URLQueryItem(name: "gated", value: "true"))
+        }
+
+        components.queryItems = queryItems
         return components.url!
     }
 
-    private func chooseModelCache() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = URL(
-            fileURLWithPath: model.settings.expandedModelSearchPath,
-            isDirectory: true
-        )
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        model.settings.modelSearchPath = displayPath(for: url)
-    }
-
-    private func displayPath(for url: URL) -> String {
-        let path = url.path
-        let homePath = FileManager.default.homeDirectoryForCurrentUser.path
-        if path == homePath { return "~" }
-        if path.hasPrefix(homePath + "/") {
-            return "~" + path.dropFirst(homePath.count)
-        }
-        return path
-    }
 }
 
 private struct ModelsSearchField: View {
@@ -568,9 +605,13 @@ private struct InstalledModelRow: View {
     let localModel: LocalModel
     let selectedLanguageModelID: String?
     let isModelSwitchInProgress: Bool
+    let isDeleting: Bool
+    let canDelete: Bool
     let onLoadModel: () -> Void
+    let onDelete: () -> Void
 
     @State private var isHovered = false
+    @State private var showsDeleteConfirmation = false
 
     private var isSelected: Bool {
         selectedLanguageModelID == localModel.repoID
@@ -643,7 +684,12 @@ private struct InstalledModelRow: View {
             .help(isSelected ? "Selected model" : "Load \(localModel.repoID)")
             .accessibilityLabel(isSelected ? "Selected model, \(localModel.repoID)" : "Load \(localModel.repoID)")
 
-            if let snapshotURL = localModel.snapshotURL {
+            if isDeleting {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 30, height: 30)
+                    .help("Deleting model")
+            } else if let snapshotURL = localModel.snapshotURL {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([snapshotURL])
                 } label: {
@@ -654,12 +700,29 @@ private struct InstalledModelRow: View {
                 .help("Show in Finder")
                 .accessibilityLabel("Show \(localModel.repoID) in Finder")
             }
+
+            ModelDownloadActionButton(
+                title: canDelete
+                    ? "Delete installed model"
+                    : "Stop the server before deleting this model",
+                systemImage: "trash",
+                tint: .red,
+                isDisabled: !canDelete || isDeleting
+            ) {
+                showsDeleteConfirmation = true
+            }
         }
         .padding(14)
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.14), value: isHovered)
         .modelRowBackground(isHighlighted: isSelected, isHovered: isHovered)
+        .alert("Delete \(modelName(localModel.repoID))?", isPresented: $showsDeleteConfirmation) {
+            Button("Delete Model", role: .destructive, action: onDelete)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes \(localModel.repoID) from the local Hugging Face cache.")
+        }
     }
 }
 
@@ -667,9 +730,13 @@ private struct HubModelRow: View {
     let model: HuggingFaceModel
     let isInstalled: Bool
     let isDownloading: Bool
+    let downloadProgress: Double
+    let isDownloadPaused: Bool
     let anotherDownloadIsActive: Bool
     let downloadError: String?
     let onDownload: () -> Void
+    let onPauseResume: () -> Void
+    let onRemoveDownload: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -717,14 +784,16 @@ private struct HubModelRow: View {
                         .foregroundStyle(.green)
                         .fixedSize()
                 } else if isDownloading {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Downloading…")
-                    }
-                    .font(.callout.weight(.medium))
-                    .fixedSize()
+                    ModelDownloadProgressControl(
+                        progress: downloadProgress,
+                        isPaused: isDownloadPaused,
+                        onPauseResume: onPauseResume,
+                        onRemove: onRemoveDownload
+                    )
                 } else {
-                    Button("Download", action: onDownload)
+                    Button(action: onDownload) {
+                        Label("Download", systemImage: "arrow.down.circle")
+                    }
                         .buttonStyle(.borderedProminent)
                         .disabled(anotherDownloadIsActive || model.isPrivate)
                         .help(model.isGated ? "Gated models require Hugging Face authentication." : "Download to the configured cache")
@@ -741,6 +810,104 @@ private struct HubModelRow: View {
         }
         .padding(14)
         .modelRowBackground(isHighlighted: false)
+    }
+}
+
+private struct ModelDownloadProgressControl: View {
+    let progress: Double
+    let isPaused: Bool
+    let onPauseResume: () -> Void
+    let onRemove: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        ZStack {
+            if isHovering {
+                HStack(spacing: 6) {
+                    ModelDownloadActionButton(
+                        title: isPaused ? "Resume download" : "Pause download",
+                        systemImage: isPaused ? "play.fill" : "pause.fill",
+                        tint: isPaused ? .green : .orange,
+                        action: onPauseResume
+                    )
+
+                    ModelDownloadActionButton(
+                        title: "Remove download",
+                        systemImage: "trash",
+                        tint: .red,
+                        action: onRemove
+                    )
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            } else {
+                ZStack {
+                    Circle()
+                        .stroke(Color.secondary.opacity(0.16), lineWidth: 3)
+
+                    Circle()
+                        .trim(from: 0, to: displayedProgress)
+                        .stroke(
+                            isPaused ? Color.orange : Color.accentColor,
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+
+                    if progress > 0 {
+                        Text("\(Int((progress * 100).rounded()))%")
+                            .font(.system(size: 7, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                    } else {
+                        Image(systemName: isPaused ? "pause.fill" : "arrow.down")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                }
+                .frame(width: 34, height: 34)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .frame(width: 74, height: 36)
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .animation(.snappy(duration: 0.16), value: isHovering)
+        .animation(.easeOut(duration: 0.18), value: displayedProgress)
+        .help(isPaused ? "Download paused" : "Downloading \(Int((progress * 100).rounded())) percent")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(isPaused ? "Download paused" : "Download progress")
+        .accessibilityValue("\(Int((progress * 100).rounded())) percent")
+    }
+
+    private var displayedProgress: Double {
+        min(max(progress, 0.025), 1)
+    }
+}
+
+private struct ModelDownloadActionButton: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    var isDisabled = false
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isDisabled ? Color.secondary.opacity(0.45) : (isHovering ? tint : Color.secondary))
+                .frame(width: 30, height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isHovering && !isDisabled ? tint.opacity(0.13) : Color.secondary.opacity(0.10))
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .onHover { isHovering = $0 && !isDisabled }
+        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .help(title)
+        .accessibilityLabel(title)
     }
 }
 
@@ -860,133 +1027,6 @@ private struct ModelsEmptyState: View {
     }
 }
 
-private struct ModelConfigurationCard: View {
-    @ObservedObject var model: MLXServerDemoModel
-    let onChooseCache: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Model configuration").font(.headline)
-                    Text("Cache location and generation defaults")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if model.settingsRequireRestart {
-                    ModelPill(title: "Restart required", systemImage: "arrow.clockwise", color: .orange)
-                }
-            }
-
-            ConfigurationRow(label: "Hugging Face cache") {
-                TextField(MLXServerSettings.defaultModelSearchPath, text: $model.settings.modelSearchPath)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.callout, design: .monospaced))
-                Button(action: onChooseCache) {
-                    Image(systemName: "folder")
-                }
-                .buttonStyle(.bordered)
-                .help("Choose cache folder")
-            }
-
-            Divider()
-
-            ConfigurationRow(label: "Maximum tokens") {
-                Spacer()
-                TextField("", value: $model.settings.maxTokens, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 92)
-                Stepper("", value: $model.settings.maxTokens, in: 1...262_144, step: 128)
-                    .labelsHidden()
-            }
-
-            ConfigurationRow(label: "Temperature") {
-                Slider(value: $model.settings.temperature, in: 0...2, step: 0.05)
-                TextField("", value: $model.settings.temperature, format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 68)
-            }
-
-            ConfigurationRow(label: "Sampling") {
-                Text("Top-k")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("", value: $model.settings.topK, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 66)
-                Text("Top-p")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("", value: $model.settings.topP, format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 66)
-                Text("Min-p")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("", value: $model.settings.minP, format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 66)
-            }
-
-            ConfigurationRow(label: "Repetition penalty") {
-                Toggle("", isOn: $model.settings.repetitionPenaltyEnabled).labelsHidden()
-                Slider(value: $model.settings.repetitionPenalty, in: 0...4, step: 0.05)
-                    .disabled(!model.settings.repetitionPenaltyEnabled)
-                TextField(
-                    "",
-                    value: $model.settings.repetitionPenalty,
-                    format: .number.precision(.fractionLength(2))
-                )
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
-                .frame(width: 68)
-                .disabled(!model.settings.repetitionPenaltyEnabled)
-            }
-
-            HStack {
-                Spacer()
-                Button("Reset Defaults") { model.resetSettings() }
-            }
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
-        .padding(.top, 4)
-    }
-}
-
-private struct ConfigurationRow<Content: View>: View {
-    let label: String
-    let content: Content
-
-    init(label: String, @ViewBuilder content: () -> Content) {
-        self.label = label
-        self.content = content()
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(width: 140, alignment: .leading)
-            content
-        }
-    }
-}
-
 private struct ModelRowBackground: ViewModifier {
     let isHighlighted: Bool
     let isHovered: Bool
@@ -1036,6 +1076,31 @@ private extension View {
 
 private extension LocalModelCapability {
     static let visibleModelTags = allCases.filter { $0 != .text }
+
+    var hubQueryItem: URLQueryItem {
+        switch self {
+        case .text:
+            URLQueryItem(name: "pipeline_tag", value: "text-generation")
+        case .vision:
+            URLQueryItem(name: "pipeline_tag", value: "image-text-to-text")
+        case .audio:
+            URLQueryItem(name: "other", value: "audio")
+        case .video:
+            URLQueryItem(name: "other", value: "video")
+        case .imageGeneration:
+            URLQueryItem(name: "pipeline_tag", value: "text-to-image")
+        case .speechToText:
+            URLQueryItem(name: "pipeline_tag", value: "automatic-speech-recognition")
+        case .textToSpeech:
+            URLQueryItem(name: "pipeline_tag", value: "text-to-speech")
+        case .embeddings:
+            URLQueryItem(name: "pipeline_tag", value: "feature-extraction")
+        case .reasoning:
+            URLQueryItem(name: "other", value: "reasoning")
+        case .tools:
+            URLQueryItem(name: "other", value: "tool-calling")
+        }
+    }
 
     var systemImage: String {
         switch self {
