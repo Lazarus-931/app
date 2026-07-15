@@ -519,6 +519,65 @@ private struct UserActivityPanel: View {
         let help: String
     }
 
+    private struct HoverableHeatmapCell: View {
+        let fillColor: Color
+        let borderColor: Color
+        let width: CGFloat
+        let help: String
+
+        @State private var isHovered = false
+
+        var body: some View {
+            let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
+
+            shape
+                .fill(fillColor)
+                .overlay {
+                    if isHovered {
+                        shape.fill(DashboardPalette.accent.opacity(0.12))
+                    }
+                }
+                .frame(width: width, height: width)
+                .overlay {
+                    shape.stroke(
+                        isHovered ? DashboardPalette.accent.opacity(0.9) : borderColor,
+                        lineWidth: isHovered ? 1.1 : 0.45
+                    )
+                }
+                .scaleEffect(isHovered ? 1.08 : 1)
+                .shadow(
+                    color: isHovered ? DashboardPalette.accent.opacity(0.22) : .clear,
+                    radius: isHovered ? 5 : 0
+                )
+                .overlay(alignment: .top) {
+                    if isHovered {
+                        Text(help)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .fixedSize()
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .stroke(DashboardPalette.panelStroke, lineWidth: 0.6)
+                            }
+                            .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
+                            .offset(y: -34)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+                            .allowsHitTesting(false)
+                    }
+                }
+                .zIndex(isHovered ? 1 : 0)
+                .animation(.easeOut(duration: 0.14), value: isHovered)
+                .contentShape(shape)
+                .onHover { isHovered = $0 }
+                .help(help)
+                .accessibilityLabel(help)
+        }
+    }
+
     private struct HeatmapRow: Identifiable {
         let id: String
         let label: String
@@ -691,19 +750,14 @@ private struct UserActivityPanel: View {
         width: CGFloat,
         maximumCount: Int
     ) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
-
-        return shape
-            .fill(heatmapColor(for: cell.count, maximumCount: maximumCount))
-            .frame(width: width, height: width)
-            .overlay {
-                shape.stroke(
-                    cell.count == 0 ? DashboardPalette.panelStroke.opacity(0.7) : Color.white.opacity(0.07),
-                    lineWidth: 0.45
-                )
-            }
-            .help(cell.help)
-            .accessibilityLabel(cell.help)
+        HoverableHeatmapCell(
+            fillColor: heatmapColor(for: cell.count, maximumCount: maximumCount),
+            borderColor: cell.count == 0
+                ? DashboardPalette.panelStroke.opacity(0.7)
+                : Color.white.opacity(0.07),
+            width: width,
+            help: cell.help
+        )
     }
 
     private var periodBreakdown: some View {
