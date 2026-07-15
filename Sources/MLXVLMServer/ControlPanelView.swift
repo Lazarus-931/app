@@ -6,7 +6,7 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     case imageGeneration = "Image Generation"
     case dashboard = "Dashboard"
     case models = "Models"
-    case logs = "Logs"
+    case logs = "Developer"
 
     static var allCases: [ControlPanelTab] {
         [.chat, .dashboard, .models, .logs]
@@ -25,7 +25,7 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
         case .models:
             "cube.transparent"
         case .logs:
-            "doc.text"
+            "hammer"
         }
     }
 }

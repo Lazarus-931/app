@@ -32,9 +32,9 @@ struct LogsView: View {
     private var pageHeader: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Logs")
+                Text("Developer")
                     .font(.title2.weight(.semibold))
-                Text("Live server output and runtime environment.")
+                Text("Runtime diagnostics, API endpoints, and live server output.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

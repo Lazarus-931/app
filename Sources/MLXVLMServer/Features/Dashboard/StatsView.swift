@@ -408,6 +408,7 @@ private struct AnalyticsMetricCard: View {
     let tint: Color
     let isSelected: Bool
     let action: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
@@ -421,7 +422,11 @@ private struct AnalyticsMetricCard: View {
                     Spacer()
                     Image(systemName: isSelected ? "checkmark" : "arrow.up.right")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(isSelected ? tint : Color.secondary.opacity(0.5))
+                        .foregroundStyle(
+                            isSelected || isHovered
+                                ? tint
+                                : Color.secondary.opacity(0.5)
+                        )
                 }
 
                 VStack(alignment: .leading, spacing: 5) {
@@ -443,10 +448,26 @@ private struct AnalyticsMetricCard: View {
             .dashboardPanelStyle(cornerRadius: 14)
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? tint : Color.clear, lineWidth: 1.5)
+                    .fill(isHovered ? tint.opacity(0.045) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(
+                        isSelected ? tint : (isHovered ? tint.opacity(0.55) : Color.clear),
+                        lineWidth: isSelected ? 1.5 : 1
+                    )
             )
         }
         .buttonStyle(.plain)
+        .scaleEffect(isHovered ? 1.012 : 1)
+        .shadow(
+            color: isHovered ? tint.opacity(0.14) : Color.clear,
+            radius: isHovered ? 9 : 0,
+            y: isHovered ? 4 : 0
+        )
+        .animation(.easeOut(duration: 0.16), value: isHovered)
+        .onHover { isHovered = $0 }
+        .help("Show \(title.lowercased()) chart")
         .accessibilityValue(isSelected ? "Selected" : "Select to update chart")
     }
 }
