@@ -98,6 +98,10 @@ enum LocalModelProvider: String, Hashable, Sendable {
         }
     }
 
+    var needsLightIconBackgroundInDarkMode: Bool {
+        self == .prismML
+    }
+
     var iconTintColor: NSColor {
         switch self {
         case .google, .openAI, .mistral, .microsoft, .cohere, .apple, .liquidAI, .zAI:

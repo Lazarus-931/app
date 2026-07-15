@@ -923,12 +923,16 @@ private struct ModelDownloadActionButton: View {
 private struct ModelProviderBadge: View {
     let provider: LocalModelProvider?
     var isHighlighted = false
+    @Environment(\.colorScheme) private var colorScheme
 
     private var color: Color {
         provider?.modelBadgeColor ?? .secondary
     }
 
     private var backgroundColor: Color {
+        if provider?.needsLightIconBackgroundInDarkMode == true, colorScheme == .dark {
+            return Color.white.opacity(0.92)
+        }
         if isHighlighted {
             return Color(nsColor: .controlBackgroundColor)
         }

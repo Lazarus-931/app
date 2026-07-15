@@ -67,9 +67,14 @@ private final class ModelMenuIconView: NSView {
     }
 
     private func updateColors() {
-        layer?.backgroundColor = isSelected
-            ? NSColor.controlAccentColor.cgColor
-            : NSColor.controlBackgroundColor.cgColor
+        let isDarkMode = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if provider?.needsLightIconBackgroundInDarkMode == true, isDarkMode {
+            layer?.backgroundColor = NSColor.white.withAlphaComponent(0.92).cgColor
+        } else {
+            layer?.backgroundColor = isSelected
+                ? NSColor.controlAccentColor.cgColor
+                : NSColor.controlBackgroundColor.cgColor
+        }
         let providerColor = provider?.iconTintColor ?? .secondaryLabelColor
         imageView.contentTintColor = isSelected ? .white : providerColor
         monogramLabel.textColor = isSelected ? .white : providerColor

@@ -1732,6 +1732,7 @@ private struct DashboardInfoPopover: View {
 
 private struct ModelPerformanceProviderBadge: View {
     let modelID: String
+    @Environment(\.colorScheme) private var colorScheme
 
     private var provider: LocalModelProvider? {
         LocalModelProviderResolver.resolve(
@@ -1741,10 +1742,17 @@ private struct ModelPerformanceProviderBadge: View {
         )
     }
 
+    private var backgroundColor: Color {
+        if provider?.needsLightIconBackgroundInDarkMode == true, colorScheme == .dark {
+            return Color.white.opacity(0.92)
+        }
+        return Color.secondary.opacity(0.10)
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.secondary.opacity(0.10))
+                .fill(backgroundColor)
 
             if let provider, let image = LocalModelProviderIcon.image(for: provider) {
                 Image(nsImage: image)
