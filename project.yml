@@ -13,6 +13,19 @@ packages:
   textual:
     url: https://github.com/gonzalezreal/textual.git
     exactVersion: 0.5.0
+schemes:
+  MLXVLMServer:
+    build:
+      targets:
+        MLXVLMServer: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
 targets:
   MLXServerKit:
     type: framework
@@ -32,9 +45,15 @@ targets:
           python3 "$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py"
     settings:
       base:
+        CODE_SIGN_IDENTITY: Apple Development
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: C5EGZBSMJB
         PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerKit
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: NO
+      configs:
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
   MLXVLMServer:
     type: application
     platform: macOS
@@ -52,6 +71,9 @@ targets:
     settings:
       base:
         MACOSX_DEPLOYMENT_TARGET: "26.0"
+        CODE_SIGN_IDENTITY: Apple Development
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: C5EGZBSMJB
         PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerDemo
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: MLX Server
@@ -62,3 +84,6 @@ targets:
         INFOPLIST_KEY_NSHighResolutionCapable: YES
         MARKETING_VERSION: 0.1
         CURRENT_PROJECT_VERSION: 1
+      configs:
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
