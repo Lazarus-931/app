@@ -314,7 +314,9 @@ final class ChatViewModel: ObservableObject {
             minP: settings.minP,
             repetitionPenalty: settings.repetitionPenaltyEnabled ? settings.repetitionPenalty : nil,
             enableThinking: settings.thinkingEnabled,
-            thinkingBudget: settings.thinkingEnabled ? settings.thinkingBudget : nil,
+            thinkingBudget: settings.thinkingEnabled && settings.thinkingBudgetEnabled
+                ? settings.thinkingBudget
+                : nil,
             thinkingStartToken: settings.thinkingEnabled ? settings.thinkingStartToken : nil,
             thinkingEndToken: settings.thinkingEnabled ? settings.thinkingEndToken : nil,
             responseFormat: settings.chatResponseFormat,

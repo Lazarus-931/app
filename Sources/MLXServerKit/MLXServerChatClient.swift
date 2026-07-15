@@ -207,13 +207,14 @@ public struct MLXChatUsage: Decodable, Equatable, Sendable {
         case peakMemoryGB = "peak_memory"
     }
 
-    fileprivate func resolvingPeakMemory(from timings: MLXChatTimings?) -> MLXChatUsage {
+    fileprivate func resolvingTimings(from timings: MLXChatTimings?) -> MLXChatUsage {
         MLXChatUsage(
             promptTokens: promptTokens,
             completionTokens: completionTokens,
             totalTokens: totalTokens,
             promptTokensPerSecond: promptTokensPerSecond,
-            decodeTokensPerSecond: decodeTokensPerSecond,
+            decodeTokensPerSecond: timings?.resolvedDecodeTokensPerSecond
+                ?? decodeTokensPerSecond,
             peakMemoryGB: timings?.peakMemoryGB ?? peakMemoryGB
         )
     }
@@ -568,9 +569,11 @@ public final class MLXServerChatClient {
         timings: MLXChatTimings?
     ) -> MLXChatUsage? {
         if let usage {
-            return usage.resolvingPeakMemory(from: timings)
+            return usage.resolvingTimings(from: timings)
         }
-        guard let peakMemoryGB = timings?.peakMemoryGB else {
+        guard let timings,
+              timings.resolvedDecodeTokensPerSecond != nil || timings.peakMemoryGB != nil
+        else {
             return nil
         }
         return MLXChatUsage(
@@ -578,8 +581,8 @@ public final class MLXServerChatClient {
             completionTokens: nil,
             totalTokens: nil,
             promptTokensPerSecond: nil,
-            decodeTokensPerSecond: nil,
-            peakMemoryGB: peakMemoryGB
+            decodeTokensPerSecond: timings.resolvedDecodeTokensPerSecond,
+            peakMemoryGB: timings.peakMemoryGB
         )
     }
 
@@ -614,16 +617,20 @@ private struct ChatCompletionResponse: Decodable {
 
     var resolvedUsage: MLXChatUsage? {
         if let usage {
-            return usage.resolvingPeakMemory(from: timings)
+            return usage.resolvingTimings(from: timings)
         }
-        guard let peakMemoryGB = timings?.peakMemoryGB else { return nil }
+        guard let timings,
+              timings.resolvedDecodeTokensPerSecond != nil || timings.peakMemoryGB != nil
+        else {
+            return nil
+        }
         return MLXChatUsage(
             promptTokens: nil,
             completionTokens: nil,
             totalTokens: nil,
             promptTokensPerSecond: nil,
-            decodeTokensPerSecond: nil,
-            peakMemoryGB: peakMemoryGB
+            decodeTokensPerSecond: timings.resolvedDecodeTokensPerSecond,
+            peakMemoryGB: timings.peakMemoryGB
         )
     }
 
@@ -656,9 +663,21 @@ private struct ChatStreamChunk: Decodable {
 }
 
 private struct MLXChatTimings: Decodable {
+    let predictedTokensPerSecond: Double?
     let peakMemoryGB: Double?
 
+    var resolvedDecodeTokensPerSecond: Double? {
+        guard let predictedTokensPerSecond,
+              predictedTokensPerSecond > 0,
+              predictedTokensPerSecond.isFinite
+        else {
+            return nil
+        }
+        return predictedTokensPerSecond
+    }
+
     enum CodingKeys: String, CodingKey {
+        case predictedTokensPerSecond = "predicted_per_second"
         case peakMemoryGB = "peak_memory"
     }
 }

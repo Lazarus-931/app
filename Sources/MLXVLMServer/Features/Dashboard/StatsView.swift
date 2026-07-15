@@ -995,6 +995,7 @@ private struct RequestHealthPanel: View {
     let failed: Int
     let range: DashboardViewModel.RangeOption
     let minimumHeight: CGFloat
+    @State private var hoveredPointID: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -1015,13 +1016,28 @@ private struct RequestHealthPanel: View {
                 DashboardEmptyChart()
                     .frame(minHeight: 120, maxHeight: .infinity)
             } else {
-                Chart(points) { point in
-                    BarMark(
-                        x: .value("Time", point.bucketStart),
-                        y: .value("Completed", point.requestsCompleted)
-                    )
-                    .foregroundStyle(DashboardPalette.positive.gradient)
-                    .cornerRadius(2)
+                Chart {
+                    ForEach(points) { point in
+                        BarMark(
+                            x: .value("Time", point.bucketStart),
+                            y: .value("Completed", point.requestsCompleted)
+                        )
+                        .foregroundStyle(DashboardPalette.positive.gradient)
+                        .cornerRadius(2)
+                    }
+
+                    if let hoveredPoint {
+                        RuleMark(x: .value("Selected time", hoveredPoint.bucketStart))
+                            .foregroundStyle(DashboardPalette.axisLabel.opacity(0.8))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+                        PointMark(
+                            x: .value("Selected time", hoveredPoint.bucketStart),
+                            y: .value("Completed", hoveredPoint.requestsCompleted)
+                        )
+                        .foregroundStyle(DashboardPalette.positive)
+                        .symbolSize(42)
+                    }
                 }
                 .chartXAxis {
                     AxisMarks(values: axisDates) { value in
@@ -1036,6 +1052,51 @@ private struct RequestHealthPanel: View {
                 }
                 .chartYAxis(.hidden)
                 .frame(minHeight: 118, maxHeight: .infinity)
+                .chartOverlay { proxy in
+                    GeometryReader { geometry in
+                        ZStack(alignment: .topLeading) {
+                            Rectangle()
+                                .fill(.clear)
+                                .contentShape(Rectangle())
+                                .onContinuousHover { phase in
+                                    switch phase {
+                                    case .active(let location):
+                                        updateHoveredPoint(
+                                            at: location,
+                                            proxy: proxy,
+                                            geometry: geometry
+                                        )
+                                    case .ended:
+                                        hoveredPointID = nil
+                                    }
+                                }
+
+                            if let hoveredPoint,
+                               let tooltipCenter = tooltipCenter(
+                                   for: hoveredPoint,
+                                   proxy: proxy,
+                                   geometry: geometry
+                               ) {
+                                RequestHealthTooltip(
+                                    point: hoveredPoint,
+                                    granularity: granularity
+                                )
+                                .position(tooltipCenter)
+                                .allowsHitTesting(false)
+                                .transition(.identity)
+                            }
+                        }
+                        .transaction { transaction in
+                            transaction.animation = nil
+                        }
+                    }
+                }
+                .onChange(of: points) { _, newPoints in
+                    if let hoveredPointID,
+                       !newPoints.contains(where: { $0.id == hoveredPointID }) {
+                        self.hoveredPointID = nil
+                    }
+                }
             }
 
             Divider()
@@ -1053,6 +1114,11 @@ private struct RequestHealthPanel: View {
 
     private var total: Int { completed + failed }
 
+    private var hoveredPoint: DashboardViewModel.BucketPoint? {
+        guard let hoveredPointID else { return nil }
+        return points.first { $0.id == hoveredPointID }
+    }
+
     private var granularity: MLXServerAnalyticsGranularity {
         points.first?.granularity ?? .hour
     }
@@ -1067,6 +1133,129 @@ private struct RequestHealthPanel: View {
             granularity: granularity,
             range: range
         )
+    }
+
+    private func updateHoveredPoint(
+        at location: CGPoint,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) {
+        guard let plotFrameAnchor = proxy.plotFrame else {
+            hoveredPointID = nil
+            return
+        }
+
+        let plotFrame = geometry[plotFrameAnchor]
+        guard plotFrame.contains(location) else {
+            hoveredPointID = nil
+            return
+        }
+
+        let plotX = location.x - plotFrame.minX
+        guard let hoveredDate: Date = proxy.value(atX: plotX) else {
+            hoveredPointID = nil
+            return
+        }
+
+        let nextPoint = points.min {
+            abs($0.bucketStart.timeIntervalSince(hoveredDate))
+                < abs($1.bucketStart.timeIntervalSince(hoveredDate))
+        }
+        guard hoveredPointID != nextPoint?.id else { return }
+        hoveredPointID = nextPoint?.id
+    }
+
+    private func tooltipCenter(
+        for point: DashboardViewModel.BucketPoint,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) -> CGPoint? {
+        guard let plotFrameAnchor = proxy.plotFrame,
+              let plotX = proxy.position(forX: point.bucketStart),
+              let plotY = proxy.position(forY: point.requestsCompleted) else {
+            return nil
+        }
+
+        let plotFrame = geometry[plotFrameAnchor]
+        let anchor = CGPoint(x: plotFrame.minX + plotX, y: plotFrame.minY + plotY)
+        let tooltipSize = CGSize(width: 210, height: 102)
+        let spacing: CGFloat = 10
+        let showOnLeft = anchor.x > plotFrame.midX
+        let desiredX = showOnLeft
+            ? anchor.x - spacing - tooltipSize.width / 2
+            : anchor.x + spacing + tooltipSize.width / 2
+        let desiredY = anchor.y - spacing - tooltipSize.height / 2
+
+        return CGPoint(
+            x: min(max(desiredX, tooltipSize.width / 2), geometry.size.width - tooltipSize.width / 2),
+            y: min(max(desiredY, tooltipSize.height / 2), geometry.size.height - tooltipSize.height / 2)
+        )
+    }
+}
+
+private struct RequestHealthTooltip: View {
+    let point: DashboardViewModel.BucketPoint
+    let granularity: MLXServerAnalyticsGranularity
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(dateLabel)
+                .font(.caption.weight(.semibold))
+
+            HStack(spacing: 12) {
+                metric("Completed", value: point.requestsCompleted, color: DashboardPalette.positive)
+                metric("Failed", value: point.requestsFailed, color: DashboardPalette.negative)
+            }
+
+            Divider()
+
+            HStack {
+                Text("Total \(MLXServerFormatting.integer(total))")
+                Spacer(minLength: 8)
+                Text(successRate)
+                    .fontWeight(.semibold)
+            }
+            .font(.caption)
+            .monospacedDigit()
+        }
+        .padding(10)
+        .frame(width: 210)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(DashboardPalette.panelStroke, lineWidth: 0.75)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
+
+    private var total: Int {
+        point.requestsCompleted + point.requestsFailed
+    }
+
+    private var successRate: String {
+        guard total > 0 else { return "--" }
+        return MLXServerFormatting.percent(Double(point.requestsCompleted) / Double(total))
+    }
+
+    private var dateLabel: String {
+        if granularity == .hour {
+            return point.bucketStart.formatted(date: .abbreviated, time: .shortened)
+        }
+        return point.bucketStart.formatted(date: .long, time: .omitted)
+    }
+
+    private func metric(_ title: String, value: Int, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(color)
+                .frame(width: 6, height: 6)
+            Text(title)
+                .foregroundStyle(.secondary)
+            Text(MLXServerFormatting.integer(value))
+                .fontWeight(.medium)
+                .monospacedDigit()
+        }
+        .font(.caption)
     }
 }
 

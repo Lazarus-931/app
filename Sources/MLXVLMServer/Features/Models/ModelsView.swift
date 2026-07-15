@@ -152,7 +152,7 @@ struct ModelsView: View {
         VStack(spacing: 0) {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    ModelsSearchField(prompt: "Search MLX models on Hugging Face", text: $hubQuery)
+                    ModelsSearchField(prompt: "Search models on Hugging Face", text: $hubQuery)
 
                     if hubLibrary.isSearching {
                         ProgressView()
@@ -176,11 +176,11 @@ struct ModelsView: View {
                             color: .orange
                         )
                     } else if hubLibrary.isSearching && hubLibrary.models.isEmpty {
-                        ModelsLoadingState(title: hubQuery.isEmpty ? "Finding popular MLX models…" : "Searching Hugging Face…")
+                        ModelsLoadingState(title: hubQuery.isEmpty ? "Finding popular Safetensors models…" : "Searching Hugging Face…")
                     } else if hubLibrary.models.isEmpty {
                         ModelsEmptyState(
                             systemImage: "magnifyingglass",
-                            title: "No MLX models found",
+                            title: "No Safetensors models found",
                             message: "Try a model family, provider, or repository name.",
                             actionTitle: nil,
                             action: {}
@@ -410,7 +410,10 @@ struct ModelsView: View {
 
                 Divider()
 
-                ForEach(LocalModelCapability.visibleModelTags, id: \.self) { capability in
+                ForEach(
+                    LocalModelCapability.visibleModelTags.filter { $0 != .embeddings },
+                    id: \.self
+                ) { capability in
                     Toggle(
                         capability.displayName,
                         isOn: capabilitySelectionBinding(for: capability)
@@ -489,7 +492,7 @@ struct ModelsView: View {
     }
 
     private var discoverResultsTitle: some View {
-        Text(hubQuery.isEmpty ? "MLX models on Hugging Face" : "Search results")
+        Text(hubQuery.isEmpty ? "Safetensors models on Hugging Face" : "Search results")
             .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
             .fixedSize()
@@ -539,7 +542,7 @@ struct ModelsView: View {
     private var hubModelsURL: URL {
         var components = URLComponents(string: "https://huggingface.co/models")!
         var queryItems = [
-            URLQueryItem(name: "library", value: "mlx"),
+            URLQueryItem(name: "library", value: "safetensors"),
             URLQueryItem(name: "sort", value: hubSort.hubWebValue),
             URLQueryItem(name: "p", value: String(hubLibrary.pageNumber - 1))
         ]
@@ -861,7 +864,7 @@ private struct ModelDownloadProgressControl: View {
 
                     if progress > 0 {
                         Text("\(Int((progress * 100).rounded()))%")
-                            .font(.system(size: 7, weight: .bold, design: .rounded))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
                             .monospacedDigit()
                     } else {
                         Image(systemName: isPaused ? "pause.fill" : "arrow.down")

@@ -54,6 +54,11 @@ struct LocalModel: Identifiable, Equatable, Sendable {
     let capabilities: Set<LocalModelCapability>
 }
 
+struct LocalModelConfigurationMetadata: Equatable, Sendable {
+    let contextSize: Int?
+    let defaultSystemPrompt: String?
+}
+
 enum LocalModelDiscovery {
     static func scan(path: String) async throws -> [LocalModel] {
         let expandedPath = Self.expandedPath(path)
@@ -79,6 +84,19 @@ enum LocalModelDiscovery {
             if fileManager.fileExists(atPath: lockURL.path) {
                 try fileManager.removeItem(at: lockURL)
             }
+        }.value
+    }
+
+    static func configurationMetadata(
+        repoID: String,
+        path: String
+    ) async -> LocalModelConfigurationMetadata? {
+        let expandedPath = Self.expandedPath(path)
+        return await Task.detached(priority: .userInitiated) {
+            Self.configurationMetadataSynchronously(
+                repoID: repoID,
+                path: expandedPath
+            )
         }.value
     }
 
@@ -146,6 +164,34 @@ enum LocalModelDiscovery {
                 return lhs.repoID < rhs.repoID
             }
         }
+    }
+
+    private static func configurationMetadataSynchronously(
+        repoID: String,
+        path: String
+    ) -> LocalModelConfigurationMetadata? {
+        let fileManager = FileManager.default
+        let repositoryName = "models--" + repoID.replacingOccurrences(of: "/", with: "--")
+        let repositoryURL = URL(fileURLWithPath: path, isDirectory: true)
+            .appendingPathComponent(repositoryName, isDirectory: true)
+
+        guard let snapshotURL = preferredSnapshotURL(
+            for: repositoryURL,
+            fileManager: fileManager
+        ) else {
+            return nil
+        }
+
+        return LocalModelConfigurationMetadata(
+            contextSize: contextSizeFromConfig(
+                at: snapshotURL,
+                fileManager: fileManager
+            ),
+            defaultSystemPrompt: defaultSystemPrompt(
+                at: snapshotURL,
+                fileManager: fileManager
+            )
+        )
     }
 
     private static func repoID(fromCacheDirectoryName name: String) -> String? {
@@ -272,6 +318,179 @@ enum LocalModelDiscovery {
             return contextSize
         }
         return nil
+    }
+
+    private static func contextSizeFromConfig(
+        at snapshotURL: URL,
+        fileManager: FileManager
+    ) -> Int? {
+        let configURL = snapshotURL.appendingPathComponent("config.json")
+        guard fileManager.fileExists(atPath: configURL.path),
+              let data = try? Data(contentsOf: configURL),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return nil
+        }
+        return contextSize(in: config)
+    }
+
+    private static func defaultSystemPrompt(
+        at snapshotURL: URL,
+        fileManager: FileManager
+    ) -> String? {
+        var templates: [String] = []
+        let templateURL = snapshotURL.appendingPathComponent("chat_template.jinja")
+        if fileManager.fileExists(atPath: templateURL.path),
+           let template = try? String(contentsOf: templateURL, encoding: .utf8) {
+            templates.append(template)
+        }
+
+        for filename in ["tokenizer_config.json", "processor_config.json"] {
+            let metadataURL = snapshotURL.appendingPathComponent(filename)
+            guard fileManager.fileExists(atPath: metadataURL.path),
+                  let data = try? Data(contentsOf: metadataURL),
+                  let metadata = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                continue
+            }
+
+            for key in ["default_system_prompt", "default_system_message"] {
+                if let prompt = normalizedSystemPrompt(metadata[key] as? String) {
+                    return prompt
+                }
+            }
+            if let chatTemplate = metadata["chat_template"] {
+                templates.append(contentsOf: templateStrings(in: chatTemplate))
+            }
+        }
+
+        return templates.lazy.compactMap(defaultSystemPrompt(in:)).first
+    }
+
+    private static func templateStrings(in value: Any) -> [String] {
+        if let template = value as? String {
+            return [template]
+        }
+        if let values = value as? [Any] {
+            return values.flatMap(templateStrings(in:))
+        }
+        if let values = value as? [String: Any] {
+            return values.values.flatMap(templateStrings(in:))
+        }
+        return []
+    }
+
+    private static func defaultSystemPrompt(in template: String) -> String? {
+        let assignmentPatterns = [
+            #"(?is)\{%-?\s*set\s+(?:default_)?system_(?:prompt|message)\s*=\s*'((?:\\.|[^'\\])*)'\s*-?%\}"#,
+            #"(?is)\{%-?\s*set\s+(?:default_)?system_(?:prompt|message)\s*=\s*\"((?:\\.|[^\"\\])*)\"\s*-?%\}"#
+        ]
+        for pattern in assignmentPatterns {
+            for value in regexCaptures(pattern: pattern, text: template) {
+                if let prompt = normalizedSystemPrompt(unescapedTemplateLiteral(value)) {
+                    return prompt
+                }
+            }
+        }
+
+        let literalPatterns = [
+            #"'((?:\\.|[^'\\])*)'"#,
+            #"\"((?:\\.|[^\"\\])*)\""#
+        ]
+        for pattern in literalPatterns {
+            for value in regexCaptures(pattern: pattern, text: template) {
+                let literal = unescapedTemplateLiteral(value)
+                if let prompt = systemPromptFromRenderedLiteral(literal) {
+                    return prompt
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func regexCaptures(pattern: String, text: String) -> [String] {
+        guard let expression = try? NSRegularExpression(pattern: pattern) else {
+            return []
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return expression.matches(in: text, range: range).compactMap { match in
+            guard match.numberOfRanges > 1,
+                  let captureRange = Range(match.range(at: 1), in: text)
+            else {
+                return nil
+            }
+            return String(text[captureRange])
+        }
+    }
+
+    private static func unescapedTemplateLiteral(_ value: String) -> String {
+        var result = ""
+        var index = value.startIndex
+        while index < value.endIndex {
+            let character = value[index]
+            guard character == "\\" else {
+                result.append(character)
+                index = value.index(after: index)
+                continue
+            }
+
+            let nextIndex = value.index(after: index)
+            guard nextIndex < value.endIndex else {
+                result.append(character)
+                break
+            }
+            switch value[nextIndex] {
+            case "n": result.append("\n")
+            case "r": result.append("\r")
+            case "t": result.append("\t")
+            case "\\": result.append("\\")
+            case "'": result.append("'")
+            case "\"": result.append("\"")
+            default:
+                result.append("\\")
+                result.append(value[nextIndex])
+            }
+            index = value.index(after: nextIndex)
+        }
+        return result
+    }
+
+    private static func systemPromptFromRenderedLiteral(_ literal: String) -> String? {
+        let boundaries = [
+            ("<|im_start|>system\n", "<|im_end|>"),
+            ("<|start_header_id|>system<|end_header_id|>\n\n", "<|eot_id|>"),
+            ("<|turn>system\n", "<turn|>"),
+            ("<<SYS>>\n", "\n<</SYS>>")
+        ]
+
+        for (prefix, suffix) in boundaries {
+            guard let prefixRange = literal.range(of: prefix) else {
+                continue
+            }
+            let remainder = literal[prefixRange.upperBound...]
+            guard let suffixRange = remainder.range(of: suffix) else {
+                continue
+            }
+            if let prompt = normalizedSystemPrompt(String(remainder[..<suffixRange.lowerBound])) {
+                return prompt
+            }
+        }
+        return nil
+    }
+
+    private static func normalizedSystemPrompt(_ prompt: String?) -> String? {
+        guard let prompt else {
+            return nil
+        }
+        let normalized = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty,
+              normalized.count <= 20_000,
+              !normalized.contains("{{"),
+              !normalized.contains("{%")
+        else {
+            return nil
+        }
+        return normalized
     }
 
     private static func modelCapabilities(

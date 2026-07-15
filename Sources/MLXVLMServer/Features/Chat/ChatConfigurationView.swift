@@ -7,6 +7,9 @@ struct ChatConfigurationView: View {
     @Binding var settings: MLXServerSettings
     let settingsRequireRestart: Bool
     let onReset: () -> Void
+    @State private var modelConfiguration: LocalModelConfigurationMetadata?
+    @State private var isLoadingModelConfiguration = false
+    @State private var modelConfigurationRevision = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +32,12 @@ struct ChatConfigurationView: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+        .task(id: modelConfigurationLookupID) {
+            await loadModelConfiguration(for: modelConfigurationLookupID)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .localModelLibraryDidChange)) { _ in
+            modelConfigurationRevision += 1
+        }
     }
 
     private var header: some View {
@@ -70,30 +79,107 @@ struct ChatConfigurationView: View {
 
             ConfigurationIntegerField(
                 title: "Context window",
-                value: $settings.maxKVSize,
+                value: modelContextBinding,
                 range: 0...1_048_576
             )
-
-            Text("0 uses the model's native context window.")
-                .configurationHintStyle()
+            .disabled(isLoadingModelConfiguration)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("System prompt")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                TextEditor(text: $settings.systemPrompt)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                    .frame(minHeight: 88)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 7)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                ZStack(alignment: .topLeading) {
+                    if settings.systemPrompt.isEmpty {
+                        Text(systemPromptPlaceholder)
+                            .font(.body)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(4)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .allowsHitTesting(false)
                     }
+
+                    TextEditor(text: $settings.systemPrompt)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                }
+                .frame(minHeight: 88)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                }
+
+                Text(systemPromptHint)
+                    .configurationHintStyle()
             }
         }
+    }
+
+    private var modelConfigurationLookupID: String {
+        let normalizedSettings = settings.normalized()
+        return [
+            normalizedSettings.modelSearchPath,
+            normalizedSettings.languageModelID ?? "",
+            String(modelConfigurationRevision)
+        ].joined(separator: "\u{0}")
+    }
+
+    private func loadModelConfiguration(for lookupID: String) async {
+        modelConfiguration = nil
+        guard let modelID = settings.normalized().languageModelID else {
+            isLoadingModelConfiguration = false
+            return
+        }
+
+        isLoadingModelConfiguration = true
+        let metadata = await LocalModelDiscovery.configurationMetadata(
+            repoID: modelID,
+            path: settings.modelSearchPath
+        )
+        guard lookupID == modelConfigurationLookupID else {
+            return
+        }
+        modelConfiguration = metadata
+        isLoadingModelConfiguration = false
+    }
+
+    private var modelContextBinding: Binding<Int> {
+        Binding(
+            get: {
+                settings.maxKVSize > 0
+                    ? settings.maxKVSize
+                    : (modelConfiguration?.contextSize ?? 0)
+            },
+            set: { value in
+                if value == modelConfiguration?.contextSize {
+                    settings.maxKVSize = 0
+                } else {
+                    settings.maxKVSize = value
+                }
+            }
+        )
+    }
+
+    private var systemPromptPlaceholder: String {
+        if isLoadingModelConfiguration {
+            return "Reading chat template…"
+        }
+        return modelConfiguration?.defaultSystemPrompt ?? "Optional custom system prompt"
+    }
+
+    private var systemPromptHint: String {
+        if isLoadingModelConfiguration {
+            return "Looking for a default system prompt in the chat template."
+        }
+        if modelConfiguration?.defaultSystemPrompt != nil {
+            return settings.systemPrompt.isEmpty
+                ? "Template default shown above. Enter text to override it."
+                : "Custom prompt overrides the model's chat-template default."
+        }
+        return "No default system prompt was found in the chat template."
     }
 
     private var kvQuantizationSection: some View {
@@ -137,11 +223,16 @@ struct ChatConfigurationView: View {
                 .configurationToggleStyle()
 
             if settings.thinkingEnabled {
-                ConfigurationIntegerField(
-                    title: "Budget",
-                    value: $settings.thinkingBudget,
-                    range: 1...262_144
-                )
+                Toggle("Limit thinking", isOn: $settings.thinkingBudgetEnabled)
+                    .configurationToggleStyle()
+
+                if settings.thinkingBudgetEnabled {
+                    ConfigurationIntegerField(
+                        title: "Budget",
+                        value: $settings.thinkingBudget,
+                        range: 1...262_144
+                    )
+                }
                 ConfigurationTextField(title: "Start token", text: $settings.thinkingStartToken)
                 ConfigurationTextField(title: "EOS token", text: $settings.thinkingEndToken)
             }
@@ -434,4 +525,3 @@ private extension View {
             .fixedSize(horizontal: false, vertical: true)
     }
 }
-

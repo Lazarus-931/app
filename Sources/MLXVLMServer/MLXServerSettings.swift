@@ -24,6 +24,7 @@ struct MLXServerSettings: Codable, Equatable {
     var quantizedKVStart: Int
     var turboQuantEnabled: Bool
     var thinkingEnabled: Bool
+    var thinkingBudgetEnabled: Bool
     var thinkingBudget: Int
     var thinkingStartToken: String
     var thinkingEndToken: String
@@ -59,6 +60,7 @@ struct MLXServerSettings: Codable, Equatable {
         quantizedKVStart: Int = 0,
         turboQuantEnabled: Bool = false,
         thinkingEnabled: Bool = false,
+        thinkingBudgetEnabled: Bool = false,
         thinkingBudget: Int = 512,
         thinkingStartToken: String = "<think>",
         thinkingEndToken: String = "</think>",
@@ -93,6 +95,7 @@ struct MLXServerSettings: Codable, Equatable {
         self.quantizedKVStart = quantizedKVStart
         self.turboQuantEnabled = turboQuantEnabled
         self.thinkingEnabled = thinkingEnabled
+        self.thinkingBudgetEnabled = thinkingBudgetEnabled
         self.thinkingBudget = thinkingBudget
         self.thinkingStartToken = thinkingStartToken
         self.thinkingEndToken = thinkingEndToken
@@ -130,6 +133,7 @@ struct MLXServerSettings: Codable, Equatable {
         case quantizedKVStart
         case turboQuantEnabled
         case thinkingEnabled
+        case thinkingBudgetEnabled
         case thinkingBudget
         case thinkingStartToken
         case thinkingEndToken
@@ -169,6 +173,7 @@ struct MLXServerSettings: Codable, Equatable {
         quantizedKVStart = try container.decodeIfPresent(Int.self, forKey: .quantizedKVStart) ?? defaults.quantizedKVStart
         turboQuantEnabled = try container.decodeIfPresent(Bool.self, forKey: .turboQuantEnabled) ?? defaults.turboQuantEnabled
         thinkingEnabled = try container.decodeIfPresent(Bool.self, forKey: .thinkingEnabled) ?? defaults.thinkingEnabled
+        thinkingBudgetEnabled = try container.decodeIfPresent(Bool.self, forKey: .thinkingBudgetEnabled) ?? defaults.thinkingBudgetEnabled
         thinkingBudget = try container.decodeIfPresent(Int.self, forKey: .thinkingBudget) ?? defaults.thinkingBudget
         thinkingStartToken = try container.decodeIfPresent(String.self, forKey: .thinkingStartToken) ?? defaults.thinkingStartToken
         thinkingEndToken = try container.decodeIfPresent(String.self, forKey: .thinkingEndToken) ?? defaults.thinkingEndToken
@@ -206,6 +211,7 @@ struct MLXServerSettings: Codable, Equatable {
         try container.encode(quantizedKVStart, forKey: .quantizedKVStart)
         try container.encode(turboQuantEnabled, forKey: .turboQuantEnabled)
         try container.encode(thinkingEnabled, forKey: .thinkingEnabled)
+        try container.encode(thinkingBudgetEnabled, forKey: .thinkingBudgetEnabled)
         try container.encode(thinkingBudget, forKey: .thinkingBudget)
         try container.encode(thinkingStartToken, forKey: .thinkingStartToken)
         try container.encode(thinkingEndToken, forKey: .thinkingEndToken)

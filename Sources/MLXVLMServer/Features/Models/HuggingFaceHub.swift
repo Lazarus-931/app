@@ -226,7 +226,7 @@ private struct HuggingFaceHubClient: Sendable {
         components.path = "/api/models"
 
         var queryItems = [
-            URLQueryItem(name: "filter", value: "mlx"),
+            URLQueryItem(name: "filter", value: "safetensors"),
             URLQueryItem(name: "sort", value: sort.rawValue),
             URLQueryItem(name: "direction", value: "-1"),
             URLQueryItem(name: "limit", value: "50")
@@ -263,7 +263,10 @@ private struct HuggingFaceHubClient: Sendable {
         }
         let models = try JSONDecoder()
             .decode([HuggingFaceModel].self, from: data)
-            .filter { !$0.id.lowercased().hasPrefix("lmstudio-community/") }
+            .filter {
+                !$0.id.lowercased().hasPrefix("lmstudio-community/")
+                    && !$0.capabilities.contains(.embeddings)
+            }
         return HuggingFaceModelPage(
             models: models,
             nextPageURL: nextPageURL(from: httpResponse.value(forHTTPHeaderField: "Link"))

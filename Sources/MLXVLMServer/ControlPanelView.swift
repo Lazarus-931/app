@@ -364,6 +364,7 @@ private struct ControlPanelHeader: View {
     private var headerLeadingPadding: CGFloat {
         splitColumnVisibility == .detailOnly ? 164 : 18
     }
+
 }
 
 struct ServerControlButton: View {
