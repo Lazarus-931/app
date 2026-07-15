@@ -83,6 +83,7 @@
 		8B046C28CBCFB7E4FA8610E3 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		96E4D31D5B9C910FF22A43EC /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelView.swift; sourceTree = "<group>"; };
 		AF697E2D43BA29469CD8D488 /* ModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsView.swift; sourceTree = "<group>"; };
+		BF4C45160D3E7766501AEF95 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		CE692233F7535968F19D4052 /* ImageGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationView.swift; sourceTree = "<group>"; };
 		D57AF974FB413126871D42D8 /* MLXServerChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerChatClient.swift; sourceTree = "<group>"; };
 		E269C7A536273D317B712940 /* MLXVLMServer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MLXVLMServer.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -144,6 +145,7 @@
 		67EB185605F5572E9547B0AD = {
 			isa = PBXGroup;
 			children = (
+				FDE1ED4D6E499ED61DB665DB /* Configuration */,
 				FE26E9FE6B1514774EBADEBF /* Sources */,
 				1268A078D20A160AE5DA3797 /* Products */,
 			);
@@ -214,6 +216,14 @@
 				0CAD4146AC9719AD9863EF4D /* ImageGenerationViewModel.swift */,
 			);
 			path = ImageGeneration;
+			sourceTree = "<group>";
+		};
+		FDE1ED4D6E499ED61DB665DB /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				BF4C45160D3E7766501AEF95 /* Signing.xcconfig */,
+			);
+			path = Configuration;
 			sourceTree = "<group>";
 		};
 		FE26E9FE6B1514774EBADEBF /* Sources */ = {
@@ -459,13 +469,11 @@
 		};
 		34E6CD8C1E400FA940DC96F9 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BF4C45160D3E7766501AEF95 /* Signing.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = C5EGZBSMJB;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
@@ -476,7 +484,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.local.MLXServerKit;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MLX_SERVER_KIT_BUNDLE_IDENTIFIER)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
 				VERSIONING_SYSTEM = "apple-generic";
@@ -485,13 +493,11 @@
 		};
 		B57AA87D53D84F62BA31C123 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BF4C45160D3E7766501AEF95 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = C5EGZBSMJB;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "MLX Server";
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
@@ -505,7 +511,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.local.MLXServerDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MLX_VLM_SERVER_BUNDLE_IDENTIFIER)";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -569,13 +575,11 @@
 		};
 		E3A275114FA4A219A1642AD5 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BF4C45160D3E7766501AEF95 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = C5EGZBSMJB;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "MLX Server";
@@ -590,20 +594,18 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.local.MLXServerDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MLX_VLM_SERVER_BUNDLE_IDENTIFIER)";
 				SDKROOT = macosx;
 			};
 			name = Release;
 		};
 		F620597A606CB60378255B80 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BF4C45160D3E7766501AEF95 /* Signing.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = C5EGZBSMJB;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
@@ -613,7 +615,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.local.MLXServerKit;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MLX_SERVER_KIT_BUNDLE_IDENTIFIER)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
 				VERSIONING_SYSTEM = "apple-generic";

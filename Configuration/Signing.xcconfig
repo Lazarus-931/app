@@ -1,0 +1,11 @@
+// Shared development signing defaults. Add machine-specific overrides to
+// Signing.local.xcconfig; that file is optional and ignored by Git.
+
+MLX_VLM_SERVER_BUNDLE_IDENTIFIER = dev.local.MLXServerDemo
+MLX_SERVER_KIT_BUNDLE_IDENTIFIER = dev.local.MLXServerKit
+
+DEVELOPMENT_TEAM = C5EGZBSMJB
+CODE_SIGN_STYLE = Automatic
+CODE_SIGN_IDENTITY = Apple Development
+
+#include? "Signing.local.xcconfig"

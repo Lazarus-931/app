@@ -30,6 +30,9 @@ targets:
   MLXServerKit:
     type: framework
     platform: macOS
+    configFiles:
+      Debug: Configuration/Signing.xcconfig
+      Release: Configuration/Signing.xcconfig
     sources:
       - path: Sources/MLXServerKit
     postBuildScripts:
@@ -45,10 +48,7 @@ targets:
           python3 "$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py"
     settings:
       base:
-        CODE_SIGN_IDENTITY: Apple Development
-        CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: C5EGZBSMJB
-        PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerKit
+        PRODUCT_BUNDLE_IDENTIFIER: $(MLX_SERVER_KIT_BUNDLE_IDENTIFIER)
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: NO
       configs:
@@ -57,6 +57,9 @@ targets:
   MLXVLMServer:
     type: application
     platform: macOS
+    configFiles:
+      Debug: Configuration/Signing.xcconfig
+      Release: Configuration/Signing.xcconfig
     sources:
       - path: Sources/MLXVLMServer
         excludes:
@@ -71,10 +74,7 @@ targets:
     settings:
       base:
         MACOSX_DEPLOYMENT_TARGET: "26.0"
-        CODE_SIGN_IDENTITY: Apple Development
-        CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: C5EGZBSMJB
-        PRODUCT_BUNDLE_IDENTIFIER: dev.local.MLXServerDemo
+        PRODUCT_BUNDLE_IDENTIFIER: $(MLX_VLM_SERVER_BUNDLE_IDENTIFIER)
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: MLX Server
         INFOPLIST_KEY_CFBundleShortVersionString: $(MARKETING_VERSION)
