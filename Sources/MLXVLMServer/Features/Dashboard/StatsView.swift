@@ -257,6 +257,24 @@ private struct DashboardContentView: View, Equatable {
     }
 
     private var analyticsGrid: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 14) {
+                analyticsChart
+                    .frame(minWidth: 680, maxWidth: .infinity)
+
+                UserActivityPanel(points: dashboard.hourlyActivityPoints)
+                    .frame(width: 350)
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                analyticsChart
+                UserActivityPanel(points: dashboard.hourlyActivityPoints)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var analyticsChart: some View {
         TokenUsagePanel(
             metric: selectedChartMetric,
             points: dashboard.bucketPoints,
@@ -469,6 +487,267 @@ private struct AnalyticsMetricCard: View {
         .onHover { isHovered = $0 }
         .help("Show \(title.lowercased()) chart")
         .accessibilityValue(isSelected ? "Selected" : "Select to update chart")
+    }
+}
+
+private struct UserActivityPanel: View {
+    private static let timeBlocks = [0, 4, 8, 12, 16, 20]
+    private static let cellWidth: CGFloat = 29
+    private static let cellHeight: CGFloat = 23
+    private static let cellSpacing: CGFloat = 4
+
+    let points: [DashboardViewModel.ActivityPoint]
+    private let calendar = Calendar.current
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            AnalyticsSectionHeader(
+                title: "User activity",
+                subtitle: "Request density · past 7 days"
+            )
+
+            activityLegend
+            heatmap
+            periodBreakdown
+        }
+        .padding(18)
+        .dashboardPanelStyle(cornerRadius: 14)
+    }
+
+    private var activityLegend: some View {
+        HStack(spacing: 13) {
+            ActivityLegendItem(title: "Low", color: DashboardPalette.accent.opacity(0.44))
+            ActivityLegendItem(title: "Medium", color: DashboardPalette.accent.opacity(0.63))
+            ActivityLegendItem(title: "High", color: DashboardPalette.accent)
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+
+    private var heatmap: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(spacing: Self.cellSpacing) {
+                ForEach(Self.timeBlocks, id: \.self) { hour in
+                    Text(hourLabel(hour))
+                        .font(.system(size: 9, weight: .medium, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 26, height: Self.cellHeight, alignment: .trailing)
+                }
+            }
+
+            VStack(spacing: 7) {
+                VStack(spacing: Self.cellSpacing) {
+                    ForEach(Self.timeBlocks, id: \.self) { hour in
+                        HStack(spacing: Self.cellSpacing) {
+                            ForEach(days, id: \.self) { day in
+                                activityCell(day: day, startingHour: hour)
+                            }
+                        }
+                    }
+                }
+
+                HStack(spacing: Self.cellSpacing) {
+                    ForEach(days, id: \.self) { day in
+                        Text(Self.weekdayFormatter.string(from: day))
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: Self.cellWidth)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Request activity heatmap for the past seven days")
+    }
+
+    private func activityCell(day: Date, startingHour: Int) -> some View {
+        let count = requestCount(on: day, startingHour: startingHour)
+        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+
+        return shape
+            .fill(heatmapColor(for: count))
+            .frame(width: Self.cellWidth, height: Self.cellHeight)
+            .overlay {
+                shape.stroke(
+                    count == 0 ? DashboardPalette.panelStroke : Color.white.opacity(0.08),
+                    lineWidth: 0.6
+                )
+            }
+            .help(activityHelp(day: day, startingHour: startingHour, count: count))
+            .accessibilityLabel(activityHelp(day: day, startingHour: startingHour, count: count))
+    }
+
+    private var periodBreakdown: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            GeometryReader { geometry in
+                if totalRequestCount == 0 {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.16))
+                } else {
+                    HStack(spacing: 3) {
+                        ForEach(UserActivityPeriod.allCases) { period in
+                            Capsule()
+                                .fill(period.color)
+                                .frame(
+                                    width: max(
+                                        3,
+                                        (geometry.size.width - 6) * periodShare(period)
+                                    )
+                                )
+                        }
+                    }
+                }
+            }
+            .frame(height: 6)
+
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(UserActivityPeriod.allCases) { period in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(percentLabel(for: period))
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                        Text(period.title)
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private var days: [Date] {
+        let today = calendar.startOfDay(for: Date())
+        return (0..<7).compactMap {
+            calendar.date(byAdding: .day, value: $0 - 6, to: today)
+        }
+    }
+
+    private var maximumCellCount: Int {
+        Self.timeBlocks.flatMap { hour in
+            days.map { requestCount(on: $0, startingHour: hour) }
+        }.max() ?? 0
+    }
+
+    private var totalRequestCount: Int {
+        points.reduce(0) { $0 + $1.requestCount }
+    }
+
+    private func requestCount(on day: Date, startingHour: Int) -> Int {
+        points.reduce(0) { result, point in
+            let hour = calendar.component(.hour, from: point.bucketStart)
+            guard calendar.isDate(point.bucketStart, inSameDayAs: day),
+                  (startingHour..<(startingHour + 4)).contains(hour)
+            else {
+                return result
+            }
+            return result + point.requestCount
+        }
+    }
+
+    private func heatmapColor(for count: Int) -> Color {
+        guard count > 0, maximumCellCount > 0 else {
+            return Color.secondary.opacity(0.08)
+        }
+        let intensity = Double(count) / Double(max(maximumCellCount, 4))
+        return DashboardPalette.accent.opacity(0.24 + (intensity * 0.76))
+    }
+
+    private func hourLabel(_ hour: Int) -> String {
+        switch hour {
+        case 0: "12a"
+        case 1..<12: "\(hour)a"
+        case 12: "12p"
+        default: "\(hour - 12)p"
+        }
+    }
+
+    private func activityHelp(day: Date, startingHour: Int, count: Int) -> String {
+        let dayLabel = Self.tooltipDateFormatter.string(from: day)
+        let endHour = (startingHour + 4) % 24
+        return "\(dayLabel), \(hourLabel(startingHour))–\(hourLabel(endHour)): \(count) requests"
+    }
+
+    private func periodShare(_ period: UserActivityPeriod) -> Double {
+        guard totalRequestCount > 0 else { return 0 }
+        return Double(requestCount(for: period)) / Double(totalRequestCount)
+    }
+
+    private func requestCount(for period: UserActivityPeriod) -> Int {
+        points.reduce(0) { result, point in
+            let hour = calendar.component(.hour, from: point.bucketStart)
+            return period.contains(hour: hour) ? result + point.requestCount : result
+        }
+    }
+
+    private func percentLabel(for period: UserActivityPeriod) -> String {
+        "\(Int((periodShare(period) * 100).rounded()))%"
+    }
+
+    private static let weekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.timeZone = .current
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
+
+    private static let tooltipDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.timeZone = .current
+        formatter.setLocalizedDateFormatFromTemplate("EEE MMM d")
+        return formatter
+    }()
+}
+
+private struct ActivityLegendItem: View {
+    let title: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(color)
+                .frame(width: 14, height: 9)
+            Text(title)
+        }
+    }
+}
+
+private enum UserActivityPeriod: CaseIterable, Identifiable {
+    case morning
+    case daytime
+    case evening
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .morning: "Morning"
+        case .daytime: "Daytime"
+        case .evening: "Evening"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .morning: DashboardPalette.indigo
+        case .daytime: DashboardPalette.positive
+        case .evening: DashboardPalette.orange
+        }
+    }
+
+    func contains(hour: Int) -> Bool {
+        switch self {
+        case .morning:
+            (5..<12).contains(hour)
+        case .daytime:
+            (12..<18).contains(hour)
+        case .evening:
+            !(5..<18).contains(hour)
+        }
     }
 }
 

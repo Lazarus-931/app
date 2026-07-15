@@ -95,6 +95,13 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    struct ActivityPoint: Identifiable, Hashable, Sendable {
+        let bucketStart: Date
+        let requestCount: Int
+
+        var id: Date { bucketStart }
+    }
+
     struct ModelPerformance: Identifiable, Hashable, Sendable {
         let modelID: String
         let processedTokens: Int
@@ -148,6 +155,7 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var availableModels: [ModelOption] = [.all]
     @Published private(set) var historicalSummary = MLXServerHistoricalAnalyticsSummary.empty
     @Published private(set) var bucketPoints: [BucketPoint] = []
+    @Published private(set) var hourlyActivityPoints: [ActivityPoint] = []
     @Published private(set) var modelPerformance: [ModelPerformance] = []
     @Published private(set) var modelTokenPoints: [ModelTokenPoint] = []
     @Published private(set) var recentRequestEvents: [MLXServerAnalyticsRequestEvent] = []
@@ -255,6 +263,11 @@ final class DashboardViewModel: ObservableObject {
                 modelID: selectedModelID,
                 granularityOverride: displayGranularity
             )
+            let rawActivityBuckets = store.fetchBuckets(
+                range: MLXServerAnalyticsRange.last7Days,
+                modelID: selectedModelID,
+                granularityOverride: .hour
+            )
             let recentRequestEvents = store.fetchRecentRequestEvents(
                 range: range.analyticsRange,
                 modelID: selectedModelID,
@@ -266,6 +279,7 @@ final class DashboardViewModel: ObservableObject {
                 range: range,
                 granularity: displayGranularity
             )
+            let activityPoints = Self.activityPoints(from: rawActivityBuckets)
             let modelPerformance = Self.modelPerformance(from: rawBuckets)
             let leadingModelIDs = Set(modelPerformance.prefix(12).map(\.modelID))
             let modelTokenPoints = Self.modelTokenPoints(
@@ -277,6 +291,7 @@ final class DashboardViewModel: ObservableObject {
             return DashboardSnapshot(
                 summary: summary,
                 points: points,
+                activityPoints: activityPoints,
                 modelPerformance: modelPerformance,
                 modelTokenPoints: modelTokenPoints,
                 knownModelIDs: knownModelIDs,
@@ -292,6 +307,7 @@ final class DashboardViewModel: ObservableObject {
             guard historyLoadGeneration == generation else { return }
             historicalSummary = snapshot.summary
             bucketPoints = snapshot.points
+            hourlyActivityPoints = snapshot.activityPoints
             modelPerformance = snapshot.modelPerformance
             modelTokenPoints = snapshot.modelTokenPoints
             appliedModelID = selectedModelID ?? ModelOption.allID
@@ -378,10 +394,48 @@ private extension DashboardViewModel {
     struct DashboardSnapshot: Sendable {
         let summary: MLXServerHistoricalAnalyticsSummary
         let points: [BucketPoint]
+        let activityPoints: [ActivityPoint]
         let modelPerformance: [ModelPerformance]
         let modelTokenPoints: [ModelTokenPoint]
         let knownModelIDs: [String]
         let recentRequestEvents: [MLXServerAnalyticsRequestEvent]
+    }
+
+    nonisolated static func activityPoints(
+        from rawBuckets: [MLXServerAnalyticsBucketPoint],
+        calendar: Calendar = .current
+    ) -> [ActivityPoint] {
+        guard !rawBuckets.isEmpty else {
+            return []
+        }
+
+        let grouped = Dictionary(grouping: rawBuckets, by: \.bucketStart)
+        let end = normalizedBucketDate(
+            for: Date(),
+            granularity: .hour,
+            calendar: calendar
+        )
+        let start = offset(
+            end,
+            by: -(7 * 24 - 1),
+            granularity: .hour,
+            calendar: calendar
+        )
+
+        return strideDates(
+            from: start,
+            through: end,
+            granularity: .hour,
+            calendar: calendar
+        ).map { bucketStart in
+            let rows = grouped[bucketStart, default: []]
+            let started = rows.reduce(0) { $0 + $1.requestsStarted }
+            let finished = rows.reduce(0) { $0 + $1.requestsCompleted + $1.requestsFailed }
+            return ActivityPoint(
+                bucketStart: bucketStart,
+                requestCount: max(started, finished)
+            )
+        }
     }
 
     nonisolated static func modelPerformance(
