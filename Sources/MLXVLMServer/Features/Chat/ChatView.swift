@@ -14,13 +14,13 @@ struct ChatQueuedPrompt: Identifiable, Equatable {
 
 struct ChatView: View {
     private enum Layout {
-        static let contentMaxWidth: CGFloat = 860
-        static let horizontalPadding: CGFloat = 24
+        static let conversationMaxWidth: CGFloat = 760
+        static let horizontalPadding: CGFloat = 32
     }
 
     @ObservedObject var model: MLXServerModel
     @ObservedObject var chat: ChatViewModel
-    let showsConfiguration: Bool
+    @Binding var showsConfiguration: Bool
     @State private var transcriptScrollPosition = ScrollPosition(edge: .bottom)
     @State private var composerHeight: CGFloat = 0
     @State private var followsLatestMessage = true
@@ -39,7 +39,7 @@ struct ChatView: View {
                                 chat.send(using: model)
                             }
                         )
-                        .frame(maxWidth: Layout.contentMaxWidth)
+                        .frame(maxWidth: Layout.conversationMaxWidth)
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, Layout.horizontalPadding)
                         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -71,6 +71,25 @@ struct ChatView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .toolbar {
+            ToolbarSpacer(.flexible)
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    withAnimation(.snappy(duration: 0.2)) {
+                        showsConfiguration.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.right")
+                }
+                .help(configurationVisibilityHelp)
+                .accessibilityLabel(configurationVisibilityHelp)
+            }
+        }
+    }
+
+    private var configurationVisibilityHelp: String {
+        showsConfiguration ? "Hide model configuration" : "Show model configuration"
     }
 
     private var selectedModelID: String? {
@@ -112,7 +131,7 @@ struct ChatView: View {
                     }
                 }
             }
-            .frame(maxWidth: Layout.contentMaxWidth)
+            .frame(maxWidth: Layout.conversationMaxWidth)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.top, 18)
@@ -1371,5 +1390,5 @@ private struct ChatEmptyTranscriptView: View {
 }
 
 #Preview {
-    ChatView(model: .init(), chat: ChatViewModel(), showsConfiguration: true)
+    ChatView(model: .init(), chat: ChatViewModel(), showsConfiguration: .constant(true))
 }

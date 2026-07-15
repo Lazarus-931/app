@@ -77,6 +77,10 @@ struct ControlPanelView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 1040, minHeight: 600)
+        .background {
+            ControlPanelWindowStateReader(isFullScreen: $isFullScreen)
+                .frame(width: 0, height: 0)
+        }
         .onAppear {
             applySidebarSelection(navigation.requestedTab.map(ControlPanelSidebarSelection.tab) ?? sidebarSelection)
             handleNewChatRequest()
@@ -91,7 +95,7 @@ struct ControlPanelView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { _ in
             isFullScreen = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
             isFullScreen = false
         }
     }
@@ -182,7 +186,7 @@ struct ControlPanelView: View {
                     ChatView(
                         model: model,
                         chat: chat,
-                        showsConfiguration: isChatConfigurationVisible
+                        showsConfiguration: $isChatConfigurationVisible
                     )
                 case .imageGeneration:
                     ImageGenerationView(model: model, viewModel: imageGeneration)
@@ -196,7 +200,7 @@ struct ControlPanelView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .ignoresSafeArea(.container, edges: .top)
+        .modifier(ControlPanelDetailSafeArea(isFullScreen: isFullScreen))
     }
 
     private func applySidebarSelection(_ selection: ControlPanelSidebarSelection) {
@@ -335,6 +339,72 @@ private struct ControlPanelSidebarSurfaceReader: NSViewRepresentable {
 
             container.needsUpdateConstraints = true
             container.needsLayout = true
+        }
+    }
+}
+
+private struct ControlPanelWindowStateReader: NSViewRepresentable {
+    @Binding var isFullScreen: Bool
+
+    func makeNSView(context: Context) -> ControlPanelWindowStateReaderView {
+        let view = ControlPanelWindowStateReaderView()
+        view.onWindowChange = context.coordinator.update(window:)
+        return view
+    }
+
+    func updateNSView(_ view: ControlPanelWindowStateReaderView, context: Context) {
+        context.coordinator.isFullScreen = $isFullScreen
+        view.onWindowChange = context.coordinator.update(window:)
+        view.reportWindowState()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isFullScreen: $isFullScreen)
+    }
+
+    @MainActor
+    final class Coordinator {
+        var isFullScreen: Binding<Bool>
+
+        init(isFullScreen: Binding<Bool>) {
+            self.isFullScreen = isFullScreen
+        }
+
+        func update(window: NSWindow?) {
+            let newValue = window?.styleMask.contains(.fullScreen) == true
+            guard isFullScreen.wrappedValue != newValue else { return }
+            isFullScreen.wrappedValue = newValue
+        }
+    }
+}
+
+@MainActor
+private final class ControlPanelWindowStateReaderView: NSView {
+    var onWindowChange: ((NSWindow?) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        reportWindowState()
+
+        DispatchQueue.main.async { [weak self] in
+            self?.reportWindowState()
+        }
+    }
+
+    func reportWindowState() {
+        onWindowChange?(window)
+    }
+}
+
+private struct ControlPanelDetailSafeArea: ViewModifier {
+    let isFullScreen: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isFullScreen {
+            content
+        } else {
+            content.ignoresSafeArea(.container, edges: .top)
         }
     }
 }
