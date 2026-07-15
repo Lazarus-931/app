@@ -106,6 +106,7 @@ private struct DashboardContentView: View, Equatable {
     @ObservedObject var dashboard: DashboardViewModel
     @FocusState private var isModelSearchFocused: Bool
     @State private var selectedChartMetric: DashboardOverviewMetric = .tokens
+    @State private var isActivityExpanded = false
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.modelState == rhs.modelState && lhs.dashboard === rhs.dashboard
@@ -257,21 +258,29 @@ private struct DashboardContentView: View, Equatable {
     }
 
     private var analyticsGrid: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 14) {
-                analyticsChart
-                    .frame(minWidth: 680, maxWidth: .infinity)
-
-                UserActivityPanel(points: dashboard.hourlyActivityPoints)
-                    .frame(width: 350)
-            }
-
-            VStack(alignment: .leading, spacing: 14) {
-                analyticsChart
-                UserActivityPanel(points: dashboard.hourlyActivityPoints)
+        Group {
+            if isActivityExpanded {
+                userActivityPanel
                     .frame(maxWidth: .infinity)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 14) {
+                        analyticsChart
+                            .frame(minWidth: 680, maxWidth: .infinity)
+
+                        userActivityPanel
+                            .frame(width: 350)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        analyticsChart
+                        userActivityPanel
+                            .frame(maxWidth: .infinity)
+                    }
+                }
             }
         }
+        .animation(.snappy(duration: 0.24), value: isActivityExpanded)
     }
 
     private var analyticsChart: some View {
@@ -283,6 +292,17 @@ private struct DashboardContentView: View, Equatable {
             showsAllModels: dashboard.appliedModelID == DashboardViewModel.ModelOption.allID
         )
         .frame(maxWidth: .infinity)
+    }
+
+    private var userActivityPanel: some View {
+        UserActivityPanel(
+            points: dashboard.hourlyActivityPoints,
+            range: dashboard.selectedRange,
+            isExpanded: isActivityExpanded,
+            onToggleExpansion: {
+                isActivityExpanded.toggle()
+            }
+        )
     }
 
     private var modelPerformanceSection: some View {
@@ -492,19 +512,51 @@ private struct AnalyticsMetricCard: View {
 
 private struct UserActivityPanel: View {
     private static let timeBlocks = [0, 4, 8, 12, 16, 20]
-    private static let cellWidth: CGFloat = 29
-    private static let cellHeight: CGFloat = 23
-    private static let cellSpacing: CGFloat = 4
+
+    private struct HeatmapCell: Identifiable {
+        let id: String
+        let count: Int
+        let help: String
+    }
+
+    private struct HeatmapRow: Identifiable {
+        let id: String
+        let label: String
+        let cells: [HeatmapCell]
+    }
+
+    private struct HeatmapLayout {
+        let columnLabels: [String]
+        let rows: [HeatmapRow]
+        let rowLabelWidth: CGFloat
+        let cellWidth: CGFloat
+        let spacing: CGFloat
+    }
 
     let points: [DashboardViewModel.ActivityPoint]
+    let range: DashboardViewModel.RangeOption
+    let isExpanded: Bool
+    let onToggleExpansion: () -> Void
     private let calendar = Calendar.current
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            AnalyticsSectionHeader(
-                title: "User activity",
-                subtitle: "Request density · past 7 days"
-            )
+            HStack(alignment: .top, spacing: 12) {
+                AnalyticsSectionHeader(
+                    title: "User activity",
+                    subtitle: "Request density · \(rangeLabel)"
+                )
+                Spacer(minLength: 8)
+                Button(action: onToggleExpansion) {
+                    Image(systemName: isExpanded
+                        ? "arrow.down.right.and.arrow.up.left"
+                        : "arrow.up.left.and.arrow.down.right")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+                .help(isExpanded ? "Collapse user activity" : "Expand user activity")
+            }
 
             activityLegend
             heatmap
@@ -512,6 +564,7 @@ private struct UserActivityPanel: View {
         }
         .padding(18)
         .dashboardPanelStyle(cornerRadius: 14)
+        .animation(.snappy(duration: 0.24), value: isExpanded)
     }
 
     private var activityLegend: some View {
@@ -525,57 +578,132 @@ private struct UserActivityPanel: View {
     }
 
     private var heatmap: some View {
+        let layout = heatmapLayout
+        let maximumCount = layout.rows.flatMap(\.cells).map(\.count).max() ?? 0
+
+        return Group {
+            if range == .last24Hours {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    dailyHeatmapContent(layout: layout, maximumCount: maximumCount)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                heatmapContent(layout: layout, maximumCount: maximumCount)
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: isExpanded ? .center : .leading
+                    )
+            }
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: isExpanded ? 240 : 180,
+            alignment: isExpanded ? .center : .leading
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Request activity heatmap for \(rangeLabel)")
+    }
+
+    private func dailyHeatmapContent(
+        layout: HeatmapLayout,
+        maximumCount: Int
+    ) -> some View {
+        let cells = layout.rows.first?.cells ?? []
+        let columnCount = isExpanded ? 12 : 6
+        let columns = Array(
+            repeating: GridItem(.fixed(layout.cellWidth), spacing: layout.spacing),
+            count: columnCount
+        )
+
+        return LazyVGrid(
+            columns: columns,
+            alignment: .leading,
+            spacing: isExpanded ? 12 : 9
+        ) {
+            ForEach(Array(cells.enumerated()), id: \.element.id) { index, cell in
+                VStack(spacing: 5) {
+                    activityCell(
+                        cell,
+                        width: layout.cellWidth,
+                        maximumCount: maximumCount
+                    )
+                    Text(layout.columnLabels[index])
+                        .font(.system(size: isExpanded ? 9 : 7.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .frame(width: layout.cellWidth)
+                }
+            }
+        }
+    }
+
+    private func heatmapContent(
+        layout: HeatmapLayout,
+        maximumCount: Int
+    ) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            VStack(spacing: Self.cellSpacing) {
-                ForEach(Self.timeBlocks, id: \.self) { hour in
-                    Text(hourLabel(hour))
+            VStack(spacing: layout.spacing) {
+                ForEach(layout.rows) { row in
+                    Text(row.label)
                         .font(.system(size: 9, weight: .medium, design: .rounded).monospacedDigit())
                         .foregroundStyle(.tertiary)
-                        .frame(width: 26, height: Self.cellHeight, alignment: .trailing)
+                        .frame(
+                            width: layout.rowLabelWidth,
+                            height: layout.cellWidth,
+                            alignment: .trailing
+                        )
                 }
             }
 
             VStack(spacing: 7) {
-                VStack(spacing: Self.cellSpacing) {
-                    ForEach(Self.timeBlocks, id: \.self) { hour in
-                        HStack(spacing: Self.cellSpacing) {
-                            ForEach(days, id: \.self) { day in
-                                activityCell(day: day, startingHour: hour)
+                VStack(spacing: layout.spacing) {
+                    ForEach(layout.rows) { row in
+                        HStack(spacing: layout.spacing) {
+                            ForEach(row.cells) { cell in
+                                activityCell(
+                                    cell,
+                                    width: layout.cellWidth,
+                                    maximumCount: maximumCount
+                                )
                             }
                         }
                     }
                 }
 
-                HStack(spacing: Self.cellSpacing) {
-                    ForEach(days, id: \.self) { day in
-                        Text(Self.weekdayFormatter.string(from: day))
-                            .font(.system(size: 9, weight: .medium))
+                HStack(spacing: layout.spacing) {
+                    ForEach(Array(layout.columnLabels.enumerated()), id: \.offset) { _, label in
+                        Text(label)
+                            .font(.system(size: layout.columnLabels.count >= 12 ? 7.5 : 9, weight: .medium))
                             .foregroundStyle(.secondary)
-                            .frame(width: Self.cellWidth)
+                            .frame(width: layout.cellWidth)
                     }
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Request activity heatmap for the past seven days")
     }
 
-    private func activityCell(day: Date, startingHour: Int) -> some View {
-        let count = requestCount(on: day, startingHour: startingHour)
-        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+    private func activityCell(
+        _ cell: HeatmapCell,
+        width: CGFloat,
+        maximumCount: Int
+    ) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
 
         return shape
-            .fill(heatmapColor(for: count))
-            .frame(width: Self.cellWidth, height: Self.cellHeight)
+            .fill(heatmapColor(for: cell.count, maximumCount: maximumCount))
+            .frame(width: width, height: width)
             .overlay {
                 shape.stroke(
-                    count == 0 ? DashboardPalette.panelStroke : Color.white.opacity(0.08),
-                    lineWidth: 0.6
+                    cell.count == 0 ? DashboardPalette.panelStroke.opacity(0.7) : Color.white.opacity(0.07),
+                    lineWidth: 0.45
                 )
             }
-            .help(activityHelp(day: day, startingHour: startingHour, count: count))
-            .accessibilityLabel(activityHelp(day: day, startingHour: startingHour, count: count))
+            .help(cell.help)
+            .accessibilityLabel(cell.help)
     }
 
     private var periodBreakdown: some View {
@@ -617,28 +745,203 @@ private struct UserActivityPanel: View {
         }
     }
 
-    private var days: [Date] {
-        let today = calendar.startOfDay(for: Date())
-        return (0..<7).compactMap {
-            calendar.date(byAdding: .day, value: $0 - 6, to: today)
+    private var heatmapLayout: HeatmapLayout {
+        switch range {
+        case .last24Hours:
+            dailyHeatmapLayout
+        case .last7Days:
+            weeklyHeatmapLayout
+        case .last30Days:
+            monthlyHeatmapLayout
+        case .lastYear:
+            yearlyHeatmapLayout
+        case .allTime:
+            allTimeHeatmapLayout
         }
     }
 
-    private var maximumCellCount: Int {
-        Self.timeBlocks.flatMap { hour in
-            days.map { requestCount(on: $0, startingHour: hour) }
-        }.max() ?? 0
+    private var dailyHeatmapLayout: HeatmapLayout {
+        let currentHour = calendar.date(
+            from: calendar.dateComponents([.year, .month, .day, .hour], from: Date())
+        ) ?? Date()
+        let hours = (0..<24).compactMap {
+            calendar.date(byAdding: .hour, value: $0 - 23, to: currentHour)
+        }
+        let cells = hours.map { start in
+            let end = calendar.date(byAdding: .hour, value: 1, to: start) ?? start
+            let count = requestCount(from: start, to: end)
+            return HeatmapCell(
+                id: "hour-\(start.timeIntervalSince1970)",
+                count: count,
+                help: "\(Self.tooltipDateFormatter.string(from: start)), \(hourLabel(calendar.component(.hour, from: start))): \(count) requests"
+            )
+        }
+        let labels = hours.map { hourLabel(calendar.component(.hour, from: $0)) }
+
+        return HeatmapLayout(
+            columnLabels: labels,
+            rows: [HeatmapRow(id: "hours", label: "", cells: cells)],
+            rowLabelWidth: 0,
+            cellWidth: isExpanded ? 34 : 32,
+            spacing: isExpanded ? 9 : 7
+        )
+    }
+
+    private var weeklyHeatmapLayout: HeatmapLayout {
+        let today = calendar.startOfDay(for: Date())
+        let days = (0..<7).compactMap {
+            calendar.date(byAdding: .day, value: $0 - 6, to: today)
+        }
+        let rows = Self.timeBlocks.map { hour in
+            HeatmapRow(
+                id: "time-\(hour)",
+                label: hourLabel(hour),
+                cells: days.map { day in
+                    let start = calendar.date(byAdding: .hour, value: hour, to: day) ?? day
+                    let end = calendar.date(byAdding: .hour, value: 4, to: start) ?? start
+                    let count = requestCount(from: start, to: end)
+                    return HeatmapCell(
+                        id: "week-\(day.timeIntervalSince1970)-\(hour)",
+                        count: count,
+                        help: "\(Self.tooltipDateFormatter.string(from: day)), \(hourLabel(hour))–\(hourLabel((hour + 4) % 24)): \(count) requests"
+                    )
+                }
+            )
+        }
+
+        return HeatmapLayout(
+            columnLabels: days.map { Self.weekdayFormatter.string(from: $0) },
+            rows: rows,
+            rowLabelWidth: isExpanded ? 52 : 40,
+            cellWidth: isExpanded ? 34 : 25,
+            spacing: isExpanded ? 9 : 7
+        )
+    }
+
+    private var monthlyHeatmapLayout: HeatmapLayout {
+        let today = calendar.startOfDay(for: Date())
+        let start = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+        let dates = (0..<35).compactMap {
+            calendar.date(byAdding: .day, value: $0, to: start)
+        }
+        let rows = (0..<5).map { week in
+            let weekDates = Array(dates[(week * 7)..<(week * 7 + 7)])
+            return HeatmapRow(
+                id: "week-\(week)",
+                label: "Week \(week + 1)",
+                cells: weekDates.map { day in
+                    let end = calendar.date(byAdding: .day, value: 1, to: day) ?? day
+                    let isInRange = day <= today
+                    let count = isInRange ? requestCount(from: day, to: end) : 0
+                    return HeatmapCell(
+                        id: "month-\(day.timeIntervalSince1970)",
+                        count: count,
+                        help: isInRange
+                            ? "\(Self.tooltipDateFormatter.string(from: day)): \(count) requests"
+                            : "Outside the selected period"
+                    )
+                }
+            )
+        }
+
+        return HeatmapLayout(
+            columnLabels: Array(dates.prefix(7)).map { Self.weekdayFormatter.string(from: $0) },
+            rows: rows,
+            rowLabelWidth: isExpanded ? 52 : 40,
+            cellWidth: isExpanded ? 34 : 25,
+            spacing: isExpanded ? 9 : 7
+        )
+    }
+
+    private var yearlyHeatmapLayout: HeatmapLayout {
+        let currentMonth = calendar.date(
+            from: calendar.dateComponents([.year, .month], from: Date())
+        ) ?? Date()
+        let months = (0..<12).compactMap {
+            calendar.date(byAdding: .month, value: $0 - 11, to: currentMonth)
+        }
+        let rows = (0..<5).map { week in
+            HeatmapRow(
+                id: "month-week-\(week)",
+                label: "Week \(week + 1)",
+                cells: months.map { month in
+                    let nextMonth = calendar.date(byAdding: .month, value: 1, to: month) ?? month
+                    let start = calendar.date(byAdding: .day, value: week * 7, to: month) ?? month
+                    let proposedEnd = calendar.date(byAdding: .day, value: 7, to: start) ?? start
+                    let end = min(proposedEnd, nextMonth)
+                    let count = start < nextMonth ? requestCount(from: start, to: end) : 0
+                    return HeatmapCell(
+                        id: "year-\(month.timeIntervalSince1970)-\(week)",
+                        count: count,
+                        help: "\(Self.monthFormatter.string(from: month)), week \(week + 1): \(count) requests"
+                    )
+                }
+            )
+        }
+
+        return HeatmapLayout(
+            columnLabels: months.map { Self.shortMonthFormatter.string(from: $0) },
+            rows: rows,
+            rowLabelWidth: isExpanded ? 52 : 40,
+            cellWidth: isExpanded ? 32 : 17,
+            spacing: isExpanded ? 8 : 4.5
+        )
+    }
+
+    private var allTimeHeatmapLayout: HeatmapLayout {
+        let pointYears = Array(Set(points.map { calendar.component(.year, from: $0.bucketStart) })).sorted()
+        let years = pointYears.isEmpty ? [calendar.component(.year, from: Date())] : pointYears
+        let rowYearGroups: [[Int]]
+        if years.count <= 6 {
+            rowYearGroups = years.map { [$0] }
+        } else {
+            rowYearGroups = [Array(years.dropLast(5))] + years.suffix(5).map { [$0] }
+        }
+        let rows = rowYearGroups.map { yearGroup in
+            let label = yearGroup.count == 1
+                ? String(yearGroup[0])
+                : "≤\(yearGroup.last ?? 0)"
+            return HeatmapRow(
+                id: "years-\(yearGroup.map(String.init).joined(separator: "-"))",
+                label: label,
+                cells: (1...12).map { month in
+                    let count = requestCount(month: month, years: Set(yearGroup))
+                    return HeatmapCell(
+                        id: "all-\(label)-\(month)",
+                        count: count,
+                        help: "\(Self.monthNames[month - 1]) \(label): \(count) requests"
+                    )
+                }
+            )
+        }
+
+        return HeatmapLayout(
+            columnLabels: Self.shortMonthNames,
+            rows: rows,
+            rowLabelWidth: isExpanded ? 52 : 40,
+            cellWidth: isExpanded ? 32 : 17,
+            spacing: isExpanded ? 8 : 4.5
+        )
     }
 
     private var totalRequestCount: Int {
         points.reduce(0) { $0 + $1.requestCount }
     }
 
-    private func requestCount(on day: Date, startingHour: Int) -> Int {
+    private func requestCount(from start: Date, to end: Date) -> Int {
+        return points.reduce(0) { result, point in
+            guard point.bucketStart >= start, point.bucketStart < end else {
+                return result
+            }
+            return result + point.requestCount
+        }
+    }
+
+    private func requestCount(month: Int, years: Set<Int>) -> Int {
         points.reduce(0) { result, point in
-            let hour = calendar.component(.hour, from: point.bucketStart)
-            guard calendar.isDate(point.bucketStart, inSameDayAs: day),
-                  (startingHour..<(startingHour + 4)).contains(hour)
+            let components = calendar.dateComponents([.year, .month], from: point.bucketStart)
+            guard components.month == month,
+                  components.year.map(years.contains) == true
             else {
                 return result
             }
@@ -646,27 +949,31 @@ private struct UserActivityPanel: View {
         }
     }
 
-    private func heatmapColor(for count: Int) -> Color {
-        guard count > 0, maximumCellCount > 0 else {
+    private func heatmapColor(for count: Int, maximumCount: Int) -> Color {
+        guard count > 0, maximumCount > 0 else {
             return Color.secondary.opacity(0.08)
         }
-        let intensity = Double(count) / Double(max(maximumCellCount, 4))
+        let intensity = Double(count) / Double(max(maximumCount, 4))
         return DashboardPalette.accent.opacity(0.24 + (intensity * 0.76))
     }
 
     private func hourLabel(_ hour: Int) -> String {
         switch hour {
-        case 0: "12a"
-        case 1..<12: "\(hour)a"
-        case 12: "12p"
-        default: "\(hour - 12)p"
+        case 0: "12 am"
+        case 1..<12: "\(hour) am"
+        case 12: "12 pm"
+        default: "\(hour - 12) pm"
         }
     }
 
-    private func activityHelp(day: Date, startingHour: Int, count: Int) -> String {
-        let dayLabel = Self.tooltipDateFormatter.string(from: day)
-        let endHour = (startingHour + 4) % 24
-        return "\(dayLabel), \(hourLabel(startingHour))–\(hourLabel(endHour)): \(count) requests"
+    private var rangeLabel: String {
+        switch range {
+        case .last24Hours: "the past 24 hours"
+        case .last7Days: "the past 7 days"
+        case .last30Days: "the past 30 days"
+        case .lastYear: "the past year"
+        case .allTime: "all time"
+        }
     }
 
     private func periodShare(_ period: UserActivityPeriod) -> Double {
@@ -700,6 +1007,33 @@ private struct UserActivityPanel: View {
         formatter.setLocalizedDateFormatFromTemplate("EEE MMM d")
         return formatter
     }()
+
+    private static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.timeZone = .current
+        formatter.setLocalizedDateFormatFromTemplate("MMM yyyy")
+        return formatter
+    }()
+
+    private static let shortMonthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.timeZone = .current
+        formatter.dateFormat = "MMM"
+        return formatter
+    }()
+
+    private static let monthNames: [String] = {
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        return formatter.monthSymbols
+    }()
+
+    private static let shortMonthNames: [String] = monthNames.map {
+        String($0.prefix(3))
+    }
+
 }
 
 private struct ActivityLegendItem: View {

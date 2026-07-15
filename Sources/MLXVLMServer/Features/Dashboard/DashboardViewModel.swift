@@ -264,7 +264,7 @@ final class DashboardViewModel: ObservableObject {
                 granularityOverride: displayGranularity
             )
             let rawActivityBuckets = store.fetchBuckets(
-                range: MLXServerAnalyticsRange.last7Days,
+                range: range.analyticsRange,
                 modelID: selectedModelID,
                 granularityOverride: .hour
             )
@@ -402,32 +402,14 @@ private extension DashboardViewModel {
     }
 
     nonisolated static func activityPoints(
-        from rawBuckets: [MLXServerAnalyticsBucketPoint],
-        calendar: Calendar = .current
+        from rawBuckets: [MLXServerAnalyticsBucketPoint]
     ) -> [ActivityPoint] {
         guard !rawBuckets.isEmpty else {
             return []
         }
 
         let grouped = Dictionary(grouping: rawBuckets, by: \.bucketStart)
-        let end = normalizedBucketDate(
-            for: Date(),
-            granularity: .hour,
-            calendar: calendar
-        )
-        let start = offset(
-            end,
-            by: -(7 * 24 - 1),
-            granularity: .hour,
-            calendar: calendar
-        )
-
-        return strideDates(
-            from: start,
-            through: end,
-            granularity: .hour,
-            calendar: calendar
-        ).map { bucketStart in
+        return grouped.keys.sorted().map { bucketStart in
             let rows = grouped[bucketStart, default: []]
             let started = rows.reduce(0) { $0 + $1.requestsStarted }
             let finished = rows.reduce(0) { $0 + $1.requestsCompleted + $1.requestsFailed }
