@@ -14,7 +14,7 @@ struct ChatQueuedPrompt: Identifiable, Equatable {
 
 struct ChatView: View {
     private enum Layout {
-        static let conversationMaxWidth: CGFloat = 760
+        static let conversationMaxWidth: CGFloat = 680
         static let horizontalPadding: CGFloat = 32
     }
 
