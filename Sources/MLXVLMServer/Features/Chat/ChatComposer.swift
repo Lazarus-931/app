@@ -44,6 +44,7 @@ private struct ChatImageThumbnail: View {
 struct ChatComposer: View {
     @ObservedObject var viewModel: ChatViewModel
     let unavailableReason: String?
+    let canCompose: Bool
     let canSend: Bool
     let onSend: () -> Void
     @State private var editorContentHeight: CGFloat = 0
@@ -53,10 +54,10 @@ struct ChatComposer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if viewModel.isSending, let sendingStartedAt = viewModel.sendingStartedAt {
+            if viewModel.isCurrentSessionSending, let sendingStartedAt = viewModel.sendingStartedAt {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let elapsed = context.date.timeIntervalSince(sendingStartedAt)
-                    Text("Working for \(MLXServerFormatting.elapsedDuration(elapsed))...")
+                    Text(workingStatus(elapsed: elapsed))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -68,11 +69,21 @@ struct ChatComposer: View {
                     .lineLimit(1)
             }
 
+            if !viewModel.currentSessionQueuedPrompts.isEmpty {
+                ChatQueueTray(
+                    prompts: viewModel.currentSessionQueuedPrompts,
+                    onSteer: viewModel.steerQueuedRequest,
+                    onPrioritize: viewModel.prioritizeQueuedRequest,
+                    onRemove: viewModel.removeQueuedRequest
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topLeading) {
                     ChatComposerTextEditor(
                         text: $viewModel.draft,
-                        isEnabled: unavailableReason == nil,
+                        isEnabled: canCompose,
                         onSubmit: onSend,
                         onContentHeightChange: { height in
                             editorContentHeight = height
@@ -120,28 +131,28 @@ struct ChatComposer: View {
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
-                    .disabled(unavailableReason != nil)
+                    .disabled(!canCompose)
                     .help("Add attachment")
 
                     Spacer(minLength: 12)
 
                     Button {
-                        if viewModel.isSending {
+                        if showsStopButton {
                             viewModel.cancel()
                         } else {
                             onSend()
                         }
                     } label: {
-                        Image(systemName: viewModel.isSending ? "stop.fill" : "arrow.up")
-                            .font(.system(size: viewModel.isSending ? 10 : 15, weight: .semibold))
+                        Image(systemName: showsStopButton ? "stop.fill" : "arrow.up")
+                            .font(.system(size: showsStopButton ? 10 : 15, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 32, height: 32)
                             .background(actionButtonColor, in: Circle())
                             .contentShape(.circle)
                     }
                     .buttonStyle(.plain)
-                    .disabled(!viewModel.isSending && !canSend)
-                    .help(viewModel.isSending ? "Stop response" : "Send (Return)")
+                    .disabled(!showsStopButton && !canSend)
+                    .help(showsStopButton ? "Stop response" : "Send (Return)")
                 }
                 .padding(.leading, 10)
                 .padding(.trailing, 12)
@@ -159,14 +170,130 @@ struct ChatComposer: View {
     }
 
     private var actionButtonColor: Color {
-        if viewModel.isSending || canSend {
+        if showsStopButton || canSend {
             return .accentColor
         }
         return Color(nsColor: .tertiaryLabelColor)
     }
 
+    private var showsStopButton: Bool {
+        viewModel.isCurrentSessionSending && !canSend
+    }
+
+    private func workingStatus(elapsed: TimeInterval) -> String {
+        "Working for \(MLXServerFormatting.elapsedDuration(elapsed))..."
+    }
+
     private var editorHeight: CGFloat {
         min(max(editorContentHeight, editorMinimumHeight), editorMaximumHeight)
+    }
+}
+
+private struct ChatQueueTray: View {
+    let prompts: [ChatQueuedPrompt]
+    let onSteer: (UUID) -> Void
+    let onPrioritize: (UUID) -> Void
+    let onRemove: (UUID) -> Void
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: prompts.count > 2) {
+            LazyVStack(spacing: 7) {
+                ForEach(prompts) { prompt in
+                    ChatQueuedPromptRow(
+                        prompt: prompt,
+                        onSteer: { onSteer(prompt.id) },
+                        onPrioritize: { onPrioritize(prompt.id) },
+                        onRemove: { onRemove(prompt.id) }
+                    )
+                }
+            }
+        }
+        .frame(height: min(CGFloat(prompts.count) * 68, 180))
+        .animation(.snappy(duration: 0.2), value: prompts)
+    }
+}
+
+private struct ChatQueuedPromptRow: View {
+    let prompt: ChatQueuedPrompt
+    let onSteer: () -> Void
+    let onPrioritize: () -> Void
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "list.bullet.indent")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayContent)
+                    .font(.body)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if prompt.attachmentCount > 0 {
+                    Label(attachmentLabel, systemImage: "paperclip")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Button(action: onSteer) {
+                Label("Steer", systemImage: "arrow.turn.down.right")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Stop the current response and run this message next")
+
+            Button(role: .destructive, action: onRemove) {
+                Image(systemName: "trash")
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Remove from queue")
+
+            Menu {
+                Button(action: onPrioritize) {
+                    Label("Move to Front", systemImage: "arrow.up.to.line")
+                }
+                .disabled(prompt.position == 1)
+
+                Divider()
+
+                Button(role: .destructive, action: onRemove) {
+                    Label("Remove from Queue", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 24, height: 24)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Queue options")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.75)
+        }
+        .shadow(color: .black.opacity(0.035), radius: 5, y: 2)
+    }
+
+    private var displayContent: String {
+        prompt.content.isEmpty ? attachmentLabel : prompt.content
+    }
+
+    private var attachmentLabel: String {
+        prompt.attachmentCount == 1
+            ? "1 image"
+            : "\(prompt.attachmentCount) images"
     }
 }
 
@@ -389,4 +516,3 @@ private struct ChatPendingImageAttachmentView: View {
         )
     }
 }
-

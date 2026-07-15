@@ -120,7 +120,8 @@ struct ControlPanelView: View {
                         recent: recent,
                         isSelected: sidebarSelection == recent.selection,
                         isCurrent: isCurrentRecent(recent),
-                        isDisabled: isRecentDisabled(recent),
+                        isSelectionDisabled: isRecentSelectionDisabled(recent),
+                        isDeleteDisabled: isRecentDeleteDisabled(recent),
                         onSelect: {
                             applySidebarSelection(recent.selection)
                         },
@@ -149,7 +150,6 @@ struct ControlPanelView: View {
                             .foregroundStyle(isNewChatHovering ? Color.primary : Color.secondary.opacity(0.7))
                     }
                     .buttonStyle(.plain)
-                    .disabled(isNewRecentDisabled)
                     .help(newRecentHelp)
                     .padding(.trailing, 4)
                     .onHover { isNewChatHovering = $0 }
@@ -271,10 +271,10 @@ struct ControlPanelView: View {
         }
     }
 
-    private func isRecentDisabled(_ recent: ControlPanelRecentSession) -> Bool {
+    private func isRecentDeleteDisabled(_ recent: ControlPanelRecentSession) -> Bool {
         switch recent.selection {
-        case .chat:
-            return chat.isSending
+        case .chat(let sessionID):
+            return chat.isSessionBusy(sessionID)
         case .imageGeneration:
             return imageGeneration.isGenerating
         case .tab:
@@ -282,8 +282,15 @@ struct ControlPanelView: View {
         }
     }
 
-    private var isNewRecentDisabled: Bool {
-        chat.isSending
+    private func isRecentSelectionDisabled(_ recent: ControlPanelRecentSession) -> Bool {
+        switch recent.selection {
+        case .chat:
+            return false
+        case .imageGeneration:
+            return imageGeneration.isGenerating
+        case .tab:
+            return false
+        }
     }
 
     private var newRecentHelp: String {
@@ -454,7 +461,8 @@ private struct ControlPanelRecentSessionRow: View {
     let recent: ControlPanelRecentSession
     let isSelected: Bool
     let isCurrent: Bool
-    let isDisabled: Bool
+    let isSelectionDisabled: Bool
+    let isDeleteDisabled: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
     @State private var isHovering = false
@@ -479,7 +487,7 @@ private struct ControlPanelRecentSessionRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .disabled(isDisabled)
+            .disabled(isSelectionDisabled)
             .help(recent.title)
 
             if isHovering {
@@ -494,15 +502,15 @@ private struct ControlPanelRecentSessionRow: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(isDeleteHovering ? Color.red : Color.secondary)
-                .disabled(isDisabled)
+                .disabled(isDeleteDisabled)
                 .help("Delete \(recent.title)")
-                .opacity(isHovering && !isDisabled ? 1 : 0)
-                .allowsHitTesting(isHovering && !isDisabled)
+                .opacity(isHovering && !isDeleteDisabled ? 1 : 0)
+                .allowsHitTesting(isHovering && !isDeleteDisabled)
                 .onHover { isDeleteHovering = $0 }
             }
         }
         .sidebarRowSelectionStyle(isSelected: isSelected)
-        .opacity(isDisabled && !isCurrent ? 0.55 : 1)
+        .opacity(isSelectionDisabled && !isCurrent ? 0.55 : 1)
         .onHover { isHovering = $0 }
         .animation(.easeInOut, value: isHovering)
         .contextMenu {
@@ -511,13 +519,14 @@ private struct ControlPanelRecentSessionRow: View {
             } label: {
                 Label("Open", systemImage: "arrow.up.right.square")
             }
+            .disabled(isSelectionDisabled)
 
             Button(role: .destructive) {
                 onDelete()
             } label: {
                 Label("Delete", systemImage: "trash")
             }
-            .disabled(isDisabled)
+            .disabled(isDeleteDisabled)
         }
     }
 }

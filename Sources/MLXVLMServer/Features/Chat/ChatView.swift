@@ -5,6 +5,13 @@ import SwiftUI
 import Textual
 import UniformTypeIdentifiers
 
+struct ChatQueuedPrompt: Identifiable, Equatable {
+    let id: UUID
+    let content: String
+    let attachmentCount: Int
+    let position: Int
+}
+
 struct ChatView: View {
     private enum Layout {
         static let contentMaxWidth: CGFloat = 860
@@ -35,6 +42,7 @@ struct ChatView: View {
                         ChatComposer(
                             viewModel: chat,
                             unavailableReason: unavailableReason,
+                            canCompose: canCompose,
                             canSend: canSend,
                             onSend: {
                                 chat.send(using: model)
@@ -83,6 +91,12 @@ struct ChatView: View {
             && chat.canSend(isRunning: model.isRunning, selectedModelID: selectedModelID)
     }
 
+    private var canCompose: Bool {
+        model.isRunning
+            && selectedModelID?.isEmpty == false
+            && model.settings.structuredOutputValidationError == nil
+    }
+
     private var unavailableReason: String? {
         chat.unavailableReason(isRunning: model.isRunning, selectedModelID: selectedModelID)
             ?? model.settings.structuredOutputValidationError
@@ -91,15 +105,17 @@ struct ChatView: View {
     private var transcript: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                if chat.messages.isEmpty {
-                    ChatEmptyTranscriptView(
-                        isRunning: model.isRunning,
-                        selectedModelID: selectedModelID
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 120)
+                if chat.visibleMessages.isEmpty {
+                    if chat.messages.isEmpty {
+                        ChatEmptyTranscriptView(
+                            isRunning: model.isRunning,
+                            selectedModelID: selectedModelID
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 120)
+                    }
                 } else {
-                    ForEach(chat.messages) { message in
+                    ForEach(chat.visibleMessages) { message in
                         ChatMessageRow(message: message)
                             .id(message.id)
                     }
@@ -135,20 +151,31 @@ struct ChatView: View {
 
 @MainActor
 final class ChatViewModel: ObservableObject {
+    private struct QueuedChatRequest {
+        let id: UUID
+        let sessionID: UUID
+        let userMessageID: UUID
+        let assistantMessageID: UUID
+        let settings: MLXServerSettings
+    }
+
     @Published private(set) var sessions: [ChatSessionSummary] = []
     @Published private(set) var currentSessionID: UUID?
     @Published private(set) var messages: [ChatTranscriptMessage] = []
     @Published private(set) var pendingImageAttachments: [ChatImageAttachment] = []
     @Published var draft = ""
-    @Published private(set) var isSending = false
+    @Published private(set) var activeRequestSessionID: UUID?
     @Published private(set) var sendingStartedAt: Date?
     @Published private(set) var scrollToken = 0
 
     private let client = MLXServerChatClient()
     private let sessionStore = ChatSessionStore()
     private var activeTask: Task<Void, Never>?
+    private var activeRequestID: UUID?
+    @Published private var requestQueue: [QueuedChatRequest] = []
     private var storedSessions: [ChatSession] = []
     private var currentSession: ChatSession?
+    private weak var appModel: MLXServerModel?
 
     init() {
         storedSessions = sessionStore.loadSessions()
@@ -164,10 +191,46 @@ final class ChatViewModel: ObservableObject {
         activeTask?.cancel()
     }
 
+    var isCurrentSessionSending: Bool {
+        guard let activeRequestSessionID else {
+            return false
+        }
+        return activeRequestSessionID == currentSessionID
+    }
+
+    var visibleMessages: [ChatTranscriptMessage] {
+        let queuedMessageIDs = Set(
+            requestQueue.lazy
+                .filter { $0.sessionID == self.currentSessionID }
+                .map(\.userMessageID)
+        )
+        return messages.filter { !queuedMessageIDs.contains($0.id) }
+    }
+
+    var currentSessionQueuedPrompts: [ChatQueuedPrompt] {
+        requestQueue.enumerated().compactMap { index, queuedRequest in
+            guard queuedRequest.sessionID == currentSessionID,
+                  let message = message(queuedRequest.userMessageID, in: queuedRequest.sessionID)
+            else {
+                return nil
+            }
+            return ChatQueuedPrompt(
+                id: queuedRequest.id,
+                content: message.content,
+                attachmentCount: message.imageAttachments.count,
+                position: index + 1
+            )
+        }
+    }
+
+    func isSessionBusy(_ sessionID: UUID) -> Bool {
+        activeRequestSessionID == sessionID
+            || requestQueue.contains(where: { $0.sessionID == sessionID })
+    }
+
     func canSend(isRunning: Bool, selectedModelID: String?) -> Bool {
         isRunning
             && selectedModelID?.isEmpty == false
-            && !isSending
             && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || !pendingImageAttachments.isEmpty)
     }
@@ -179,17 +242,13 @@ final class ChatViewModel: ObservableObject {
         if selectedModelID?.isEmpty != false {
             return "Select a model in Models."
         }
-        if isSending {
+        if activeRequestSessionID == currentSessionID {
             return "Working..."
         }
         return nil
     }
 
     func createSession() {
-        guard !isSending else {
-            return
-        }
-
         if canReuseCurrentEmptySession {
             if let currentSession {
                 applyCurrentSession(currentSession)
@@ -206,6 +265,7 @@ final class ChatViewModel: ObservableObject {
             messages: []
         )
 
+        persistCurrentSession(updateTimestamp: false)
         storedSessions.append(session)
         pruneRedundantEmptySessions()
         sessionStore.saveSession(session)
@@ -215,11 +275,12 @@ final class ChatViewModel: ObservableObject {
     }
 
     func selectSession(_ sessionID: UUID) {
-        guard !isSending, sessionID != currentSessionID else {
+        guard sessionID != currentSessionID else {
             return
         }
 
         if let session = storedSessions.first(where: { $0.id == sessionID }) {
+            persistCurrentSession(updateTimestamp: false)
             draft = ""
             pendingImageAttachments.removeAll()
             applyCurrentSession(session)
@@ -227,6 +288,7 @@ final class ChatViewModel: ObservableObject {
         }
 
         if let session = sessionStore.loadSession(id: sessionID) {
+            persistCurrentSession(updateTimestamp: false)
             upsertStoredSession(session)
             draft = ""
             pendingImageAttachments.removeAll()
@@ -235,7 +297,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     func deleteSession(_ sessionID: UUID) {
-        guard !isSending else {
+        guard !isSessionBusy(sessionID) else {
             return
         }
 
@@ -265,7 +327,7 @@ final class ChatViewModel: ObservableObject {
         let settings = appModel.settings.normalized()
         guard canSend(isRunning: appModel.isRunning, selectedModelID: settings.languageModelID),
               let modelID = settings.languageModelID,
-              currentSession != nil
+              let currentSession
         else {
             return
         }
@@ -283,95 +345,51 @@ final class ChatViewModel: ObservableObject {
         )
         messages.append(userMessage)
         persistCurrentSession(updateTimestamp: true)
-
-        var requestMessages = messages.compactMap(\.apiMessage)
-        if !settings.systemPrompt.isEmpty {
-            requestMessages.insert(
-                MLXChatMessage(role: "system", content: settings.systemPrompt),
-                at: 0
-            )
-        }
-        let assistantID = UUID()
-        messages.append(ChatTranscriptMessage(
-            id: assistantID,
-            role: .assistant,
-            content: "",
-            modelID: modelID,
-            isStreaming: true,
-            isThinkingEnabled: settings.thinkingEnabled
+        self.appModel = appModel
+        requestQueue.append(QueuedChatRequest(
+            id: UUID(),
+            sessionID: currentSession.id,
+            userMessageID: userMessage.id,
+            assistantMessageID: UUID(),
+            settings: settings
         ))
-        sendingStartedAt = Date()
-        isSending = true
         bumpScroll()
-
-        let request = MLXChatCompletionRequest(
-            model: modelID,
-            messages: requestMessages,
-            maxTokens: settings.maxTokens,
-            temperature: settings.temperature,
-            topK: settings.topK,
-            topP: settings.topP,
-            minP: settings.minP,
-            repetitionPenalty: settings.repetitionPenaltyEnabled ? settings.repetitionPenalty : nil,
-            enableThinking: settings.thinkingEnabled,
-            thinkingBudget: settings.thinkingEnabled && settings.thinkingBudgetEnabled
-                ? settings.thinkingBudget
-                : nil,
-            thinkingStartToken: settings.thinkingEnabled ? settings.thinkingStartToken : nil,
-            thinkingEndToken: settings.thinkingEnabled ? settings.thinkingEndToken : nil,
-            responseFormat: settings.chatResponseFormat,
-            stream: true
-        )
-
-        activeTask?.cancel()
-        activeTask = Task { @MainActor [weak self, weak appModel] in
-            guard let self else {
-                return
-            }
-
-            do {
-                let completion = try await client.streamChat(request, onEvent: { [weak self] event in
-                    await MainActor.run {
-                        self?.append(event: event, to: assistantID)
-                    }
-                })
-                finishAssistantMessage(
-                    assistantID,
-                    fallbackContent: completion.content,
-                    fallbackReasoningContent: completion.reasoningContent,
-                    responseMetrics: ChatResponseMetrics(completion: completion),
-                    isCancelled: false
-                )
-                appModel?.refreshMetricsIfRunning(force: true)
-            } catch is CancellationError {
-                finishAssistantMessage(
-                    assistantID,
-                    fallbackContent: "Response cancelled.",
-                    fallbackReasoningContent: nil,
-                    responseMetrics: nil,
-                    isCancelled: true
-                )
-            } catch {
-                failAssistantMessage(assistantID, error: error)
-                appModel?.refreshMetricsIfRunning(force: true)
-            }
-
-            isSending = false
-            sendingStartedAt = nil
-            activeTask = nil
-            bumpScroll()
-        }
+        startNextRequestIfNeeded()
     }
 
     func cancel() {
         activeTask?.cancel()
     }
 
-    func chooseImageAttachments() {
-        guard !isSending else {
+    func prioritizeQueuedRequest(_ requestID: UUID) {
+        guard let index = requestQueue.firstIndex(where: { $0.id == requestID }), index > 0 else {
             return
         }
+        let queuedRequest = requestQueue.remove(at: index)
+        requestQueue.insert(queuedRequest, at: 0)
+    }
 
+    func steerQueuedRequest(_ requestID: UUID) {
+        guard requestQueue.contains(where: { $0.id == requestID }) else {
+            return
+        }
+        prioritizeQueuedRequest(requestID)
+        activeTask?.cancel()
+    }
+
+    func removeQueuedRequest(_ requestID: UUID) {
+        guard let index = requestQueue.firstIndex(where: { $0.id == requestID }) else {
+            return
+        }
+        let queuedRequest = requestQueue.remove(at: index)
+        removeMessage(queuedRequest.userMessageID, from: queuedRequest.sessionID)
+        persistSession(queuedRequest.sessionID, updateTimestamp: true)
+        if currentSessionID == queuedRequest.sessionID {
+            bumpScroll()
+        }
+    }
+
+    func chooseImageAttachments() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -399,7 +417,9 @@ final class ChatViewModel: ObservableObject {
     func clear() {
         activeTask?.cancel()
         activeTask = nil
-        isSending = false
+        activeRequestID = nil
+        activeRequestSessionID = nil
+        requestQueue.removeAll()
         sendingStartedAt = nil
         draft = ""
         pendingImageAttachments.removeAll()
@@ -408,73 +428,261 @@ final class ChatViewModel: ObservableObject {
         bumpScroll()
     }
 
-    private func append(event: MLXChatStreamDelta, to id: UUID) {
-        guard let index = messages.firstIndex(where: { $0.id == id }) else {
+    private func startNextRequestIfNeeded() {
+        guard activeTask == nil else {
             return
         }
-        if let reasoningContent = event.reasoningContent {
-            messages[index].reasoningContent.append(reasoningContent)
-        }
-        if let content = event.content {
-            if !content.isEmpty,
-               !messages[index].reasoningContent.isEmpty,
-               messages[index].thinkingDuration == nil {
-                messages[index].thinkingDuration = Date().timeIntervalSince(messages[index].createdAt)
+
+        while !requestQueue.isEmpty {
+            let queuedRequest = requestQueue.removeFirst()
+            guard let request = makeCompletionRequest(for: queuedRequest),
+                  insertAssistantMessage(for: queuedRequest)
+            else {
+                continue
             }
-            messages[index].content.append(content)
+
+            activeRequestID = queuedRequest.id
+            activeRequestSessionID = queuedRequest.sessionID
+            sendingStartedAt = Date()
+            if currentSessionID == queuedRequest.sessionID {
+                bumpScroll()
+            }
+
+            activeTask = Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+
+                do {
+                    let completion = try await client.streamChat(request, onEvent: { [weak self] event in
+                        await MainActor.run {
+                            self?.append(
+                                event: event,
+                                to: queuedRequest.assistantMessageID,
+                                in: queuedRequest.sessionID
+                            )
+                        }
+                    })
+                    finishAssistantMessage(
+                        queuedRequest.assistantMessageID,
+                        in: queuedRequest.sessionID,
+                        fallbackContent: completion.content,
+                        fallbackReasoningContent: completion.reasoningContent,
+                        responseMetrics: ChatResponseMetrics(completion: completion),
+                        isCancelled: false
+                    )
+                    appModel?.refreshMetricsIfRunning(force: true)
+                } catch is CancellationError {
+                    finishAssistantMessage(
+                        queuedRequest.assistantMessageID,
+                        in: queuedRequest.sessionID,
+                        fallbackContent: "Response cancelled.",
+                        fallbackReasoningContent: nil,
+                        responseMetrics: nil,
+                        isCancelled: true
+                    )
+                } catch {
+                    failAssistantMessage(
+                        queuedRequest.assistantMessageID,
+                        in: queuedRequest.sessionID,
+                        error: error
+                    )
+                    appModel?.refreshMetricsIfRunning(force: true)
+                }
+
+                guard activeRequestID == queuedRequest.id else {
+                    return
+                }
+                activeRequestID = nil
+                activeRequestSessionID = nil
+                sendingStartedAt = nil
+                activeTask = nil
+                if currentSessionID == queuedRequest.sessionID {
+                    bumpScroll()
+                }
+                startNextRequestIfNeeded()
+            }
+            return
         }
-        bumpScroll()
+    }
+
+    private func makeCompletionRequest(for queuedRequest: QueuedChatRequest) -> MLXChatCompletionRequest? {
+        guard let modelID = queuedRequest.settings.languageModelID,
+              let sessionMessages = sessionMessages(for: queuedRequest.sessionID),
+              let userMessageIndex = sessionMessages.firstIndex(where: { $0.id == queuedRequest.userMessageID })
+        else {
+            return nil
+        }
+
+        var requestMessages = sessionMessages[...userMessageIndex].compactMap(\.apiMessage)
+        if !queuedRequest.settings.systemPrompt.isEmpty {
+            requestMessages.insert(
+                MLXChatMessage(role: "system", content: queuedRequest.settings.systemPrompt),
+                at: 0
+            )
+        }
+
+        let settings = queuedRequest.settings
+        return MLXChatCompletionRequest(
+            model: modelID,
+            messages: requestMessages,
+            maxTokens: settings.maxTokens,
+            temperature: settings.temperature,
+            topK: settings.topK,
+            topP: settings.topP,
+            minP: settings.minP,
+            repetitionPenalty: settings.repetitionPenaltyEnabled ? settings.repetitionPenalty : nil,
+            enableThinking: settings.thinkingEnabled,
+            thinkingBudget: settings.thinkingEnabled && settings.thinkingBudgetEnabled
+                ? settings.thinkingBudget
+                : nil,
+            thinkingStartToken: settings.thinkingEnabled ? settings.thinkingStartToken : nil,
+            thinkingEndToken: settings.thinkingEnabled ? settings.thinkingEndToken : nil,
+            responseFormat: settings.chatResponseFormat,
+            stream: true
+        )
+    }
+
+    private func insertAssistantMessage(for queuedRequest: QueuedChatRequest) -> Bool {
+        let assistantMessage = ChatTranscriptMessage(
+            id: queuedRequest.assistantMessageID,
+            role: .assistant,
+            content: "",
+            modelID: queuedRequest.settings.languageModelID,
+            isStreaming: true,
+            isThinkingEnabled: queuedRequest.settings.thinkingEnabled
+        )
+
+        if currentSessionID == queuedRequest.sessionID {
+            guard let userMessageIndex = messages.firstIndex(where: { $0.id == queuedRequest.userMessageID }) else {
+                return false
+            }
+            messages.insert(assistantMessage, at: userMessageIndex + 1)
+            return true
+        }
+
+        guard let sessionIndex = storedSessions.firstIndex(where: { $0.id == queuedRequest.sessionID }),
+              let userMessageIndex = storedSessions[sessionIndex].messages.firstIndex(
+                where: { $0.id == queuedRequest.userMessageID }
+              )
+        else {
+            return false
+        }
+        storedSessions[sessionIndex].messages.insert(assistantMessage, at: userMessageIndex + 1)
+        return true
+    }
+
+    private func sessionMessages(for sessionID: UUID) -> [ChatTranscriptMessage]? {
+        if currentSessionID == sessionID {
+            return messages
+        }
+        return storedSessions.first(where: { $0.id == sessionID })?.messages
+    }
+
+    private func message(_ messageID: UUID, in sessionID: UUID) -> ChatTranscriptMessage? {
+        sessionMessages(for: sessionID)?.first(where: { $0.id == messageID })
+    }
+
+    private func removeMessage(_ messageID: UUID, from sessionID: UUID) {
+        if currentSessionID == sessionID {
+            messages.removeAll { $0.id == messageID }
+            return
+        }
+        guard let sessionIndex = storedSessions.firstIndex(where: { $0.id == sessionID }) else {
+            return
+        }
+        storedSessions[sessionIndex].messages.removeAll { $0.id == messageID }
+    }
+
+    private func append(event: MLXChatStreamDelta, to id: UUID, in sessionID: UUID) {
+        updateMessage(id, in: sessionID) { message in
+            if let reasoningContent = event.reasoningContent {
+                message.reasoningContent.append(reasoningContent)
+            }
+            if let content = event.content {
+                if !content.isEmpty,
+                   !message.reasoningContent.isEmpty,
+                   message.thinkingDuration == nil {
+                    message.thinkingDuration = Date().timeIntervalSince(message.createdAt)
+                }
+                message.content.append(content)
+            }
+        }
+        if currentSessionID == sessionID {
+            bumpScroll()
+        }
     }
 
     private func finishAssistantMessage(
         _ id: UUID,
+        in sessionID: UUID,
         fallbackContent: String,
         fallbackReasoningContent: String?,
         responseMetrics: ChatResponseMetrics?,
         isCancelled: Bool
     ) {
-        guard let index = messages.firstIndex(where: { $0.id == id }) else {
-            return
+        updateMessage(id, in: sessionID) { message in
+            message.isStreaming = false
+            if message.content.isEmpty {
+                message.content = fallbackContent
+            }
+            if message.reasoningContent.isEmpty,
+               let fallbackReasoningContent {
+                message.reasoningContent = fallbackReasoningContent
+            }
+            if !message.reasoningContent.isEmpty,
+               message.thinkingDuration == nil {
+                message.thinkingDuration = Date().timeIntervalSince(message.createdAt)
+            }
+            if isCancelled,
+               message.content == fallbackContent,
+               message.reasoningContent.isEmpty {
+                message.role = .error
+            }
+            message.responseMetrics = responseMetrics?.hasVisibleValues == true
+                ? responseMetrics
+                : nil
         }
-
-        messages[index].isStreaming = false
-        if messages[index].content.isEmpty {
-            messages[index].content = fallbackContent
-        }
-        if messages[index].reasoningContent.isEmpty,
-           let fallbackReasoningContent {
-            messages[index].reasoningContent = fallbackReasoningContent
-        }
-        if !messages[index].reasoningContent.isEmpty,
-           messages[index].thinkingDuration == nil {
-            messages[index].thinkingDuration = Date().timeIntervalSince(messages[index].createdAt)
-        }
-        if isCancelled,
-           messages[index].content == fallbackContent,
-           messages[index].reasoningContent.isEmpty {
-            messages[index].role = .error
-        }
-        messages[index].responseMetrics = responseMetrics?.hasVisibleValues == true
-            ? responseMetrics
-            : nil
-        persistCurrentSession(updateTimestamp: true)
+        persistSession(sessionID, updateTimestamp: true)
     }
 
-    private func failAssistantMessage(_ id: UUID, error: Error) {
-        guard let index = messages.firstIndex(where: { $0.id == id }) else {
-            messages.append(ChatTranscriptMessage(role: .error, content: error.localizedDescription))
-            persistCurrentSession(updateTimestamp: true)
+    private func failAssistantMessage(_ id: UUID, in sessionID: UUID, error: Error) {
+        guard updateMessage(id, in: sessionID, mutate: { message in
+            message.role = .error
+            message.content = error.localizedDescription
+            message.isStreaming = false
+            if !message.reasoningContent.isEmpty,
+               message.thinkingDuration == nil {
+                message.thinkingDuration = Date().timeIntervalSince(message.createdAt)
+            }
+        }) else {
             return
         }
+        persistSession(sessionID, updateTimestamp: true)
+    }
 
-        messages[index].role = .error
-        messages[index].content = error.localizedDescription
-        messages[index].isStreaming = false
-        if !messages[index].reasoningContent.isEmpty,
-           messages[index].thinkingDuration == nil {
-            messages[index].thinkingDuration = Date().timeIntervalSince(messages[index].createdAt)
+    @discardableResult
+    private func updateMessage(
+        _ messageID: UUID,
+        in sessionID: UUID,
+        mutate: (inout ChatTranscriptMessage) -> Void
+    ) -> Bool {
+        if currentSessionID == sessionID {
+            guard let messageIndex = messages.firstIndex(where: { $0.id == messageID }) else {
+                return false
+            }
+            mutate(&messages[messageIndex])
+            return true
         }
-        persistCurrentSession(updateTimestamp: true)
+
+        guard let sessionIndex = storedSessions.firstIndex(where: { $0.id == sessionID }),
+              let messageIndex = storedSessions[sessionIndex].messages.firstIndex(where: { $0.id == messageID })
+        else {
+            return false
+        }
+
+        mutate(&storedSessions[sessionIndex].messages[messageIndex])
+        return true
     }
 
     private func bumpScroll() {
@@ -503,6 +711,27 @@ final class ChatViewModel: ObservableObject {
         currentSession = session
         upsertStoredSession(session)
         sessionStore.saveSession(session)
+        refreshSessionList()
+    }
+
+    private func persistSession(_ sessionID: UUID, updateTimestamp: Bool) {
+        if sessionID == currentSessionID {
+            persistCurrentSession(updateTimestamp: updateTimestamp)
+            return
+        }
+
+        guard let index = storedSessions.firstIndex(where: { $0.id == sessionID }) else {
+            return
+        }
+
+        storedSessions[index].title = ChatSession.defaultTitle(
+            for: storedSessions[index].messages,
+            createdAt: storedSessions[index].createdAt
+        )
+        if updateTimestamp {
+            storedSessions[index].updatedAt = Date()
+        }
+        sessionStore.saveSession(storedSessions[index])
         refreshSessionList()
     }
 
