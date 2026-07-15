@@ -1207,7 +1207,7 @@ private struct TokenUsagePanel: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 190)
-                } else if metric == .successRate || !showsAllModels {
+                } else if !showsAllModels {
                     chartLegend
                 }
             }
@@ -1215,13 +1215,6 @@ private struct TokenUsagePanel: View {
             if points.isEmpty {
                 DashboardEmptyChart()
                     .frame(minHeight: 230)
-            } else if metric == .successRate {
-                SuccessRateHealthChart(
-                    points: points,
-                    modelPoints: modelPoints,
-                    range: range,
-                    showsAllModels: showsAllModels
-                )
             } else {
                 Chart {
                     usageMarks
@@ -1366,8 +1359,8 @@ private struct TokenUsagePanel: View {
                 : "Completed and failed requests over time"
         case .successRate:
             showsAllModels
-                ? "Request reliability timeline by model"
-                : "Request reliability across the selected period"
+                ? "Successful requests by model over time"
+                : "Successful requests over time"
         case .decodeSpeed:
             showsAllModels
                 ? "Decode speed by model over time"
@@ -1386,10 +1379,8 @@ private struct TokenUsagePanel: View {
                 ChartLegendDot(color: DashboardPalette.positive, title: "Completed")
                 ChartLegendDot(color: DashboardPalette.negative, title: "Failed")
             case .successRate:
-                ChartLegendDot(color: DashboardPalette.positive, title: "Healthy")
-                ChartLegendDot(color: DashboardPalette.orange, title: "Degraded")
-                ChartLegendDot(color: DashboardPalette.negative, title: "Failed")
-                ChartLegendDot(color: Color.secondary.opacity(0.35), title: "No requests")
+                ChartLegendDot(color: DashboardPalette.positive, title: "Success rate")
+                ChartLegendDot(color: DashboardPalette.orange, title: "95% target")
             case .decodeSpeed:
                 ChartLegendDot(color: DashboardPalette.orange, title: "Tokens/s")
             }
@@ -1528,68 +1519,70 @@ private struct TokenUsagePanel: View {
 
     @ChartContentBuilder
     private var successRateMarks: some ChartContent {
+        RuleMark(y: .value("Reliability target", 0.95))
+            .foregroundStyle(DashboardPalette.orange.opacity(0.78))
+            .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
+
         ForEach(successRatePoints) { point in
             let successRate = successRate(for: point) ?? 0
-            BarMark(
+            AreaMark(
                 x: .value("Time", point.bucketStart),
-                yStart: .value("Success start", 0.0),
-                yEnd: .value("Success end", successRate),
-                width: .ratio(0.68)
+                yStart: .value("Baseline", 0.0),
+                yEnd: .value("Success rate", successRate)
             )
-            .foregroundStyle(DashboardPalette.positive.gradient)
-            .opacity(
-                hoveredPointID == nil || hoveredPointID == point.bucketStart
-                    ? 0.94
-                    : 0.35
+            .foregroundStyle(
+                .linearGradient(
+                    colors: [DashboardPalette.positive.opacity(0.24), DashboardPalette.positive.opacity(0.02)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             )
-            .cornerRadius(2)
+            .interpolationMethod(.monotone)
 
-            BarMark(
+            LineMark(
                 x: .value("Time", point.bucketStart),
-                yStart: .value("Failure start", successRate),
-                yEnd: .value("Failure end", 1.0),
-                width: .ratio(0.68)
+                y: .value("Success rate", successRate)
             )
-            .foregroundStyle(DashboardPalette.negative.gradient)
-            .opacity(
-                hoveredPointID == nil || hoveredPointID == point.bucketStart
-                    ? 0.94
-                    : 0.35
+            .foregroundStyle(DashboardPalette.positive)
+            .lineStyle(StrokeStyle(lineWidth: 2.2))
+            .interpolationMethod(.monotone)
+
+            PointMark(
+                x: .value("Time", point.bucketStart),
+                y: .value("Success rate", successRate)
             )
-            .cornerRadius(2)
+            .foregroundStyle(successRateColor(for: successRate))
+            .symbolSize(28)
         }
     }
 
     @ChartContentBuilder
     private var allModelSuccessRateMarks: some ChartContent {
-        ForEach(modelSuccessRatePoints) { point in
-            BarMark(
-                x: .value("Time", point.bucketStart),
-                yStart: .value("Success start", 0.0),
-                yEnd: .value("Success end", point.successRate ?? 0)
-            )
-            .foregroundStyle(by: .value("Model", point.modelID))
-            .position(by: .value("Model", point.modelID))
-            .opacity(
-                hoveredPointID == nil || hoveredPointID == point.bucketStart
-                    ? 0.94
-                    : 0.35
-            )
-            .cornerRadius(2)
+        RuleMark(y: .value("Reliability target", 0.95))
+            .foregroundStyle(DashboardPalette.orange.opacity(0.78))
+            .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
 
-            BarMark(
+        ForEach(modelSuccessRatePoints) { point in
+            LineMark(
                 x: .value("Time", point.bucketStart),
-                yStart: .value("Failure start", point.successRate ?? 0),
-                yEnd: .value("Failure end", 1.0)
+                y: .value("Success rate", point.successRate ?? 0),
+                series: .value("Model", point.modelID)
             )
             .foregroundStyle(by: .value("Model", point.modelID))
-            .position(by: .value("Model", point.modelID))
+            .lineStyle(StrokeStyle(lineWidth: 2.2))
+            .interpolationMethod(.monotone)
+
+            PointMark(
+                x: .value("Time", point.bucketStart),
+                y: .value("Success rate", point.successRate ?? 0)
+            )
+            .foregroundStyle(by: .value("Model", point.modelID))
             .opacity(
                 hoveredPointID == nil || hoveredPointID == point.bucketStart
-                    ? 0.22
-                    : 0.08
+                    ? 0.9
+                    : 0.3
             )
-            .cornerRadius(2)
+            .symbolSize(28)
         }
     }
 
@@ -1701,8 +1694,23 @@ private struct TokenUsagePanel: View {
                     }
                 }
             case .successRate:
-                RuleMark(y: .value("Success baseline", 0.0))
-                    .foregroundStyle(Color.clear)
+                if showsAllModels {
+                    ForEach(successModelValues(at: hoveredPoint.bucketStart)) { modelPoint in
+                        PointMark(
+                            x: .value("Selected time", modelPoint.bucketStart),
+                            y: .value("Success rate", modelPoint.successRate ?? 0)
+                        )
+                        .foregroundStyle(by: .value("Model", modelPoint.modelID))
+                        .symbolSize(54)
+                    }
+                } else {
+                    PointMark(
+                        x: .value("Selected time", hoveredPoint.bucketStart),
+                        y: .value("Success rate", successRate(for: hoveredPoint) ?? 0)
+                    )
+                    .foregroundStyle(successRateColor(for: successRate(for: hoveredPoint) ?? 0))
+                    .symbolSize(54)
+                }
             case .decodeSpeed:
                 if showsAllModels {
                     ForEach(modelValues(at: hoveredPoint.bucketStart)) { modelPoint in
@@ -1796,6 +1804,16 @@ private struct TokenUsagePanel: View {
         let total = point.requestsCompleted + point.requestsFailed
         guard total > 0 else { return nil }
         return Double(point.requestsCompleted) / Double(total)
+    }
+
+    private func successRateColor(for value: Double) -> Color {
+        if value >= 0.95 {
+            DashboardPalette.positive
+        } else if value >= 0.8 {
+            DashboardPalette.orange
+        } else {
+            DashboardPalette.negative
+        }
     }
 
     private func decodeSpeed(for point: DashboardViewModel.BucketPoint) -> Double? {
