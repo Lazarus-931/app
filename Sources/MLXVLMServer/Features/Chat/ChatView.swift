@@ -1163,9 +1163,11 @@ private struct ChatMessageText: View {
             )
             .textual.structuredTextStyle(.gitHub)
             .textual.textSelection(.enabled)
+            .font(.body)
         } else {
             renderedText
                 .textSelection(.enabled)
+                .font(.body)
         }
     }
 

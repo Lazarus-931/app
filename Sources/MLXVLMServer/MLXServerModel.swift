@@ -325,8 +325,6 @@ final class MLXServerModel: ObservableObject {
     private func handleMetricsFetchSuccess(_ fetchedMetrics: MLXServerMetrics) {
         metricsFetchTask = nil
         lastMetricsFetchAt = Date()
-        let wasLoading = metricsLoading || modelSwitchInProgress
-
         guard server.isRunning else {
             isRunning = false
             metrics = nil
@@ -347,7 +345,7 @@ final class MLXServerModel: ObservableObject {
         clearPreservedSessionStats()
         refreshAllTimeStats(runtimePath: fetchedMetrics.server.analyticsDatabasePath)
 
-        if !menuIsOpen || wasLoading {
+        if menuIsOpen {
             notifyMenuStateChanged()
         }
     }

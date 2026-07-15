@@ -4,9 +4,112 @@ import SwiftUI
 
 struct StatsView: View {
     @ObservedObject var model: MLXServerModel
+    let dashboard: DashboardViewModel
+
+    var body: some View {
+        DashboardContentView(
+            modelState: DashboardModelState(model: model),
+            dashboard: dashboard
+        )
+        .equatable()
+    }
+
+    private var sessionSubtitle: String? {
+        if let _ = model.metrics {
+            return nil
+        }
+        if model.isRunning {
+            return model.unavailableMetricsText
+        }
+        return "Server is off. Live metrics are paused."
+    }
+
+    private var sessionCards: [SessionCardValue] {
+        let metrics = model.metrics
+
+        return [
+            makeSessionCard(
+                title: "Processed tokens",
+                rawCount: metrics?.summary.totalProcessedTokens
+            ),
+            makeSessionCard(
+                title: "Prompt tokens",
+                rawCount: metrics?.summary.promptTokensTotal
+            ),
+            makeSessionCard(
+                title: "Generated tokens",
+                rawCount: metrics?.summary.generatedTokensTotal
+            ),
+            makeSessionCard(
+                title: "Completed requests",
+                rawCount: metrics?.summary.requestsCompleted
+            ),
+            SessionCardValue(
+                title: "Decode speed",
+                value: MLXServerFormatting.rate(
+                    metrics?.summary.averageDecodeTokensPerSecond
+                ),
+                help: nil
+            ),
+            SessionCardValue(
+                title: "Request speed",
+                value: MLXServerFormatting.rate(
+                    metrics?.summary.averageRequestTokensPerSecond
+                ),
+                help: nil
+            ),
+            SessionCardValue(
+                title: "Server uptime",
+                value: MLXServerFormatting.duration(metrics?.summary.uptimeSeconds),
+                help: nil
+            ),
+        ]
+    }
+
+    private func makeSessionCard(title: String, rawCount: Int?) -> SessionCardValue {
+        guard let rawCount else {
+            return SessionCardValue(title: title, value: "--", help: nil)
+        }
+        let formatted = MLXServerFormatting.compactCount(rawCount)
+        return SessionCardValue(
+            title: title,
+            value: formatted.display,
+            help: formatted.tooltip
+        )
+    }
+}
+
+private struct DashboardModelState: Equatable {
+    let isRunning: Bool
+    let modelSearchPath: String
+    let analyticsDatabaseURL: URL
+    let loadedModelID: String?
+    let historicalMetricsRevision: DashboardMetricsRevision?
+
+    @MainActor
+    init(model: MLXServerModel) {
+        isRunning = model.isRunning
+        modelSearchPath = model.settings.modelSearchPath
+        analyticsDatabaseURL = model.analyticsDatabaseURL
+        loadedModelID = model.metrics?.server.loadedModel
+        historicalMetricsRevision = model.metrics.map {
+            DashboardMetricsRevision(
+                completedRequests: $0.summary.requestsCompleted,
+                failedRequests: $0.summary.requestsFailed
+            )
+        }
+    }
+}
+
+private struct DashboardContentView: View, Equatable {
+    let modelState: DashboardModelState
     @ObservedObject var dashboard: DashboardViewModel
     @FocusState private var isModelSearchFocused: Bool
     @State private var tokenUsagePanelHeight: CGFloat = 0
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.modelState == rhs.modelState && lhs.dashboard === rhs.dashboard
+    }
 
     var body: some View {
         ScrollView {
@@ -31,16 +134,16 @@ struct StatsView: View {
         .onAppear {
             syncDashboardState(scanModels: true, reloadHistory: true)
         }
-        .onChange(of: model.settings.modelSearchPath) { _, _ in
+        .onChange(of: modelState.modelSearchPath) { _, _ in
             syncDashboardState(scanModels: true, reloadHistory: false)
         }
-        .onChange(of: model.analyticsDatabaseURL) { _, _ in
+        .onChange(of: modelState.analyticsDatabaseURL) { _, _ in
             syncDashboardState(scanModels: false, reloadHistory: false)
         }
-        .onChange(of: model.metrics?.server.loadedModel) { _, _ in
+        .onChange(of: modelState.loadedModelID) { _, _ in
             syncDashboardState(scanModels: false, reloadHistory: false)
         }
-        .onChange(of: historicalMetricsRevision) { oldRevision, newRevision in
+        .onChange(of: modelState.historicalMetricsRevision) { oldRevision, newRevision in
             guard oldRevision != nil, newRevision != nil else { return }
             syncDashboardState(scanModels: false, reloadHistory: true)
         }
@@ -60,9 +163,9 @@ struct StatsView: View {
 
             HStack(spacing: 8) {
                 Circle()
-                    .fill(model.isRunning ? DashboardPalette.positive : Color.secondary)
+                    .fill(modelState.isRunning ? DashboardPalette.positive : Color.secondary)
                     .frame(width: 7, height: 7)
-                Text(model.isRunning ? "Live" : "Offline")
+                Text(modelState.isRunning ? "Live" : "Offline")
                     .font(.caption.weight(.semibold))
 
                 Button {
@@ -248,14 +351,6 @@ struct StatsView: View {
         return "Updated \(date.formatted(date: .abbreviated, time: .shortened))"
     }
 
-    private var historicalMetricsRevision: DashboardMetricsRevision? {
-        guard let summary = model.metrics?.summary else { return nil }
-        return DashboardMetricsRevision(
-            completedRequests: summary.requestsCompleted,
-            failedRequests: summary.requestsFailed
-        )
-    }
-
     private func compact(_ value: Int) -> String {
         MLXServerFormatting.compactCount(value).display
     }
@@ -293,75 +388,11 @@ struct StatsView: View {
         }
     }
 
-    private var sessionSubtitle: String? {
-        if let _ = model.metrics {
-            return nil
-        }
-        if model.isRunning {
-            return model.unavailableMetricsText
-        }
-        return "Server is off. Live metrics are paused."
-    }
-
-    private var sessionCards: [SessionCardValue] {
-        let metrics = model.metrics
-
-        return [
-            makeSessionCard(
-                title: "Processed tokens",
-                rawCount: metrics?.summary.totalProcessedTokens
-            ),
-            makeSessionCard(
-                title: "Prompt tokens",
-                rawCount: metrics?.summary.promptTokensTotal
-            ),
-            makeSessionCard(
-                title: "Generated tokens",
-                rawCount: metrics?.summary.generatedTokensTotal
-            ),
-            makeSessionCard(
-                title: "Completed requests",
-                rawCount: metrics?.summary.requestsCompleted
-            ),
-            SessionCardValue(
-                title: "Decode speed",
-                value: MLXServerFormatting.rate(
-                    metrics?.summary.averageDecodeTokensPerSecond
-                ),
-                help: nil
-            ),
-            SessionCardValue(
-                title: "Request speed",
-                value: MLXServerFormatting.rate(
-                    metrics?.summary.averageRequestTokensPerSecond
-                ),
-                help: nil
-            ),
-            SessionCardValue(
-                title: "Server uptime",
-                value: MLXServerFormatting.duration(metrics?.summary.uptimeSeconds),
-                help: nil
-            ),
-        ]
-    }
-
-    private func makeSessionCard(title: String, rawCount: Int?) -> SessionCardValue {
-        guard let rawCount else {
-            return SessionCardValue(title: title, value: "--", help: nil)
-        }
-        let formatted = MLXServerFormatting.compactCount(rawCount)
-        return SessionCardValue(
-            title: title,
-            value: formatted.display,
-            help: formatted.tooltip
-        )
-    }
-
     private func syncDashboardState(scanModels: Bool, reloadHistory: Bool) {
-        dashboard.updateAnalyticsDatabaseURL(model.analyticsDatabaseURL)
-        dashboard.updatePreferredModelID(model.metrics?.server.loadedModel)
+        dashboard.updateAnalyticsDatabaseURL(modelState.analyticsDatabaseURL)
+        dashboard.updatePreferredModelID(modelState.loadedModelID)
         if scanModels {
-            dashboard.scanModels(at: model.settings.modelSearchPath)
+            dashboard.scanModels(at: modelState.modelSearchPath)
         }
         if reloadHistory {
             dashboard.reloadHistorical()

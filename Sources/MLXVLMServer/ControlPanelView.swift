@@ -54,7 +54,7 @@ final class ControlPanelNavigation: ObservableObject {
 }
 
 struct ControlPanelView: View {
-    @ObservedObject var model: MLXServerModel
+    let model: MLXServerModel
     @ObservedObject var navigation: ControlPanelNavigation
     @ObservedObject var runtime: SystemRuntimeMonitor
     @StateObject private var chat = ChatViewModel()
@@ -291,6 +291,22 @@ struct ControlPanelView: View {
     }
 
     private var header: some View {
+        ControlPanelHeader(
+            model: model,
+            selectedTab: selectedTab,
+            splitColumnVisibility: splitColumnVisibility,
+            isChatConfigurationVisible: $isChatConfigurationVisible
+        )
+    }
+}
+
+private struct ControlPanelHeader: View {
+    @ObservedObject var model: MLXServerModel
+    let selectedTab: ControlPanelTab
+    let splitColumnVisibility: NavigationSplitViewVisibility
+    @Binding var isChatConfigurationVisible: Bool
+
+    var body: some View {
         HStack(spacing: 12) {
             Circle()
                 .fill(model.isRunning ? Color.green : Color.secondary.opacity(0.55))
