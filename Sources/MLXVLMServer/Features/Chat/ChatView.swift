@@ -28,15 +28,6 @@ struct ChatView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                ChatStatusBar(
-                    isRunning: model.isRunning,
-                    selectedModelID: selectedModelID,
-                    loadedModel: model.loadedModelDisplay,
-                    settingsRequireRestart: model.settingsRequireRestart
-                )
-
-                Divider()
-
                 transcript
                     .overlay(alignment: .bottom) {
                         ChatComposer(
@@ -787,78 +778,6 @@ final class ChatViewModel: ObservableObject {
         for sessionID in removedSessionIDs {
             sessionStore.deleteSession(id: sessionID)
         }
-    }
-}
-
-private struct ChatStatusBar: View {
-    let isRunning: Bool
-    let selectedModelID: String?
-    let loadedModel: String
-    let settingsRequireRestart: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ChatStatusPill(
-                label: "Server",
-                value: isRunning ? "Running" : "Stopped",
-                systemImage: isRunning ? "checkmark.circle.fill" : "circle"
-            )
-            ChatStatusPill(
-                label: "Selected",
-                value: selectedModelID ?? "None",
-                systemImage: "cpu"
-            )
-            ChatStatusPill(
-                label: "Loaded",
-                value: loadedModel,
-                systemImage: "memorychip"
-            )
-
-            if settingsRequireRestart {
-                ChatStatusPill(label: "Settings", value: "Pending restart", systemImage: "arrow.clockwise")
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-    }
-}
-
-private struct ChatStatusPill: View {
-    let label: String
-    let value: String
-    let systemImage: String
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text(label)
-                .foregroundStyle(.secondary)
-
-            Text(displayValue)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-        .font(.caption)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
-        .help(value)
-    }
-
-    private var displayValue: String {
-        MLXServerFormatting.truncateModelName(value, maxLength: 34)
     }
 }
 

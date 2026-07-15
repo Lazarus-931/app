@@ -165,6 +165,7 @@ struct ControlPanelView: View {
             }
         }
         .navigationTitle("MLX Server")
+        .background(ControlPanelSidebarSurfaceReader())
     }
 
     private var recentSessions: [ControlPanelRecentSession] {
@@ -175,10 +176,6 @@ struct ControlPanelView: View {
 
     private var detail: some View {
         VStack(spacing: 0) {
-            header
-
-            Divider()
-
             Group {
                 switch selectedTab {
                 case .chat:
@@ -297,115 +294,48 @@ struct ControlPanelView: View {
         "Create a new chat"
     }
 
-    private var header: some View {
-        ControlPanelHeader(
-            model: model,
-            selectedTab: selectedTab,
-            splitColumnVisibility: splitColumnVisibility,
-            isChatConfigurationVisible: $isChatConfigurationVisible
-        )
-    }
 }
 
-private struct ControlPanelHeader: View {
-    @ObservedObject var model: MLXServerModel
-    let selectedTab: ControlPanelTab
-    let splitColumnVisibility: NavigationSplitViewVisibility
-    @Binding var isChatConfigurationVisible: Bool
+private struct ControlPanelSidebarSurfaceReader: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        expandSidebarSurface(from: view)
+        return view
+    }
 
-    var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(model.isRunning ? Color.green : Color.secondary.opacity(0.55))
-                .frame(width: 10, height: 10)
+    func updateNSView(_ view: NSView, context: Context) {
+        expandSidebarSurface(from: view)
+    }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("MLX Server")
-                    .font(.title3.weight(.semibold))
-                Text(statusSubtitle)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private func expandSidebarSurface(from view: NSView) {
+        DispatchQueue.main.async {
+            var ancestor = view.superview
+            var glassSurface: NSGlassEffectView?
 
-            serverControlButton
-            
-            Button {
-                withAnimation(.snappy(duration: 0.2)) {
-                    isChatConfigurationVisible.toggle()
+            while let current = ancestor {
+                if let glass = current as? NSGlassEffectView {
+                    glassSurface = glass
+                    break
                 }
-            } label: {
-                Image(systemName: "sidebar.right")
-                    .frame(width: 28, height: 28)
+                ancestor = current.superview
             }
-            .buttonStyle(.borderless)
-            .disabled(selectedTab != .chat)
-            .help(isChatConfigurationVisible ? "Hide model configuration" : "Show model configuration")
-            .accessibilityLabel(
-                isChatConfigurationVisible ? "Hide model configuration" : "Show model configuration"
-            )
-        }
-        .padding(.leading, headerLeadingPadding)
-        .padding(.trailing, 18)
-        .padding(.vertical, 14)
-        .animation(.snappy(duration: 0.2), value: splitColumnVisibility)
-        .animation(.easeInOut, value: selectedTab)
-    }
 
-    private var serverControlButton: some View {
-        ServerControlButton(model: model)
-    }
+            guard let glassSurface, let container = glassSurface.superview else { return }
 
-    private var statusSubtitle: String {
-        if model.isRunning {
-            if model.settingsRequireRestart {
-                return "Running | \(model.loadedModelDisplay) | Model changes pending"
+            for constraint in container.constraints {
+                let firstView = constraint.firstItem as? NSView
+                let secondView = constraint.secondItem as? NSView
+                let directlyPositionsSurface =
+                    (firstView === glassSurface && secondView === container)
+                    || (firstView === container && secondView === glassSurface)
+
+                guard directlyPositionsSurface else { continue }
+                constraint.constant = 0
             }
-            return "Running | \(model.loadedModelDisplay)"
+
+            container.needsUpdateConstraints = true
+            container.needsLayout = true
         }
-        return "Stopped"
-    }
-
-    private var headerLeadingPadding: CGFloat {
-        splitColumnVisibility == .detailOnly ? 164 : 18
-    }
-
-}
-
-struct ServerControlButton: View {
-    @ObservedObject var model: MLXServerModel
-    @State private var isHovering = false
-
-    var body: some View {
-        Button {
-            model.toggleServer()
-        } label: {
-            Label(
-                model.isRunning ? "Stop" : "Start",
-                systemImage: model.isRunning ? "stop.fill" : "play.fill"
-            )
-        }
-        .labelStyle(.titleAndIcon)
-        .buttonBorderShape(.capsule)
-        .buttonStyle(.glassProminent)
-        .tint(model.isRunning ? (isHovering ? .red : .white) : .accentColor)
-        .scaleEffect(isHovering ? 1.04 : 1)
-        .shadow(
-            color: hoverTint.opacity(isHovering ? 0.28 : 0),
-            radius: isHovering ? 10 : 0,
-            y: 2
-        )
-        .keyboardShortcut("s", modifiers: .command)
-        .help(model.isRunning ? "Stop server" : "Start server")
-        .fixedSize()
-        .onHover { isHovering = $0 }
-        .animation(.snappy(duration: 0.16), value: isHovering)
-    }
-
-    private var hoverTint: Color {
-        model.isRunning ? .red : .accentColor
     }
 }
 
