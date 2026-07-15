@@ -481,6 +481,7 @@ private struct TokenUsagePanel: View {
     let modelPoints: [DashboardViewModel.ModelTokenPoint]
     let range: DashboardViewModel.RangeOption
     let showsAllModels: Bool
+    @StateObject private var hoverDebouncer = DashboardChartHoverDebouncer()
     @State private var hoveredPointID: Date?
     @State private var allModelsDisplay: AllModelsDisplay = .lines
 
@@ -556,13 +557,13 @@ private struct TokenUsagePanel: View {
                                 .onContinuousHover { phase in
                                     switch phase {
                                     case .active(let location):
-                                        updateHoveredPoint(
+                                        scheduleHoveredPointUpdate(
                                             at: location,
                                             proxy: proxy,
                                             geometry: geometry
                                         )
                                     case .ended:
-                                        hoveredPointID = nil
+                                        clearHoveredPoint()
                                     }
                                 }
 
@@ -594,10 +595,14 @@ private struct TokenUsagePanel: View {
                     }
                 }
                 .onChange(of: points) { _, newPoints in
+                    hoverDebouncer.cancel()
                     if let hoveredPointID,
                        !newPoints.contains(where: { $0.id == hoveredPointID }) {
                         self.hoveredPointID = nil
                     }
+                }
+                .onDisappear {
+                    hoverDebouncer.cancel()
                 }
             }
         }
@@ -774,34 +779,59 @@ private struct TokenUsagePanel: View {
         )
     }
 
-    private func updateHoveredPoint(
+    private func scheduleHoveredPointUpdate(
         at location: CGPoint,
         proxy: ChartProxy,
         geometry: GeometryProxy
     ) {
-        guard let plotFrameAnchor = proxy.plotFrame else {
-            hoveredPointID = nil
+        guard let nextPointID = hoveredPointID(
+            at: location,
+            proxy: proxy,
+            geometry: geometry
+        ) else {
+            clearHoveredPoint()
             return
+        }
+
+        guard hoveredPointID != nextPointID else {
+            hoverDebouncer.cancel()
+            return
+        }
+
+        hoverDebouncer.schedule(pointID: nextPointID) { pointID in
+            guard hoveredPointID != pointID else { return }
+            hoveredPointID = pointID
+        }
+    }
+
+    private func hoveredPointID(
+        at location: CGPoint,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) -> Date? {
+        guard let plotFrameAnchor = proxy.plotFrame else {
+            return nil
         }
 
         let plotFrame = geometry[plotFrameAnchor]
         guard plotFrame.contains(location) else {
-            hoveredPointID = nil
-            return
+            return nil
         }
 
         let plotX = location.x - plotFrame.minX
         guard let hoveredDate: Date = proxy.value(atX: plotX) else {
-            hoveredPointID = nil
-            return
+            return nil
         }
 
-        let nextPoint = points.min {
+        return points.min {
             abs($0.bucketStart.timeIntervalSince(hoveredDate))
                 < abs($1.bucketStart.timeIntervalSince(hoveredDate))
-        }
-        guard hoveredPointID != nextPoint?.id else { return }
-        hoveredPointID = nextPoint?.id
+        }?.id
+    }
+
+    private func clearHoveredPoint() {
+        hoverDebouncer.cancel()
+        hoveredPointID = nil
     }
 
     private func tooltipCenter(
@@ -841,6 +871,30 @@ private struct TokenUsagePanel: View {
             return values.reduce(0, +)
         }
         return values.max() ?? 0
+    }
+}
+
+@MainActor
+private final class DashboardChartHoverDebouncer: ObservableObject {
+    private let delayNanoseconds: UInt64
+    private var task: Task<Void, Never>?
+
+    init(delayNanoseconds: UInt64 = 120_000_000) {
+        self.delayNanoseconds = delayNanoseconds
+    }
+
+    func schedule(pointID: Date, action: @escaping @MainActor (Date) -> Void) {
+        task?.cancel()
+        task = Task { [delayNanoseconds] in
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard !Task.isCancelled else { return }
+            action(pointID)
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
     }
 }
 
