@@ -105,7 +105,7 @@ private struct DashboardContentView: View, Equatable {
     let modelState: DashboardModelState
     @ObservedObject var dashboard: DashboardViewModel
     @FocusState private var isModelSearchFocused: Bool
-    @State private var tokenUsagePanelHeight: CGFloat = 0
+    @State private var selectedChartMetric: DashboardOverviewMetric = .tokens
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.modelState == rhs.modelState && lhs.dashboard === rhs.dashboard
@@ -214,15 +214,21 @@ private struct DashboardContentView: View, Equatable {
                 value: compact(dashboard.historicalSummary.totalProcessedTokens),
                 detail: "\(compact(dashboard.historicalSummary.promptTokensTotal)) input · \(compact(dashboard.historicalSummary.generatedTokensTotal)) output",
                 icon: "number",
-                tint: DashboardPalette.accent
-            )
+                tint: DashboardPalette.accent,
+                isSelected: selectedChartMetric == .tokens
+            ) {
+                selectedChartMetric = .tokens
+            }
             AnalyticsMetricCard(
                 title: "Requests",
                 value: compact(totalRequests),
                 detail: "\(compact(dashboard.historicalSummary.requestsCompleted)) completed",
                 icon: "arrow.up.arrow.down",
-                tint: DashboardPalette.indigo
-            )
+                tint: DashboardPalette.indigo,
+                isSelected: selectedChartMetric == .requests
+            ) {
+                selectedChartMetric = .requests
+            }
             AnalyticsMetricCard(
                 title: "Success rate",
                 value: successRateLabel,
@@ -230,8 +236,11 @@ private struct DashboardContentView: View, Equatable {
                     ? "No failed requests"
                     : "\(compact(dashboard.historicalSummary.requestsFailed)) failed",
                 icon: "checkmark.circle",
-                tint: DashboardPalette.positive
-            )
+                tint: DashboardPalette.positive,
+                isSelected: selectedChartMetric == .successRate
+            ) {
+                selectedChartMetric = .successRate
+            }
             AnalyticsMetricCard(
                 title: "Decode speed",
                 value: MLXServerFormatting.rate(
@@ -239,52 +248,23 @@ private struct DashboardContentView: View, Equatable {
                 ),
                 detail: "Average across requests",
                 icon: "gauge.with.dots.needle.67percent",
-                tint: DashboardPalette.orange
-            )
+                tint: DashboardPalette.orange,
+                isSelected: selectedChartMetric == .decodeSpeed
+            ) {
+                selectedChartMetric = .decodeSpeed
+            }
         }
     }
 
     private var analyticsGrid: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 16) {
-                TokenUsagePanel(
-                    points: dashboard.bucketPoints,
-                    modelPoints: dashboard.modelTokenPoints,
-                    range: dashboard.selectedRange,
-                    showsAllModels: dashboard.appliedModelID == DashboardViewModel.ModelOption.allID
-                )
-                .frame(maxWidth: .infinity)
-                .background(TokenUsagePanelHeightReader())
-                RequestHealthPanel(
-                    points: dashboard.bucketPoints,
-                    completed: dashboard.historicalSummary.requestsCompleted,
-                    failed: dashboard.historicalSummary.requestsFailed,
-                    range: dashboard.selectedRange,
-                    minimumHeight: tokenUsagePanelHeight
-                )
-                .frame(width: 330)
-            }
-            .onPreferenceChange(TokenUsagePanelHeightPreferenceKey.self) { height in
-                guard height > 0, height != tokenUsagePanelHeight else { return }
-                tokenUsagePanelHeight = height
-            }
-
-            VStack(spacing: 16) {
-                TokenUsagePanel(
-                    points: dashboard.bucketPoints,
-                    modelPoints: dashboard.modelTokenPoints,
-                    range: dashboard.selectedRange,
-                    showsAllModels: dashboard.appliedModelID == DashboardViewModel.ModelOption.allID
-                )
-                RequestHealthPanel(
-                    points: dashboard.bucketPoints,
-                    completed: dashboard.historicalSummary.requestsCompleted,
-                    failed: dashboard.historicalSummary.requestsFailed,
-                    range: dashboard.selectedRange,
-                    minimumHeight: 0
-                )
-            }
-        }
+        TokenUsagePanel(
+            metric: selectedChartMetric,
+            points: dashboard.bucketPoints,
+            modelPoints: dashboard.modelTokenPoints,
+            range: dashboard.selectedRange,
+            showsAllModels: dashboard.appliedModelID == DashboardViewModel.ModelOption.allID
+        )
+        .frame(maxWidth: .infinity)
     }
 
     private var modelPerformanceSection: some View {
@@ -426,42 +406,79 @@ private struct AnalyticsMetricCard: View {
     let detail: String
     let icon: String
     let tint: Color
+    let isSelected: Bool
+    let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 30, height: 30)
-                    .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 30, height: 30)
+                        .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 8))
+                    Spacer()
+                    Image(systemName: isSelected ? "checkmark" : "arrow.up.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(isSelected ? tint : Color.secondary.opacity(0.5))
+                }
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.system(size: 25, weight: .semibold, design: .rounded).monospacedDigit())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(detail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text(value)
+                        .font(.system(size: 25, weight: .semibold, design: .rounded).monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
+            .padding(16)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .dashboardPanelStyle(cornerRadius: 14)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? tint : Color.clear, lineWidth: 1.5)
+            )
         }
-        .padding(16)
-        .dashboardPanelStyle(cornerRadius: 14)
+        .buttonStyle(.plain)
+        .accessibilityValue(isSelected ? "Selected" : "Select to update chart")
     }
+}
+
+private enum DashboardOverviewMetric: String {
+    case tokens
+    case requests
+    case successRate
+    case decodeSpeed
 }
 
 private struct TokenUsagePanel: View {
     struct HistogramSegment: Identifiable {
+        let modelID: String
+        let bucketStart: Date
+        let yStart: Int
+        let yEnd: Int
+
+        var id: String { "\(modelID):\(bucketStart.timeIntervalSince1970)" }
+    }
+
+    struct RequestHistogramSegment: Identifiable {
+        let bucketStart: Date
+        let status: String
+        let yStart: Int
+        let yEnd: Int
+        let color: Color
+
+        var id: String { "\(status):\(bucketStart.timeIntervalSince1970)" }
+    }
+
+    struct ModelRequestHistogramSegment: Identifiable {
         let modelID: String
         let bucketStart: Date
         let yStart: Int
@@ -477,6 +494,7 @@ private struct TokenUsagePanel: View {
         var id: String { rawValue }
     }
 
+    let metric: DashboardOverviewMetric
     let points: [DashboardViewModel.BucketPoint]
     let modelPoints: [DashboardViewModel.ModelTokenPoint]
     let range: DashboardViewModel.RangeOption
@@ -488,13 +506,11 @@ private struct TokenUsagePanel: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 AnalyticsSectionHeader(
-                    title: "Token usage",
-                    subtitle: showsAllModels
-                        ? "Total tokens by model over time"
-                        : "Input and output tokens over time"
+                    title: chartTitle,
+                    subtitle: chartSubtitle
                 )
                 Spacer()
-                if showsAllModels {
+                if metric == .tokens && showsAllModels {
                     Picker("Chart display", selection: $allModelsDisplay) {
                         ForEach(AllModelsDisplay.allCases) { display in
                             Text(display.rawValue).tag(display)
@@ -503,11 +519,8 @@ private struct TokenUsagePanel: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 190)
-                } else {
-                    HStack(spacing: 14) {
-                        ChartLegendDot(color: DashboardPalette.accent, title: "Input")
-                        ChartLegendDot(color: DashboardPalette.indigo, title: "Output")
-                    }
+                } else if !showsAllModels {
+                    chartLegend
                 }
             }
 
@@ -539,13 +552,14 @@ private struct TokenUsagePanel: View {
                     AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
                         AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
                         AxisTick().foregroundStyle(DashboardPalette.axisTick)
-                        if let raw = value.as(Int.self) {
-                            AxisValueLabel(MLXServerFormatting.compactCount(raw).display)
+                        if let raw = value.as(Double.self) {
+                            AxisValueLabel(yAxisLabel(for: raw))
                                 .font(.caption2)
                                 .foregroundStyle(DashboardPalette.axisText)
                         }
                     }
                 }
+                .chartYScale(domain: yDomain)
                 .frame(height: 250)
                 .chartOverlay { proxy in
                     GeometryReader { geometry in
@@ -573,14 +587,27 @@ private struct TokenUsagePanel: View {
                                    geometry: geometry
                                ) {
                                 Group {
-                                    if showsAllModels {
+                                    if metric == .tokens && showsAllModels {
                                         ModelTokenUsageTooltip(
                                             date: hoveredPoint.bucketStart,
                                             points: modelValues(at: hoveredPoint.bucketStart),
                                             granularity: granularity
                                         )
-                                    } else {
+                                    } else if showsAllModels {
+                                        ModelOverviewTooltip(
+                                            metric: metric,
+                                            date: hoveredPoint.bucketStart,
+                                            points: modelValues(at: hoveredPoint.bucketStart),
+                                            granularity: granularity
+                                        )
+                                    } else if metric == .tokens {
                                         TokenUsageTooltip(point: hoveredPoint, granularity: granularity)
+                                    } else {
+                                        DashboardMetricTooltip(
+                                            metric: metric,
+                                            point: hoveredPoint,
+                                            granularity: granularity
+                                        )
                                     }
                                 }
                                 .position(tooltipCenter)
@@ -599,18 +626,93 @@ private struct TokenUsagePanel: View {
                         self.hoveredPointID = nil
                     }
                 }
+                .onChange(of: metric) { _, _ in
+                    hoveredPointID = nil
+                }
+                .animation(.easeInOut(duration: 0.2), value: metric)
             }
         }
         .padding(18)
         .dashboardPanelStyle(cornerRadius: 14)
     }
 
+    private var chartTitle: String {
+        switch metric {
+        case .tokens:
+            "Token usage"
+        case .requests:
+            "Requests"
+        case .successRate:
+            "Success rate"
+        case .decodeSpeed:
+            "Decode speed"
+        }
+    }
+
+    private var chartSubtitle: String {
+        switch metric {
+        case .tokens:
+            showsAllModels ? "Total tokens by model over time" : "Input and output tokens over time"
+        case .requests:
+            showsAllModels
+                ? "Total requests by model over time"
+                : "Completed and failed requests over time"
+        case .successRate:
+            showsAllModels
+                ? "Success rate by model over time"
+                : "Percentage of successful requests over time"
+        case .decodeSpeed:
+            showsAllModels
+                ? "Decode speed by model over time"
+                : "Generated tokens per second over time"
+        }
+    }
+
+    @ViewBuilder
+    private var chartLegend: some View {
+        HStack(spacing: 14) {
+            switch metric {
+            case .tokens:
+                ChartLegendDot(color: DashboardPalette.accent, title: "Input")
+                ChartLegendDot(color: DashboardPalette.indigo, title: "Output")
+            case .requests:
+                ChartLegendDot(color: DashboardPalette.positive, title: "Completed")
+                ChartLegendDot(color: DashboardPalette.negative, title: "Failed")
+            case .successRate:
+                ChartLegendDot(color: DashboardPalette.positive, title: "Successful")
+            case .decodeSpeed:
+                ChartLegendDot(color: DashboardPalette.orange, title: "Tokens/s")
+            }
+        }
+    }
+
     @ChartContentBuilder
     private var usageMarks: some ChartContent {
-        if showsAllModels {
-            allModelMarks
-        } else {
-            inputOutputMarks
+        switch metric {
+        case .tokens:
+            if showsAllModels {
+                allModelMarks
+            } else {
+                inputOutputMarks
+            }
+        case .requests:
+            if showsAllModels {
+                allModelRequestMarks
+            } else {
+                requestMarks
+            }
+        case .successRate:
+            if showsAllModels {
+                allModelSuccessRateMarks
+            } else {
+                successRateMarks
+            }
+        case .decodeSpeed:
+            if showsAllModels {
+                allModelDecodeSpeedMarks
+            } else {
+                decodeSpeedMarks
+            }
         }
     }
 
@@ -620,7 +722,7 @@ private struct TokenUsagePanel: View {
             ForEach(modelPoints) { point in
                 LineMark(
                     x: .value("Time", point.bucketStart),
-                    y: .value("Total tokens", point.totalTokens),
+                    y: .value("Total tokens", Double(point.totalTokens)),
                     series: .value("Model", point.modelID)
                 )
                 .foregroundStyle(by: .value("Model", point.modelID))
@@ -632,8 +734,8 @@ private struct TokenUsagePanel: View {
                 RectangleMark(
                     xStart: .value("Bucket start", segment.bucketStart),
                     xEnd: .value("Bucket end", bucketEnd(after: segment.bucketStart)),
-                    yStart: .value("Token start", segment.yStart),
-                    yEnd: .value("Token end", segment.yEnd)
+                    yStart: .value("Token start", Double(segment.yStart)),
+                    yEnd: .value("Token end", Double(segment.yEnd))
                 )
                 .foregroundStyle(by: .value("Model", segment.modelID))
                 .opacity(0.9)
@@ -646,7 +748,8 @@ private struct TokenUsagePanel: View {
         ForEach(points) { point in
             AreaMark(
                 x: .value("Time", point.bucketStart),
-                y: .value("Input tokens", point.promptTokensTotal)
+                yStart: .value("Baseline", 0.0),
+                yEnd: .value("Input tokens", Double(point.promptTokensTotal))
             )
             .foregroundStyle(
                 .linearGradient(
@@ -659,7 +762,7 @@ private struct TokenUsagePanel: View {
 
             LineMark(
                 x: .value("Time", point.bucketStart),
-                y: .value("Input tokens", point.promptTokensTotal),
+                y: .value("Input tokens", Double(point.promptTokensTotal)),
                 series: .value("Series", "Input")
             )
             .foregroundStyle(DashboardPalette.accent)
@@ -668,7 +771,7 @@ private struct TokenUsagePanel: View {
 
             LineMark(
                 x: .value("Time", point.bucketStart),
-                y: .value("Output tokens", point.generatedTokensTotal),
+                y: .value("Output tokens", Double(point.generatedTokensTotal)),
                 series: .value("Series", "Output")
             )
             .foregroundStyle(DashboardPalette.indigo)
@@ -678,35 +781,226 @@ private struct TokenUsagePanel: View {
     }
 
     @ChartContentBuilder
+    private var requestMarks: some ChartContent {
+        ForEach(requestHistogramSegments) { segment in
+            RectangleMark(
+                xStart: .value("Bucket start", segment.bucketStart),
+                xEnd: .value("Bucket end", bucketEnd(after: segment.bucketStart)),
+                yStart: .value("Request start", Double(segment.yStart)),
+                yEnd: .value("Request end", Double(segment.yEnd))
+            )
+            .foregroundStyle(segment.color.gradient)
+            .opacity(
+                hoveredPointID == nil || hoveredPointID == segment.bucketStart
+                    ? 0.92
+                    : 0.35
+            )
+        }
+    }
+
+    @ChartContentBuilder
+    private var allModelRequestMarks: some ChartContent {
+        ForEach(modelRequestHistogramSegments) { segment in
+            RectangleMark(
+                xStart: .value("Bucket start", segment.bucketStart),
+                xEnd: .value("Bucket end", bucketEnd(after: segment.bucketStart)),
+                yStart: .value("Request start", Double(segment.yStart)),
+                yEnd: .value("Request end", Double(segment.yEnd))
+            )
+            .foregroundStyle(by: .value("Model", segment.modelID))
+            .opacity(
+                hoveredPointID == nil || hoveredPointID == segment.bucketStart
+                    ? 0.92
+                    : 0.35
+            )
+        }
+    }
+
+    @ChartContentBuilder
+    private var successRateMarks: some ChartContent {
+        ForEach(points) { point in
+            let successRate = successRate(for: point) ?? 0
+            AreaMark(
+                x: .value("Time", point.bucketStart),
+                yStart: .value("Baseline", 0.0),
+                yEnd: .value("Success rate", successRate)
+            )
+            .foregroundStyle(
+                .linearGradient(
+                    colors: [DashboardPalette.positive.opacity(0.25), DashboardPalette.positive.opacity(0.02)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .interpolationMethod(.monotone)
+
+            LineMark(
+                x: .value("Time", point.bucketStart),
+                y: .value("Success rate", successRate)
+            )
+            .foregroundStyle(DashboardPalette.positive)
+            .lineStyle(StrokeStyle(lineWidth: 2))
+            .interpolationMethod(.monotone)
+        }
+    }
+
+    @ChartContentBuilder
+    private var allModelSuccessRateMarks: some ChartContent {
+        ForEach(modelPoints) { point in
+            LineMark(
+                x: .value("Time", point.bucketStart),
+                y: .value("Success rate", point.successRate ?? 0),
+                series: .value("Model", point.modelID)
+            )
+            .foregroundStyle(by: .value("Model", point.modelID))
+            .lineStyle(StrokeStyle(lineWidth: 2))
+            .interpolationMethod(.monotone)
+        }
+    }
+
+    @ChartContentBuilder
+    private var decodeSpeedMarks: some ChartContent {
+        ForEach(points) { point in
+            let decodeSpeed = decodeSpeed(for: point) ?? 0
+            AreaMark(
+                x: .value("Time", point.bucketStart),
+                yStart: .value("Baseline", 0.0),
+                yEnd: .value("Decode speed", decodeSpeed)
+            )
+            .foregroundStyle(
+                .linearGradient(
+                    colors: [DashboardPalette.orange.opacity(0.25), DashboardPalette.orange.opacity(0.02)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .interpolationMethod(.monotone)
+
+            LineMark(
+                x: .value("Time", point.bucketStart),
+                y: .value("Decode speed", decodeSpeed)
+            )
+            .foregroundStyle(DashboardPalette.orange)
+            .lineStyle(StrokeStyle(lineWidth: 2))
+            .interpolationMethod(.monotone)
+        }
+    }
+
+    @ChartContentBuilder
+    private var allModelDecodeSpeedMarks: some ChartContent {
+        ForEach(modelPoints) { point in
+            LineMark(
+                x: .value("Time", point.bucketStart),
+                y: .value("Decode speed", point.decodeSpeed ?? 0),
+                series: .value("Model", point.modelID)
+            )
+            .foregroundStyle(by: .value("Model", point.modelID))
+            .lineStyle(StrokeStyle(lineWidth: 2))
+            .interpolationMethod(.monotone)
+        }
+    }
+
+    @ChartContentBuilder
     private var hoverMarks: some ChartContent {
         if let hoveredPoint {
-            RuleMark(x: .value("Selected time", hoveredPoint.bucketStart))
+            RuleMark(x: .value("Selected time", hoverDate(for: hoveredPoint)))
                 .foregroundStyle(DashboardPalette.axisLabel.opacity(0.8))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
 
-            if showsAllModels {
-                ForEach(modelValues(at: hoveredPoint.bucketStart)) { modelPoint in
+            switch metric {
+            case .tokens:
+                if showsAllModels {
+                    ForEach(modelValues(at: hoveredPoint.bucketStart)) { modelPoint in
+                        PointMark(
+                            x: .value("Selected time", modelPoint.bucketStart),
+                            y: .value("Total tokens", Double(modelPoint.totalTokens))
+                        )
+                        .foregroundStyle(by: .value("Model", modelPoint.modelID))
+                        .symbolSize(42)
+                    }
+                } else {
                     PointMark(
-                        x: .value("Selected time", modelPoint.bucketStart),
-                        y: .value("Total tokens", modelPoint.totalTokens)
+                        x: .value("Selected time", hoveredPoint.bucketStart),
+                        y: .value("Input tokens", Double(hoveredPoint.promptTokensTotal))
                     )
-                    .foregroundStyle(by: .value("Model", modelPoint.modelID))
-                    .symbolSize(42)
-                }
-            } else {
-                PointMark(
-                    x: .value("Selected time", hoveredPoint.bucketStart),
-                    y: .value("Input tokens", hoveredPoint.promptTokensTotal)
-                )
-                .foregroundStyle(DashboardPalette.accent)
-                .symbolSize(48)
+                    .foregroundStyle(DashboardPalette.accent)
+                    .symbolSize(48)
 
-                PointMark(
-                    x: .value("Selected time", hoveredPoint.bucketStart),
-                    y: .value("Output tokens", hoveredPoint.generatedTokensTotal)
-                )
-                .foregroundStyle(DashboardPalette.indigo)
-                .symbolSize(48)
+                    PointMark(
+                        x: .value("Selected time", hoveredPoint.bucketStart),
+                        y: .value("Output tokens", Double(hoveredPoint.generatedTokensTotal))
+                    )
+                    .foregroundStyle(DashboardPalette.indigo)
+                    .symbolSize(48)
+                }
+            case .requests:
+                if showsAllModels {
+                    ForEach(modelRequestSegments(at: hoveredPoint.bucketStart)) { segment in
+                        PointMark(
+                            x: .value("Selected time", hoverDate(for: hoveredPoint)),
+                            y: .value("Requests", Double(segment.yEnd))
+                        )
+                        .foregroundStyle(by: .value("Model", segment.modelID))
+                        .symbolSize(48)
+                    }
+                } else {
+                    if hoveredPoint.requestsCompleted > 0 {
+                        PointMark(
+                            x: .value("Selected time", hoverDate(for: hoveredPoint)),
+                            y: .value("Completed", Double(hoveredPoint.requestsCompleted))
+                        )
+                        .foregroundStyle(DashboardPalette.positive)
+                        .symbolSize(48)
+                    }
+
+                    if hoveredPoint.requestsFailed > 0 {
+                        PointMark(
+                            x: .value("Selected time", hoverDate(for: hoveredPoint)),
+                            y: .value(
+                                "Total requests",
+                                Double(hoveredPoint.requestsCompleted + hoveredPoint.requestsFailed)
+                            )
+                        )
+                        .foregroundStyle(DashboardPalette.negative)
+                        .symbolSize(48)
+                    }
+                }
+            case .successRate:
+                if showsAllModels {
+                    ForEach(modelValues(at: hoveredPoint.bucketStart)) { modelPoint in
+                        PointMark(
+                            x: .value("Selected time", modelPoint.bucketStart),
+                            y: .value("Success rate", modelPoint.successRate ?? 0)
+                        )
+                        .foregroundStyle(by: .value("Model", modelPoint.modelID))
+                        .symbolSize(48)
+                    }
+                } else {
+                    PointMark(
+                        x: .value("Selected time", hoveredPoint.bucketStart),
+                        y: .value("Success rate", successRate(for: hoveredPoint) ?? 0)
+                    )
+                    .foregroundStyle(DashboardPalette.positive)
+                    .symbolSize(48)
+                }
+            case .decodeSpeed:
+                if showsAllModels {
+                    ForEach(modelValues(at: hoveredPoint.bucketStart)) { modelPoint in
+                        PointMark(
+                            x: .value("Selected time", modelPoint.bucketStart),
+                            y: .value("Decode speed", modelPoint.decodeSpeed ?? 0)
+                        )
+                        .foregroundStyle(by: .value("Model", modelPoint.modelID))
+                        .symbolSize(48)
+                    }
+                } else {
+                    PointMark(
+                        x: .value("Selected time", hoveredPoint.bucketStart),
+                        y: .value("Decode speed", decodeSpeed(for: hoveredPoint) ?? 0)
+                    )
+                    .foregroundStyle(DashboardPalette.orange)
+                    .symbolSize(48)
+                }
             }
         }
     }
@@ -728,10 +1022,78 @@ private struct TokenUsagePanel: View {
         DashboardModelColorScale.domain(for: modelPoints.map(\.modelID))
     }
 
+    private var yDomain: ClosedRange<Double> {
+        if metric == .successRate {
+            return 0...1
+        }
+
+        let maximum: Double
+        switch metric {
+        case .tokens where showsAllModels && allModelsDisplay == .stacked:
+            maximum = Dictionary(grouping: modelPoints, by: \.bucketStart)
+                .values
+                .map { points in Double(points.reduce(0) { $0 + $1.totalTokens }) }
+                .max() ?? 0
+        case .tokens where showsAllModels:
+            maximum = Double(modelPoints.map(\.totalTokens).max() ?? 0)
+        case .tokens:
+            maximum = Double(points.map { max($0.promptTokensTotal, $0.generatedTokensTotal) }.max() ?? 0)
+        case .requests:
+            maximum = Double(
+                points.map { $0.requestsCompleted + $0.requestsFailed }.max() ?? 0
+            )
+        case .successRate:
+            maximum = 1
+        case .decodeSpeed:
+            maximum = showsAllModels
+                ? modelPoints.compactMap(\.decodeSpeed).max() ?? 0
+                : points.compactMap(decodeSpeed(for:)).max() ?? 0
+        }
+
+        return 0...max(maximum * 1.1, 1)
+    }
+
+    private func yAxisLabel(for value: Double) -> String {
+        switch metric {
+        case .tokens, .requests:
+            MLXServerFormatting.compactCount(Int(value.rounded())).display
+        case .successRate:
+            MLXServerFormatting.percent(value)
+        case .decodeSpeed:
+            value == 0 ? "0 tok/s" : MLXServerFormatting.rate(value)
+        }
+    }
+
+    private func successRate(for point: DashboardViewModel.BucketPoint) -> Double? {
+        let total = point.requestsCompleted + point.requestsFailed
+        guard total > 0 else { return nil }
+        return Double(point.requestsCompleted) / Double(total)
+    }
+
+    private func decodeSpeed(for point: DashboardViewModel.BucketPoint) -> Double? {
+        guard point.generatedTokensTotal > 0, point.decodeTimeTotalMilliseconds > 0 else {
+            return nil
+        }
+        return Double(point.generatedTokensTotal) / (Double(point.decodeTimeTotalMilliseconds) / 1_000)
+    }
+
     private func modelValues(at date: Date) -> [DashboardViewModel.ModelTokenPoint] {
         modelPoints
             .filter { $0.bucketStart == date }
-            .sorted { $0.totalTokens > $1.totalTokens }
+            .sorted { modelValue(for: $0) > modelValue(for: $1) }
+    }
+
+    private func modelValue(for point: DashboardViewModel.ModelTokenPoint) -> Double {
+        switch metric {
+        case .tokens:
+            Double(point.totalTokens)
+        case .requests:
+            Double(point.totalRequests)
+        case .successRate:
+            point.successRate ?? 0
+        case .decodeSpeed:
+            point.decodeSpeed ?? 0
+        }
     }
 
     private var histogramSegments: [HistogramSegment] {
@@ -755,6 +1117,63 @@ private struct TokenUsagePanel: View {
                 if $0.bucketStart == $1.bucketStart { return $0.yStart < $1.yStart }
                 return $0.bucketStart < $1.bucketStart
             }
+    }
+
+    private var requestHistogramSegments: [RequestHistogramSegment] {
+        points.flatMap { point in
+            var segments: [RequestHistogramSegment] = []
+            if point.requestsCompleted > 0 {
+                segments.append(
+                    RequestHistogramSegment(
+                        bucketStart: point.bucketStart,
+                        status: "Completed",
+                        yStart: 0,
+                        yEnd: point.requestsCompleted,
+                        color: DashboardPalette.positive
+                    )
+                )
+            }
+            if point.requestsFailed > 0 {
+                segments.append(
+                    RequestHistogramSegment(
+                        bucketStart: point.bucketStart,
+                        status: "Failed",
+                        yStart: point.requestsCompleted,
+                        yEnd: point.requestsCompleted + point.requestsFailed,
+                        color: DashboardPalette.negative
+                    )
+                )
+            }
+            return segments
+        }
+    }
+
+    private var modelRequestHistogramSegments: [ModelRequestHistogramSegment] {
+        Dictionary(grouping: modelPoints, by: \.bucketStart)
+            .flatMap { bucketStart, bucketPoints in
+                var cumulative = 0
+                return bucketPoints
+                    .sorted { $0.modelID.localizedCaseInsensitiveCompare($1.modelID) == .orderedAscending }
+                    .compactMap { point -> ModelRequestHistogramSegment? in
+                        guard point.totalRequests > 0 else { return nil }
+                        let segment = ModelRequestHistogramSegment(
+                            modelID: point.modelID,
+                            bucketStart: bucketStart,
+                            yStart: cumulative,
+                            yEnd: cumulative + point.totalRequests
+                        )
+                        cumulative += point.totalRequests
+                        return segment
+                    }
+            }
+            .sorted {
+                if $0.bucketStart == $1.bucketStart { return $0.yStart < $1.yStart }
+                return $0.bucketStart < $1.bucketStart
+            }
+    }
+
+    private func modelRequestSegments(at date: Date) -> [ModelRequestHistogramSegment] {
+        modelRequestHistogramSegments.filter { $0.bucketStart == date }
     }
 
     private func bucketEnd(after date: Date) -> Date {
@@ -796,9 +1215,16 @@ private struct TokenUsagePanel: View {
             return
         }
 
-        let nextPoint = points.min {
-            abs($0.bucketStart.timeIntervalSince(hoveredDate))
-                < abs($1.bucketStart.timeIntervalSince(hoveredDate))
+        let nextPoint: DashboardViewModel.BucketPoint?
+        if metric == .requests {
+            nextPoint = points.first {
+                hoveredDate >= $0.bucketStart && hoveredDate < bucketEnd(after: $0.bucketStart)
+            }
+        } else {
+            nextPoint = points.min {
+                abs($0.bucketStart.timeIntervalSince(hoveredDate))
+                    < abs($1.bucketStart.timeIntervalSince(hoveredDate))
+            }
         }
         guard hoveredPointID != nextPoint?.id else { return }
         hoveredPointID = nextPoint?.id
@@ -810,7 +1236,7 @@ private struct TokenUsagePanel: View {
         geometry: GeometryProxy
     ) -> CGPoint? {
         guard let plotFrameAnchor = proxy.plotFrame,
-              let plotX = proxy.position(forX: point.bucketStart),
+              let plotX = proxy.position(forX: hoverDate(for: point)),
               let plotY = proxy.position(forY: tooltipAnchorValue(for: point)) else {
             return nil
         }
@@ -818,8 +1244,10 @@ private struct TokenUsagePanel: View {
         let plotFrame = geometry[plotFrameAnchor]
         let anchor = CGPoint(x: plotFrame.minX + plotX, y: plotFrame.minY + plotY)
         let tooltipSize = CGSize(
-            width: showsAllModels ? 230 : 174,
-            height: showsAllModels ? min(CGFloat(modelValues(at: point.bucketStart).count) * 25 + 72, 272) : 142
+            width: showsAllModels ? 230 : 210,
+            height: showsAllModels
+                ? min(CGFloat(modelValues(at: point.bucketStart).count) * 25 + 72, 272)
+                : (metric == .tokens ? 142 : 112)
         )
         let spacing: CGFloat = 12
         let showOnLeft = anchor.x > plotFrame.midX
@@ -834,13 +1262,35 @@ private struct TokenUsagePanel: View {
         )
     }
 
-    private func tooltipAnchorValue(for point: DashboardViewModel.BucketPoint) -> Int {
-        guard showsAllModels else { return point.generatedTokensTotal }
-        let values = modelValues(at: point.bucketStart).map(\.totalTokens)
-        if allModelsDisplay == .stacked {
-            return values.reduce(0, +)
+    private func hoverDate(for point: DashboardViewModel.BucketPoint) -> Date {
+        guard metric == .requests else { return point.bucketStart }
+        let end = bucketEnd(after: point.bucketStart)
+        return point.bucketStart.addingTimeInterval(end.timeIntervalSince(point.bucketStart) / 2)
+    }
+
+    private func tooltipAnchorValue(for point: DashboardViewModel.BucketPoint) -> Double {
+        switch metric {
+        case .tokens where showsAllModels:
+            let values = modelValues(at: point.bucketStart).map(\.totalTokens)
+            if allModelsDisplay == .stacked {
+                return Double(values.reduce(0, +))
+            }
+            return Double(values.max() ?? 0)
+        case .tokens:
+            return Double(max(point.promptTokensTotal, point.generatedTokensTotal))
+        case .requests:
+            return Double(point.requestsCompleted + point.requestsFailed)
+        case .successRate:
+            if showsAllModels {
+                return modelValues(at: point.bucketStart).compactMap(\.successRate).max() ?? 0
+            }
+            return successRate(for: point) ?? 0
+        case .decodeSpeed:
+            if showsAllModels {
+                return modelValues(at: point.bucketStart).compactMap(\.decodeSpeed).max() ?? 0
+            }
+            return decodeSpeed(for: point) ?? 0
         }
-        return values.max() ?? 0
     }
 }
 
@@ -897,6 +1347,102 @@ private struct ModelTokenUsageTooltip: View {
 
     private var totalTokens: Int {
         points.reduce(0) { $0 + $1.totalTokens }
+    }
+
+    private var dateLabel: String {
+        if granularity == .hour {
+            return date.formatted(date: .abbreviated, time: .shortened)
+        }
+        return date.formatted(date: .long, time: .omitted)
+    }
+}
+
+private struct ModelOverviewTooltip: View {
+    let metric: DashboardOverviewMetric
+    let date: Date
+    let points: [DashboardViewModel.ModelTokenPoint]
+    let granularity: MLXServerAnalyticsGranularity
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(dateLabel)
+                .font(.caption.weight(.semibold))
+
+            ScrollView {
+                VStack(spacing: 7) {
+                    ForEach(points) { point in
+                        HStack(spacing: 10) {
+                            Text(point.modelID)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 12)
+                            Text(valueLabel(for: point))
+                                .fontWeight(.medium)
+                                .monospacedDigit()
+                        }
+                        .font(.caption)
+                    }
+                }
+            }
+            .frame(maxHeight: 190)
+
+            Divider()
+
+            HStack {
+                Text("All models")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 16)
+                Text(summaryLabel)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+            }
+            .font(.caption)
+        }
+        .padding(12)
+        .frame(width: 230)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(DashboardPalette.panelStroke, lineWidth: 0.75)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
+
+    private func valueLabel(for point: DashboardViewModel.ModelTokenPoint) -> String {
+        switch metric {
+        case .tokens:
+            MLXServerFormatting.integer(point.totalTokens)
+        case .requests:
+            MLXServerFormatting.integer(point.totalRequests)
+        case .successRate:
+            point.successRate.map(MLXServerFormatting.percent) ?? "--"
+        case .decodeSpeed:
+            MLXServerFormatting.rate(point.decodeSpeed)
+        }
+    }
+
+    private var summaryLabel: String {
+        switch metric {
+        case .tokens:
+            return MLXServerFormatting.integer(points.reduce(0) { $0 + $1.totalTokens })
+        case .requests:
+            return MLXServerFormatting.integer(points.reduce(0) { $0 + $1.totalRequests })
+        case .successRate:
+            guard totalRequests > 0 else { return "--" }
+            let completed = points.reduce(0) { $0 + $1.requestsCompleted }
+            return MLXServerFormatting.percent(Double(completed) / Double(totalRequests))
+        case .decodeSpeed:
+            let generatedTokens = points.reduce(0) { $0 + $1.generatedTokensTotal }
+            let decodeMilliseconds = points.reduce(Int64.zero) { $0 + $1.decodeTimeTotalMilliseconds }
+            guard generatedTokens > 0, decodeMilliseconds > 0 else { return "--" }
+            let speed = Double(generatedTokens) / (Double(decodeMilliseconds) / 1_000)
+            return MLXServerFormatting.rate(speed)
+        }
+    }
+
+    private var totalRequests: Int {
+        points.reduce(0) { $0 + $1.totalRequests }
     }
 
     private var dateLabel: String {
@@ -970,6 +1516,100 @@ private struct TokenUsageTooltipRow: View {
             }
             Spacer(minLength: 22)
             Text(MLXServerFormatting.integer(value))
+                .fontWeight(.medium)
+                .monospacedDigit()
+        }
+        .font(.caption)
+    }
+}
+
+private struct DashboardMetricTooltip: View {
+    let metric: DashboardOverviewMetric
+    let point: DashboardViewModel.BucketPoint
+    let granularity: MLXServerAnalyticsGranularity
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(dateLabel)
+                .font(.caption.weight(.semibold))
+
+            switch metric {
+            case .tokens:
+                EmptyView()
+            case .requests:
+                metricRow(
+                    "Completed",
+                    value: MLXServerFormatting.integer(point.requestsCompleted),
+                    color: DashboardPalette.positive
+                )
+                metricRow(
+                    "Failed",
+                    value: MLXServerFormatting.integer(point.requestsFailed),
+                    color: DashboardPalette.negative
+                )
+            case .successRate:
+                metricRow(
+                    "Success rate",
+                    value: successRate.map(MLXServerFormatting.percent) ?? "--",
+                    color: DashboardPalette.positive
+                )
+                metricRow(
+                    "Requests",
+                    value: MLXServerFormatting.integer(totalRequests),
+                    color: DashboardPalette.indigo
+                )
+            case .decodeSpeed:
+                metricRow(
+                    "Decode speed",
+                    value: MLXServerFormatting.rate(decodeSpeed),
+                    color: DashboardPalette.orange
+                )
+                metricRow(
+                    "Generated",
+                    value: "\(MLXServerFormatting.integer(point.generatedTokensTotal)) tokens",
+                    color: DashboardPalette.indigo
+                )
+            }
+        }
+        .padding(11)
+        .frame(width: 210)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(DashboardPalette.panelStroke, lineWidth: 0.75)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
+
+    private var totalRequests: Int {
+        point.requestsCompleted + point.requestsFailed
+    }
+
+    private var successRate: Double? {
+        guard totalRequests > 0 else { return nil }
+        return Double(point.requestsCompleted) / Double(totalRequests)
+    }
+
+    private var decodeSpeed: Double? {
+        guard point.generatedTokensTotal > 0, point.decodeTimeTotalMilliseconds > 0 else {
+            return nil
+        }
+        return Double(point.generatedTokensTotal) / (Double(point.decodeTimeTotalMilliseconds) / 1_000)
+    }
+
+    private var dateLabel: String {
+        if granularity == .hour {
+            return point.bucketStart.formatted(date: .abbreviated, time: .shortened)
+        }
+        return point.bucketStart.formatted(date: .long, time: .omitted)
+    }
+
+    private func metricRow(_ title: String, value: String, color: Color) -> some View {
+        HStack(spacing: 7) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(title).foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Text(value)
                 .fontWeight(.medium)
                 .monospacedDigit()
         }

@@ -119,9 +119,29 @@ final class DashboardViewModel: ObservableObject {
         let modelID: String
         let bucketStart: Date
         let totalTokens: Int
+        let requestsCompleted: Int
+        let requestsFailed: Int
+        let generatedTokensTotal: Int
+        let decodeTimeTotalMilliseconds: Int64
 
         var id: String {
             "\(modelID):\(bucketStart.timeIntervalSince1970)"
+        }
+
+        var totalRequests: Int {
+            requestsCompleted + requestsFailed
+        }
+
+        var successRate: Double? {
+            guard totalRequests > 0 else { return nil }
+            return Double(requestsCompleted) / Double(totalRequests)
+        }
+
+        var decodeSpeed: Double? {
+            guard generatedTokensTotal > 0, decodeTimeTotalMilliseconds > 0 else {
+                return nil
+            }
+            return Double(generatedTokensTotal) / (Double(decodeTimeTotalMilliseconds) / 1_000)
         }
     }
 
@@ -408,11 +428,15 @@ private extension DashboardViewModel {
         return rowsByModel.flatMap { modelID, rows in
             let rowsByDate = Dictionary(grouping: rows, by: \.bucketStart)
             return bucketDates.map { bucketStart in
-                ModelTokenPoint(
+                let bucketRows = rowsByDate[bucketStart, default: []]
+                return ModelTokenPoint(
                     modelID: modelID,
                     bucketStart: bucketStart,
-                    totalTokens: rowsByDate[bucketStart, default: []]
-                        .reduce(0) { $0 + $1.totalProcessedTokens }
+                    totalTokens: bucketRows.reduce(0) { $0 + $1.totalProcessedTokens },
+                    requestsCompleted: bucketRows.reduce(0) { $0 + $1.requestsCompleted },
+                    requestsFailed: bucketRows.reduce(0) { $0 + $1.requestsFailed },
+                    generatedTokensTotal: bucketRows.reduce(0) { $0 + $1.generatedTokensTotal },
+                    decodeTimeTotalMilliseconds: bucketRows.reduce(0) { $0 + $1.decodeTimeTotalMilliseconds }
                 )
             }
         }
