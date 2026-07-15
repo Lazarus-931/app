@@ -196,20 +196,42 @@ private struct ChatQueueTray: View {
     let onRemove: (UUID) -> Void
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: prompts.count > 2) {
-            LazyVStack(spacing: 7) {
-                ForEach(prompts) { prompt in
-                    ChatQueuedPromptRow(
-                        prompt: prompt,
-                        onSteer: { onSteer(prompt.id) },
-                        onPrioritize: { onPrioritize(prompt.id) },
-                        onRemove: { onRemove(prompt.id) }
-                    )
+        Group {
+            if prompts.count <= 3 {
+                rows
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    rows
                 }
+                .frame(maxHeight: 168)
             }
         }
-        .frame(height: min(CGFloat(prompts.count) * 68, 180))
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.75)
+        }
+        .shadow(color: .black.opacity(0.035), radius: 5, y: 2)
         .animation(.snappy(duration: 0.2), value: prompts)
+    }
+
+    private var rows: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(Array(prompts.enumerated()), id: \.element.id) { index, prompt in
+                if index > 0 {
+                    Divider()
+                        .padding(.leading, 46)
+                }
+
+                ChatQueuedPromptRow(
+                    prompt: prompt,
+                    onSteer: { onSteer(prompt.id) },
+                    onPrioritize: { onPrioritize(prompt.id) },
+                    onRemove: { onRemove(prompt.id) }
+                )
+            }
+        }
     }
 }
 
@@ -276,14 +298,8 @@ private struct ChatQueuedPromptRow: View {
             .help("Queue options")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.75)
-        }
-        .shadow(color: .black.opacity(0.035), radius: 5, y: 2)
+        .padding(.vertical, 10)
+        .frame(minHeight: 52)
     }
 
     private var displayContent: String {
