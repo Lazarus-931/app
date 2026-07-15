@@ -1146,6 +1146,27 @@ private enum DashboardOverviewMetric: String {
     case decodeSpeed
 }
 
+private struct SuccessRateModelSummary: Identifiable {
+    let modelID: String
+    let requestsCompleted: Int
+    let requestsFailed: Int
+
+    var id: String { modelID }
+
+    var totalRequests: Int {
+        requestsCompleted + requestsFailed
+    }
+
+    var successRate: Double {
+        guard totalRequests > 0 else { return 0 }
+        return Double(requestsCompleted) / Double(totalRequests)
+    }
+
+    var logRequestCount: Double {
+        log10(Double(totalRequests) + 1)
+    }
+}
+
 private struct TokenUsagePanel: View {
     struct HistogramSegment: Identifiable {
         let modelID: String
@@ -1215,6 +1236,8 @@ private struct TokenUsagePanel: View {
             if points.isEmpty {
                 DashboardEmptyChart()
                     .frame(minHeight: 230)
+            } else if usesSuccessRateComparison {
+                SuccessRateModelComparisonChart(summaries: modelSuccessSummaries)
             } else {
                 Chart {
                     usageMarks
@@ -1358,9 +1381,15 @@ private struct TokenUsagePanel: View {
                 ? "Total requests by model over time"
                 : "Completed and failed requests over time"
         case .successRate:
-            showsAllModels
-                ? "Successful requests by model over time"
-                : "Successful requests over time"
+            if showsAllModels && modelSuccessSummaries.count > 50 {
+                "Reliability versus request volume across models"
+            } else if showsAllModels && modelSuccessSummaries.count >= 10 {
+                "Models ranked by reliability · worst first"
+            } else if showsAllModels {
+                "Successful requests by model over time"
+            } else {
+                "Successful requests over time"
+            }
         case .decodeSpeed:
             showsAllModels
                 ? "Decode speed by model over time"
@@ -1758,6 +1787,28 @@ private struct TokenUsagePanel: View {
         modelPoints.filter { $0.totalRequests > 0 }
     }
 
+    private var modelSuccessSummaries: [SuccessRateModelSummary] {
+        Dictionary(grouping: modelSuccessRatePoints, by: \.modelID)
+            .map { modelID, points in
+                SuccessRateModelSummary(
+                    modelID: modelID,
+                    requestsCompleted: points.reduce(0) { $0 + $1.requestsCompleted },
+                    requestsFailed: points.reduce(0) { $0 + $1.requestsFailed }
+                )
+            }
+            .filter { $0.totalRequests > 0 }
+            .sorted {
+                if $0.successRate == $1.successRate {
+                    return $0.totalRequests > $1.totalRequests
+                }
+                return $0.successRate < $1.successRate
+            }
+    }
+
+    private var usesSuccessRateComparison: Bool {
+        metric == .successRate && showsAllModels && modelSuccessSummaries.count >= 10
+    }
+
     private var yDomain: ClosedRange<Double> {
         if metric == .successRate {
             return 0...1
@@ -2060,6 +2111,341 @@ private struct TokenUsagePanel: View {
                 return modelValues(at: point.bucketStart).compactMap(\.decodeSpeed).max() ?? 0
             }
             return decodeSpeed(for: point) ?? 0
+        }
+    }
+}
+
+private struct SuccessRateModelComparisonChart: View {
+    private enum Mode {
+        case ranked
+        case scatter
+    }
+
+    let summaries: [SuccessRateModelSummary]
+    @State private var hoveredModelID: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            comparisonLegend
+
+            if mode == .ranked {
+                rankedChart
+            } else {
+                scatterChart
+            }
+        }
+        .frame(height: 250, alignment: .top)
+        .onChange(of: summaries.map(\.modelID)) { _, modelIDs in
+            if let hoveredModelID, !modelIDs.contains(hoveredModelID) {
+                self.hoveredModelID = nil
+            }
+        }
+    }
+
+    private var comparisonLegend: some View {
+        HStack(spacing: 14) {
+            ChartLegendDot(color: DashboardPalette.positive, title: "≥95%")
+            ChartLegendDot(color: DashboardPalette.orange, title: "80–95%")
+            ChartLegendDot(color: DashboardPalette.negative, title: "<80%")
+            Spacer(minLength: 8)
+            Text("\(summaries.count) models · \(mode == .ranked ? "ranked" : "by volume")")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var rankedChart: some View {
+        ScrollView(.vertical) {
+            Chart {
+                RuleMark(x: .value("Reliability target", 0.95))
+                    .foregroundStyle(DashboardPalette.orange.opacity(0.78))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
+
+                ForEach(summaries) { summary in
+                    BarMark(
+                        x: .value("Success rate", summary.successRate),
+                        y: .value("Model", summary.modelID),
+                        height: .fixed(3)
+                    )
+                    .foregroundStyle(healthColor(for: summary.successRate).opacity(0.32))
+                    .cornerRadius(2)
+
+                    PointMark(
+                        x: .value("Success rate", summary.successRate),
+                        y: .value("Model", summary.modelID)
+                    )
+                    .foregroundStyle(healthColor(for: summary.successRate))
+                    .symbolSize(hoveredModelID == summary.modelID ? 72 : 38)
+                }
+            }
+            .chartXScale(domain: 0...1)
+            .chartYScale(domain: Array(summaries.map(\.modelID).reversed()))
+            .chartXAxis {
+                AxisMarks(values: [0.0, 0.25, 0.5, 0.75, 1.0]) { value in
+                    AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
+                    AxisTick().foregroundStyle(DashboardPalette.axisTick)
+                    if let raw = value.as(Double.self) {
+                        AxisValueLabel(MLXServerFormatting.percent(raw))
+                            .font(.caption2)
+                            .foregroundStyle(DashboardPalette.axisText)
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading) { value in
+                    AxisGridLine().foregroundStyle(DashboardPalette.axisGrid.opacity(0.45))
+                    if let modelID = value.as(String.self) {
+                        AxisValueLabel(abbreviatedModelID(modelID))
+                            .font(.caption2)
+                            .foregroundStyle(DashboardPalette.axisText)
+                    }
+                }
+            }
+            .frame(height: max(218, CGFloat(summaries.count) * 22))
+            .chartOverlay { proxy in
+                comparisonOverlay(proxy: proxy, mode: .ranked)
+            }
+        }
+        .frame(height: 218)
+        .scrollIndicators(.visible)
+    }
+
+    private var scatterChart: some View {
+        Chart {
+            RuleMark(y: .value("Reliability target", 0.95))
+                .foregroundStyle(DashboardPalette.orange.opacity(0.78))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
+
+            ForEach(summaries) { summary in
+                PointMark(
+                    x: .value("Request volume", summary.logRequestCount),
+                    y: .value("Success rate", summary.successRate)
+                )
+                .foregroundStyle(healthColor(for: summary.successRate))
+                .opacity(hoveredModelID == nil || hoveredModelID == summary.modelID ? 0.9 : 0.32)
+                .symbolSize(hoveredModelID == summary.modelID ? 86 : 42)
+            }
+        }
+        .chartXScale(domain: 0...max(maximumLogRequestCount * 1.05, 1))
+        .chartYScale(domain: 0...1)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
+                AxisTick().foregroundStyle(DashboardPalette.axisTick)
+                if let raw = value.as(Double.self) {
+                    AxisValueLabel(requestVolumeLabel(for: raw))
+                        .font(.caption2)
+                        .foregroundStyle(DashboardPalette.axisText)
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: [0.0, 0.25, 0.5, 0.75, 1.0]) { value in
+                AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
+                AxisTick().foregroundStyle(DashboardPalette.axisTick)
+                if let raw = value.as(Double.self) {
+                    AxisValueLabel(MLXServerFormatting.percent(raw))
+                        .font(.caption2)
+                        .foregroundStyle(DashboardPalette.axisText)
+                }
+            }
+        }
+        .chartXAxisLabel("Requests · log scale", alignment: .center)
+        .frame(height: 218)
+        .chartOverlay { proxy in
+            comparisonOverlay(proxy: proxy, mode: .scatter)
+        }
+    }
+
+    private var mode: Mode {
+        summaries.count <= 50 ? .ranked : .scatter
+    }
+
+    private var hoveredSummary: SuccessRateModelSummary? {
+        guard let hoveredModelID else { return nil }
+        return summaries.first { $0.modelID == hoveredModelID }
+    }
+
+    private var maximumLogRequestCount: Double {
+        summaries.map(\.logRequestCount).max() ?? 1
+    }
+
+    private func comparisonOverlay(proxy: ChartProxy, mode: Mode) -> some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            updateHoveredModel(
+                                at: location,
+                                proxy: proxy,
+                                geometry: geometry,
+                                mode: mode
+                            )
+                        case .ended:
+                            hoveredModelID = nil
+                        }
+                    }
+
+                if let hoveredSummary,
+                   let position = tooltipPosition(
+                       for: hoveredSummary,
+                       proxy: proxy,
+                       geometry: geometry,
+                       mode: mode
+                   ) {
+                    SuccessRateModelSummaryTooltip(summary: hoveredSummary)
+                        .position(position)
+                        .allowsHitTesting(false)
+                }
+            }
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+        }
+    }
+
+    private func updateHoveredModel(
+        at location: CGPoint,
+        proxy: ChartProxy,
+        geometry: GeometryProxy,
+        mode: Mode
+    ) {
+        guard let plotFrameAnchor = proxy.plotFrame else {
+            hoveredModelID = nil
+            return
+        }
+
+        let plotFrame = geometry[plotFrameAnchor]
+        guard plotFrame.contains(location) else {
+            hoveredModelID = nil
+            return
+        }
+
+        let plotLocation = CGPoint(
+            x: location.x - plotFrame.minX,
+            y: location.y - plotFrame.minY
+        )
+        let nearest = summaries.compactMap { summary -> (SuccessRateModelSummary, CGFloat)? in
+            guard let point = plotPosition(for: summary, proxy: proxy, mode: mode) else {
+                return nil
+            }
+            let distance = hypot(point.x - plotLocation.x, point.y - plotLocation.y)
+            return (summary, distance)
+        }.min { $0.1 < $1.1 }
+
+        let threshold: CGFloat = mode == .ranked ? 18 : 26
+        let nextModelID = nearest.map { $0.1 <= threshold ? $0.0.modelID : nil } ?? nil
+        guard nextModelID != hoveredModelID else { return }
+        hoveredModelID = nextModelID
+    }
+
+    private func tooltipPosition(
+        for summary: SuccessRateModelSummary,
+        proxy: ChartProxy,
+        geometry: GeometryProxy,
+        mode: Mode
+    ) -> CGPoint? {
+        guard let plotFrameAnchor = proxy.plotFrame,
+              let plotPoint = plotPosition(for: summary, proxy: proxy, mode: mode) else {
+            return nil
+        }
+
+        let plotFrame = geometry[plotFrameAnchor]
+        let anchor = CGPoint(
+            x: plotFrame.minX + plotPoint.x,
+            y: plotFrame.minY + plotPoint.y
+        )
+        let tooltipSize = CGSize(width: 220, height: 92)
+        let showOnLeft = anchor.x > plotFrame.midX
+        let desiredX = showOnLeft
+            ? anchor.x - tooltipSize.width / 2 - 12
+            : anchor.x + tooltipSize.width / 2 + 12
+
+        return CGPoint(
+            x: min(max(desiredX, tooltipSize.width / 2), geometry.size.width - tooltipSize.width / 2),
+            y: min(max(anchor.y, tooltipSize.height / 2), geometry.size.height - tooltipSize.height / 2)
+        )
+    }
+
+    private func plotPosition(
+        for summary: SuccessRateModelSummary,
+        proxy: ChartProxy,
+        mode: Mode
+    ) -> CGPoint? {
+        switch mode {
+        case .ranked:
+            guard let x = proxy.position(forX: summary.successRate),
+                  let y = proxy.position(forY: summary.modelID) else {
+                return nil
+            }
+            return CGPoint(x: x, y: y)
+        case .scatter:
+            guard let x = proxy.position(forX: summary.logRequestCount),
+                  let y = proxy.position(forY: summary.successRate) else {
+                return nil
+            }
+            return CGPoint(x: x, y: y)
+        }
+    }
+
+    private func healthColor(for value: Double) -> Color {
+        if value >= 0.95 {
+            DashboardPalette.positive
+        } else if value >= 0.8 {
+            DashboardPalette.orange
+        } else {
+            DashboardPalette.negative
+        }
+    }
+
+    private func abbreviatedModelID(_ modelID: String) -> String {
+        guard modelID.count > 24 else { return modelID }
+        return "\(modelID.prefix(11))…\(modelID.suffix(10))"
+    }
+
+    private func requestVolumeLabel(for logarithmicValue: Double) -> String {
+        let requests = max(0, Int((pow(10, logarithmicValue) - 1).rounded()))
+        return MLXServerFormatting.compactCount(requests).display
+    }
+}
+
+private struct SuccessRateModelSummaryTooltip: View {
+    let summary: SuccessRateModelSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(summary.modelID)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+
+            HStack(spacing: 14) {
+                metric("Success", MLXServerFormatting.percent(summary.successRate))
+                metric("Requests", MLXServerFormatting.integer(summary.totalRequests))
+                metric("Failed", MLXServerFormatting.integer(summary.requestsFailed))
+            }
+        }
+        .padding(10)
+        .frame(width: 220, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(DashboardPalette.panelStroke, lineWidth: 0.7)
+        }
+        .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
+    }
+
+    private func metric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -3592,14 +3978,12 @@ private struct DashboardRecentRequestsTable: View {
                             Divider()
                                 .overlay(DashboardPalette.panelStroke)
 
-                            Button {
+                            DashboardRecentRequestRow(
+                                request: request,
+                                isAlternating: !index.isMultiple(of: 2)
+                            ) {
                                 selectedRequest = request
-                            } label: {
-                                DashboardRecentRequestsDataRow(request: request)
-                                    .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
-                            .background(index.isMultiple(of: 2) ? Color.clear : Color.white.opacity(0.01))
                         }
                     }
                     .frame(
@@ -3613,6 +3997,46 @@ private struct DashboardRecentRequestsTable: View {
         .dashboardPanelStyle(cornerRadius: 14)
         .sheet(item: $selectedRequest) { request in
             RequestDetailView(request: request)
+        }
+    }
+}
+
+private struct DashboardRecentRequestRow: View {
+    let request: MLXServerAnalyticsRequestEvent
+    let isAlternating: Bool
+    let onSelect: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            DashboardRecentRequestsDataRow(request: request)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background {
+            Rectangle()
+                .fill(rowBackground)
+        }
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(DashboardPalette.accent)
+                .frame(width: 3)
+                .padding(.vertical, 7)
+                .opacity(isHovered ? 1 : 0)
+        }
+        .animation(.easeOut(duration: 0.14), value: isHovered)
+        .onHover { isHovered = $0 }
+        .help("Open request details")
+    }
+
+    private var rowBackground: Color {
+        if isHovered {
+            DashboardPalette.accent.opacity(0.09)
+        } else if isAlternating {
+            Color.white.opacity(0.01)
+        } else {
+            Color.clear
         }
     }
 }
@@ -3742,7 +4166,9 @@ private struct DashboardRecentRequestsDataRow: View {
         case .finish:
             DashboardRequestBadge(
                 text: finishTitle,
-                style: finishStyle
+                style: finishStyle,
+                systemImage: finishIcon,
+                isProminent: true
             )
             .help(finishTitle)
         case .mode:
@@ -3785,6 +4211,21 @@ private struct DashboardRecentRequestsDataRow: View {
         request.status == "completed" ? .finish : .failure
     }
 
+    private var finishIcon: String? {
+        guard request.status == "completed" else {
+            return "exclamationmark.triangle.fill"
+        }
+
+        switch request.finishReason?.lowercased() {
+        case "length", "max_tokens", "max_output_tokens":
+            return "hourglass"
+        case "tool_call", "tool_calls":
+            return "hammer.fill"
+        default:
+            return nil
+        }
+    }
+
     private var modeTitle: String {
         if request.toolCalls {
             return "Tools"
@@ -3809,18 +4250,54 @@ private struct DashboardRecentRequestsDataRow: View {
 private struct DashboardRequestBadge: View {
     let text: String
     let style: DashboardRequestBadgeStyle
+    let systemImage: String?
+    let isProminent: Bool
+
+    init(
+        text: String,
+        style: DashboardRequestBadgeStyle,
+        systemImage: String? = nil,
+        isProminent: Bool = false
+    ) {
+        self.text = text
+        self.style = style
+        self.systemImage = systemImage
+        self.isProminent = isProminent
+    }
 
     var body: some View {
-        Text(text)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(style.foregroundColor)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(
+        HStack(spacing: 5) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            Text(text)
+                .lineLimit(1)
+        }
+        .font(.caption.weight(isProminent ? .semibold : .medium))
+        .foregroundStyle(style.foregroundColor)
+        .padding(.horizontal, systemImage == nil ? 12 : 10)
+        .padding(.vertical, isProminent ? 5.5 : 5)
+        .background {
+            if isProminent {
+                Capsule(style: .continuous)
+                    .fill(style.backgroundColor)
+            } else {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(style.backgroundColor)
-            )
-            .lineLimit(1)
+            }
+        }
+        .overlay {
+            if isProminent {
+                Capsule(style: .continuous)
+                    .stroke(style.foregroundColor.opacity(0.22), lineWidth: 0.7)
+            }
+        }
+        .shadow(
+            color: isProminent ? style.backgroundColor.opacity(0.28) : .clear,
+            radius: isProminent ? 3 : 0,
+            y: isProminent ? 1 : 0
+        )
     }
 }
 
@@ -3899,7 +4376,7 @@ private enum DashboardRecentRequestsColumn: CaseIterable {
         case .model:
             210
         case .finish:
-            100
+            110
         case .mode:
             92
         case .prompt:
