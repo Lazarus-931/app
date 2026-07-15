@@ -519,7 +519,7 @@ private struct TokenUsagePanel: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 190)
-                } else if !showsAllModels {
+                } else if metric == .successRate || !showsAllModels {
                     chartLegend
                 }
             }
@@ -527,6 +527,13 @@ private struct TokenUsagePanel: View {
             if points.isEmpty {
                 DashboardEmptyChart()
                     .frame(minHeight: 230)
+            } else if metric == .successRate {
+                SuccessRateHealthChart(
+                    points: points,
+                    modelPoints: modelPoints,
+                    range: range,
+                    showsAllModels: showsAllModels
+                )
             } else {
                 Chart {
                     usageMarks
@@ -549,13 +556,25 @@ private struct TokenUsagePanel: View {
                     }
                 }
                 .chartYAxis {
-                    AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
-                        AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
-                        AxisTick().foregroundStyle(DashboardPalette.axisTick)
-                        if let raw = value.as(Double.self) {
-                            AxisValueLabel(yAxisLabel(for: raw))
-                                .font(.caption2)
-                                .foregroundStyle(DashboardPalette.axisText)
+                    if metric == .successRate {
+                        AxisMarks(position: .leading, values: [0.0, 0.25, 0.5, 0.75, 1.0]) { value in
+                            AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
+                            AxisTick().foregroundStyle(DashboardPalette.axisTick)
+                            if let raw = value.as(Double.self) {
+                                AxisValueLabel(yAxisLabel(for: raw))
+                                    .font(.caption2)
+                                    .foregroundStyle(DashboardPalette.axisText)
+                            }
+                        }
+                    } else {
+                        AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
+                            AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
+                            AxisTick().foregroundStyle(DashboardPalette.axisTick)
+                            if let raw = value.as(Double.self) {
+                                AxisValueLabel(yAxisLabel(for: raw))
+                                    .font(.caption2)
+                                    .foregroundStyle(DashboardPalette.axisText)
+                            }
                         }
                     }
                 }
@@ -597,7 +616,7 @@ private struct TokenUsagePanel: View {
                                         ModelOverviewTooltip(
                                             metric: metric,
                                             date: hoveredPoint.bucketStart,
-                                            points: modelValues(at: hoveredPoint.bucketStart),
+                                            points: tooltipModelValues(at: hoveredPoint.bucketStart),
                                             granularity: granularity
                                         )
                                     } else if metric == .tokens {
@@ -659,8 +678,8 @@ private struct TokenUsagePanel: View {
                 : "Completed and failed requests over time"
         case .successRate:
             showsAllModels
-                ? "Success rate by model over time"
-                : "Percentage of successful requests over time"
+                ? "Request reliability timeline by model"
+                : "Request reliability across the selected period"
         case .decodeSpeed:
             showsAllModels
                 ? "Decode speed by model over time"
@@ -679,7 +698,10 @@ private struct TokenUsagePanel: View {
                 ChartLegendDot(color: DashboardPalette.positive, title: "Completed")
                 ChartLegendDot(color: DashboardPalette.negative, title: "Failed")
             case .successRate:
-                ChartLegendDot(color: DashboardPalette.positive, title: "Successful")
+                ChartLegendDot(color: DashboardPalette.positive, title: "Healthy")
+                ChartLegendDot(color: DashboardPalette.orange, title: "Degraded")
+                ChartLegendDot(color: DashboardPalette.negative, title: "Failed")
+                ChartLegendDot(color: Color.secondary.opacity(0.35), title: "No requests")
             case .decodeSpeed:
                 ChartLegendDot(color: DashboardPalette.orange, title: "Tokens/s")
             }
@@ -818,43 +840,68 @@ private struct TokenUsagePanel: View {
 
     @ChartContentBuilder
     private var successRateMarks: some ChartContent {
-        ForEach(points) { point in
+        ForEach(successRatePoints) { point in
             let successRate = successRate(for: point) ?? 0
-            AreaMark(
+            BarMark(
                 x: .value("Time", point.bucketStart),
-                yStart: .value("Baseline", 0.0),
-                yEnd: .value("Success rate", successRate)
+                yStart: .value("Success start", 0.0),
+                yEnd: .value("Success end", successRate),
+                width: .ratio(0.68)
             )
-            .foregroundStyle(
-                .linearGradient(
-                    colors: [DashboardPalette.positive.opacity(0.25), DashboardPalette.positive.opacity(0.02)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+            .foregroundStyle(DashboardPalette.positive.gradient)
+            .opacity(
+                hoveredPointID == nil || hoveredPointID == point.bucketStart
+                    ? 0.94
+                    : 0.35
             )
-            .interpolationMethod(.monotone)
+            .cornerRadius(2)
 
-            LineMark(
+            BarMark(
                 x: .value("Time", point.bucketStart),
-                y: .value("Success rate", successRate)
+                yStart: .value("Failure start", successRate),
+                yEnd: .value("Failure end", 1.0),
+                width: .ratio(0.68)
             )
-            .foregroundStyle(DashboardPalette.positive)
-            .lineStyle(StrokeStyle(lineWidth: 2))
-            .interpolationMethod(.monotone)
+            .foregroundStyle(DashboardPalette.negative.gradient)
+            .opacity(
+                hoveredPointID == nil || hoveredPointID == point.bucketStart
+                    ? 0.94
+                    : 0.35
+            )
+            .cornerRadius(2)
         }
     }
 
     @ChartContentBuilder
     private var allModelSuccessRateMarks: some ChartContent {
-        ForEach(modelPoints) { point in
-            LineMark(
+        ForEach(modelSuccessRatePoints) { point in
+            BarMark(
                 x: .value("Time", point.bucketStart),
-                y: .value("Success rate", point.successRate ?? 0),
-                series: .value("Model", point.modelID)
+                yStart: .value("Success start", 0.0),
+                yEnd: .value("Success end", point.successRate ?? 0)
             )
             .foregroundStyle(by: .value("Model", point.modelID))
-            .lineStyle(StrokeStyle(lineWidth: 2))
-            .interpolationMethod(.monotone)
+            .position(by: .value("Model", point.modelID))
+            .opacity(
+                hoveredPointID == nil || hoveredPointID == point.bucketStart
+                    ? 0.94
+                    : 0.35
+            )
+            .cornerRadius(2)
+
+            BarMark(
+                x: .value("Time", point.bucketStart),
+                yStart: .value("Failure start", point.successRate ?? 0),
+                yEnd: .value("Failure end", 1.0)
+            )
+            .foregroundStyle(by: .value("Model", point.modelID))
+            .position(by: .value("Model", point.modelID))
+            .opacity(
+                hoveredPointID == nil || hoveredPointID == point.bucketStart
+                    ? 0.22
+                    : 0.08
+            )
+            .cornerRadius(2)
         }
     }
 
@@ -966,23 +1013,8 @@ private struct TokenUsagePanel: View {
                     }
                 }
             case .successRate:
-                if showsAllModels {
-                    ForEach(modelValues(at: hoveredPoint.bucketStart)) { modelPoint in
-                        PointMark(
-                            x: .value("Selected time", modelPoint.bucketStart),
-                            y: .value("Success rate", modelPoint.successRate ?? 0)
-                        )
-                        .foregroundStyle(by: .value("Model", modelPoint.modelID))
-                        .symbolSize(48)
-                    }
-                } else {
-                    PointMark(
-                        x: .value("Selected time", hoveredPoint.bucketStart),
-                        y: .value("Success rate", successRate(for: hoveredPoint) ?? 0)
-                    )
-                    .foregroundStyle(DashboardPalette.positive)
-                    .symbolSize(48)
-                }
+                RuleMark(y: .value("Success baseline", 0.0))
+                    .foregroundStyle(Color.clear)
             case .decodeSpeed:
                 if showsAllModels {
                     ForEach(modelValues(at: hoveredPoint.bucketStart)) { modelPoint in
@@ -1020,6 +1052,14 @@ private struct TokenUsagePanel: View {
 
     private var modelColorDomain: [String] {
         DashboardModelColorScale.domain(for: modelPoints.map(\.modelID))
+    }
+
+    private var successRatePoints: [DashboardViewModel.BucketPoint] {
+        points.filter { $0.requestsCompleted + $0.requestsFailed > 0 }
+    }
+
+    private var modelSuccessRatePoints: [DashboardViewModel.ModelTokenPoint] {
+        modelPoints.filter { $0.totalRequests > 0 }
     }
 
     private var yDomain: ClosedRange<Double> {
@@ -1081,6 +1121,10 @@ private struct TokenUsagePanel: View {
         modelPoints
             .filter { $0.bucketStart == date }
             .sorted { modelValue(for: $0) > modelValue(for: $1) }
+    }
+
+    private func successModelValues(at date: Date) -> [DashboardViewModel.ModelTokenPoint] {
+        modelValues(at: date).filter { $0.totalRequests > 0 }
     }
 
     private func modelValue(for point: DashboardViewModel.ModelTokenPoint) -> Double {
@@ -1220,6 +1264,11 @@ private struct TokenUsagePanel: View {
             nextPoint = points.first {
                 hoveredDate >= $0.bucketStart && hoveredDate < bucketEnd(after: $0.bucketStart)
             }
+        } else if metric == .successRate {
+            nextPoint = successRatePoints.min {
+                abs($0.bucketStart.timeIntervalSince(hoveredDate))
+                    < abs($1.bucketStart.timeIntervalSince(hoveredDate))
+            }
         } else {
             nextPoint = points.min {
                 abs($0.bucketStart.timeIntervalSince(hoveredDate))
@@ -1246,8 +1295,8 @@ private struct TokenUsagePanel: View {
         let tooltipSize = CGSize(
             width: showsAllModels ? 230 : 210,
             height: showsAllModels
-                ? min(CGFloat(modelValues(at: point.bucketStart).count) * 25 + 72, 272)
-                : (metric == .tokens ? 142 : 112)
+                ? min(CGFloat(tooltipModelValues(at: point.bucketStart).count) * 25 + 72, 272)
+                : singleMetricTooltipHeight
         )
         let spacing: CGFloat = 12
         let showOnLeft = anchor.x > plotFrame.midX
@@ -1268,6 +1317,21 @@ private struct TokenUsagePanel: View {
         return point.bucketStart.addingTimeInterval(end.timeIntervalSince(point.bucketStart) / 2)
     }
 
+    private func tooltipModelValues(at date: Date) -> [DashboardViewModel.ModelTokenPoint] {
+        metric == .successRate ? successModelValues(at: date) : modelValues(at: date)
+    }
+
+    private var singleMetricTooltipHeight: CGFloat {
+        switch metric {
+        case .tokens:
+            142
+        case .successRate:
+            137
+        case .requests, .decodeSpeed:
+            112
+        }
+    }
+
     private func tooltipAnchorValue(for point: DashboardViewModel.BucketPoint) -> Double {
         switch metric {
         case .tokens where showsAllModels:
@@ -1282,7 +1346,7 @@ private struct TokenUsagePanel: View {
             return Double(point.requestsCompleted + point.requestsFailed)
         case .successRate:
             if showsAllModels {
-                return modelValues(at: point.bucketStart).compactMap(\.successRate).max() ?? 0
+                return successModelValues(at: point.bucketStart).compactMap(\.successRate).max() ?? 0
             }
             return successRate(for: point) ?? 0
         case .decodeSpeed:
@@ -1291,6 +1355,386 @@ private struct TokenUsagePanel: View {
             }
             return decodeSpeed(for: point) ?? 0
         }
+    }
+}
+
+private struct SuccessRateHealthChart: View {
+    struct Segment: Identifiable {
+        let lane: String
+        let bucketStart: Date
+        let requestsCompleted: Int
+        let requestsFailed: Int
+
+        var id: String { "\(lane):\(bucketStart.timeIntervalSince1970)" }
+
+        var totalRequests: Int {
+            requestsCompleted + requestsFailed
+        }
+
+        var successRate: Double? {
+            guard totalRequests > 0 else { return nil }
+            return Double(requestsCompleted) / Double(totalRequests)
+        }
+    }
+
+    let points: [DashboardViewModel.BucketPoint]
+    let modelPoints: [DashboardViewModel.ModelTokenPoint]
+    let range: DashboardViewModel.RangeOption
+    let showsAllModels: Bool
+    @State private var hoveredSegmentID: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(overallRateLabel)
+                    .font(.system(size: 30, weight: .semibold, design: .rounded).monospacedDigit())
+                Text(healthStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Chart {
+                ForEach(segments) { segment in
+                    BarMark(
+                        xStart: .value("Bucket start", segment.bucketStart),
+                        xEnd: .value("Bucket end", bucketEnd(after: segment.bucketStart)),
+                        y: .value("Health lane", segment.lane),
+                        height: .ratio(0.72)
+                    )
+                    .foregroundStyle(color(for: segment).gradient)
+                    .opacity(
+                        hoveredSegmentID == nil || hoveredSegmentID == segment.id
+                            ? segmentOpacity(for: segment)
+                            : 0.2
+                    )
+                    .cornerRadius(3)
+                }
+
+                if let hoveredSegment {
+                    RuleMark(x: .value("Selected time", midpoint(of: hoveredSegment)))
+                        .foregroundStyle(DashboardPalette.axisLabel.opacity(0.8))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                }
+            }
+            .chartLegend(.hidden)
+            .chartXScale(domain: chartStart...chartEnd)
+            .chartYScale(domain: laneDomain)
+            .chartXAxis {
+                AxisMarks(values: axisDates) { value in
+                    AxisGridLine().foregroundStyle(DashboardPalette.axisGrid)
+                    AxisTick().foregroundStyle(DashboardPalette.axisTick)
+                    if let date = value.as(Date.self) {
+                        AxisValueLabel(axisLabel(for: date))
+                            .font(.caption2)
+                            .foregroundStyle(DashboardPalette.axisText)
+                    }
+                }
+            }
+            .chartYAxis {
+                if showsAllModels {
+                    AxisMarks(position: .leading) { value in
+                        AxisGridLine().foregroundStyle(Color.clear)
+                        AxisTick().foregroundStyle(Color.clear)
+                        if let modelID = value.as(String.self) {
+                            AxisValueLabel {
+                                Text(MLXServerFormatting.truncateModelName(modelID, maxLength: 22))
+                                    .font(.caption2)
+                                    .foregroundStyle(DashboardPalette.axisText)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(height: chartHeight)
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    ZStack(alignment: .topLeading) {
+                        Rectangle()
+                            .fill(.clear)
+                            .contentShape(Rectangle())
+                            .onContinuousHover { phase in
+                                switch phase {
+                                case .active(let location):
+                                    updateHoveredSegment(
+                                        at: location,
+                                        proxy: proxy,
+                                        geometry: geometry
+                                    )
+                                case .ended:
+                                    hoveredSegmentID = nil
+                                }
+                            }
+
+                        if let hoveredSegment,
+                           let center = tooltipCenter(
+                               for: hoveredSegment,
+                               proxy: proxy,
+                               geometry: geometry
+                           ) {
+                            SuccessRateHealthTooltip(
+                                segment: hoveredSegment,
+                                granularity: granularity,
+                                showsModel: showsAllModels
+                            )
+                            .position(center)
+                            .allowsHitTesting(false)
+                            .transition(.identity)
+                        }
+                    }
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var segments: [Segment] {
+        if showsAllModels {
+            return modelPoints.map {
+                Segment(
+                    lane: $0.modelID,
+                    bucketStart: $0.bucketStart,
+                    requestsCompleted: $0.requestsCompleted,
+                    requestsFailed: $0.requestsFailed
+                )
+            }
+        }
+        return points.map {
+            Segment(
+                lane: "Reliability",
+                bucketStart: $0.bucketStart,
+                requestsCompleted: $0.requestsCompleted,
+                requestsFailed: $0.requestsFailed
+            )
+        }
+    }
+
+    private var laneDomain: [String] {
+        showsAllModels
+            ? DashboardModelColorScale.domain(for: modelPoints.map(\.modelID))
+            : ["Reliability"]
+    }
+
+    private var hoveredSegment: Segment? {
+        guard let hoveredSegmentID else { return nil }
+        return segments.first { $0.id == hoveredSegmentID }
+    }
+
+    private var totalRequests: Int {
+        points.reduce(0) { $0 + $1.requestsCompleted + $1.requestsFailed }
+    }
+
+    private var completedRequests: Int {
+        points.reduce(0) { $0 + $1.requestsCompleted }
+    }
+
+    private var failedRequests: Int {
+        points.reduce(0) { $0 + $1.requestsFailed }
+    }
+
+    private var overallRate: Double? {
+        guard totalRequests > 0 else { return nil }
+        return Double(completedRequests) / Double(totalRequests)
+    }
+
+    private var overallRateLabel: String {
+        overallRate.map(MLXServerFormatting.percent) ?? "--"
+    }
+
+    private var healthStatus: String {
+        guard let overallRate else { return "No requests in this period" }
+        if failedRequests == 0 { return "Running smoothly" }
+        if overallRate >= 0.95 { return "Mostly healthy" }
+        return "Needs attention"
+    }
+
+    private var granularity: MLXServerAnalyticsGranularity {
+        points.first?.granularity ?? (range == .last24Hours ? .hour : .day)
+    }
+
+    private var axisDates: [Date] {
+        DashboardChartAxis.markDates(from: points.map(\.bucketStart), maximumCount: 6)
+    }
+
+    private var chartStart: Date {
+        points.first?.bucketStart ?? Date()
+    }
+
+    private var chartEnd: Date {
+        guard let last = points.last?.bucketStart else { return Date() }
+        return bucketEnd(after: last)
+    }
+
+    private var chartHeight: CGFloat {
+        max(118, min(CGFloat(laneDomain.count) * 30, 300))
+    }
+
+    private func color(for segment: Segment) -> Color {
+        guard let successRate = segment.successRate else {
+            return Color.secondary.opacity(0.18)
+        }
+        if segment.requestsFailed == 0 {
+            return DashboardPalette.positive
+        }
+        if successRate >= 0.95 {
+            return DashboardPalette.orange
+        }
+        return DashboardPalette.negative
+    }
+
+    private func segmentOpacity(for segment: Segment) -> Double {
+        segment.totalRequests == 0 ? 0.45 : 0.92
+    }
+
+    private func bucketEnd(after date: Date) -> Date {
+        switch granularity {
+        case .hour:
+            Calendar.current.date(byAdding: .hour, value: 1, to: date) ?? date.addingTimeInterval(3_600)
+        case .day:
+            Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date.addingTimeInterval(86_400)
+        }
+    }
+
+    private func midpoint(of segment: Segment) -> Date {
+        let end = bucketEnd(after: segment.bucketStart)
+        return segment.bucketStart.addingTimeInterval(end.timeIntervalSince(segment.bucketStart) / 2)
+    }
+
+    private func axisLabel(for date: Date) -> String {
+        DashboardChartAxis.label(for: date, granularity: granularity, range: range)
+    }
+
+    private func updateHoveredSegment(
+        at location: CGPoint,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) {
+        guard let plotFrameAnchor = proxy.plotFrame else {
+            hoveredSegmentID = nil
+            return
+        }
+        let plotFrame = geometry[plotFrameAnchor]
+        guard plotFrame.contains(location) else {
+            hoveredSegmentID = nil
+            return
+        }
+
+        let plotX = location.x - plotFrame.minX
+        let plotY = location.y - plotFrame.minY
+        guard let date: Date = proxy.value(atX: plotX) else {
+            hoveredSegmentID = nil
+            return
+        }
+
+        let lane: String
+        if showsAllModels {
+            guard let hoveredLane: String = proxy.value(atY: plotY) else {
+                hoveredSegmentID = nil
+                return
+            }
+            lane = hoveredLane
+        } else {
+            lane = "Reliability"
+        }
+
+        hoveredSegmentID = segments.first {
+            $0.lane == lane
+                && date >= $0.bucketStart
+                && date < bucketEnd(after: $0.bucketStart)
+        }?.id
+    }
+
+    private func tooltipCenter(
+        for segment: Segment,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) -> CGPoint? {
+        guard let plotFrameAnchor = proxy.plotFrame,
+              let plotX = proxy.position(forX: midpoint(of: segment)),
+              let plotY = proxy.position(forY: segment.lane) else {
+            return nil
+        }
+
+        let plotFrame = geometry[plotFrameAnchor]
+        let anchor = CGPoint(x: plotFrame.minX + plotX, y: plotFrame.minY + plotY)
+        let tooltipSize = CGSize(width: 220, height: showsAllModels ? 124 : 106)
+        let spacing: CGFloat = 12
+        let showOnLeft = anchor.x > plotFrame.midX
+        let desiredX = showOnLeft
+            ? anchor.x - spacing - tooltipSize.width / 2
+            : anchor.x + spacing + tooltipSize.width / 2
+        let desiredY = anchor.y - spacing - tooltipSize.height / 2
+
+        return CGPoint(
+            x: min(max(desiredX, tooltipSize.width / 2), geometry.size.width - tooltipSize.width / 2),
+            y: min(max(desiredY, tooltipSize.height / 2), geometry.size.height - tooltipSize.height / 2)
+        )
+    }
+}
+
+private struct SuccessRateHealthTooltip: View {
+    let segment: SuccessRateHealthChart.Segment
+    let granularity: MLXServerAnalyticsGranularity
+    let showsModel: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if showsModel {
+                Text(segment.lane)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Text(dateLabel)
+                .font(.caption.weight(.semibold))
+
+            Divider()
+
+            metricRow("Success", value: successRateLabel, color: DashboardPalette.positive)
+            metricRow(
+                "Requests",
+                value: MLXServerFormatting.integer(segment.totalRequests),
+                color: DashboardPalette.indigo
+            )
+            metricRow(
+                "Failed",
+                value: MLXServerFormatting.integer(segment.requestsFailed),
+                color: DashboardPalette.negative
+            )
+        }
+        .padding(11)
+        .frame(width: 220)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(DashboardPalette.panelStroke, lineWidth: 0.75)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+    }
+
+    private var successRateLabel: String {
+        segment.successRate.map(MLXServerFormatting.percent) ?? "--"
+    }
+
+    private var dateLabel: String {
+        if granularity == .hour {
+            return segment.bucketStart.formatted(date: .abbreviated, time: .shortened)
+        }
+        return segment.bucketStart.formatted(date: .long, time: .omitted)
+    }
+
+    private func metricRow(_ title: String, value: String, color: Color) -> some View {
+        HStack(spacing: 7) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(title).foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Text(value)
+                .fontWeight(.medium)
+                .monospacedDigit()
+        }
+        .font(.caption)
     }
 }
 
@@ -1557,6 +2001,11 @@ private struct DashboardMetricTooltip: View {
                     "Requests",
                     value: MLXServerFormatting.integer(totalRequests),
                     color: DashboardPalette.indigo
+                )
+                metricRow(
+                    "Failed",
+                    value: MLXServerFormatting.integer(point.requestsFailed),
+                    color: DashboardPalette.negative
                 )
             case .decodeSpeed:
                 metricRow(
