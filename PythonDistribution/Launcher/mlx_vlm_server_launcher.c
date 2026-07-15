@@ -163,7 +163,8 @@ int main(int argc, char **argv) {
   }
 
   if (setenv("PYTHONHOME", python_home, 1) != 0 ||
-      setenv("PYTHONNOUSERSITE", "1", 1) != 0) {
+      setenv("PYTHONNOUSERSITE", "1", 1) != 0 ||
+      setenv("PYTHONDONTWRITEBYTECODE", "1", 1) != 0) {
     fprintf(stderr, "failed to set Python environment: %s\n", strerror(errno));
     return 127;
   }

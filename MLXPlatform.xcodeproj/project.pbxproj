@@ -288,11 +288,11 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					3E252B6E9F29FD547270EE89 = {
-						DevelopmentTeam = C5EGZBSMJB;
+						DevelopmentTeam = V8MWN7GKJ5;
 						ProvisioningStyle = Automatic;
 					};
 					AF7DEFE088E22243EF9F58FD = {
-						DevelopmentTeam = C5EGZBSMJB;
+						DevelopmentTeam = V8MWN7GKJ5;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -439,6 +439,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -471,13 +472,13 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BF4C45160D3E7766501AEF95 /* Signing.xcconfig */;
 			buildSettings = {
+				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -486,7 +487,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(MLX_SERVER_KIT_BUNDLE_IDENTIFIER)";
 				SDKROOT = macosx;
-				SKIP_INSTALL = NO;
+				SKIP_INSTALL = YES;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
@@ -495,6 +496,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BF4C45160D3E7766501AEF95 /* Signing.xcconfig */;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -552,6 +554,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -577,10 +580,10 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BF4C45160D3E7766501AEF95 /* Signing.xcconfig */;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "MLX Server";
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
@@ -603,6 +606,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BF4C45160D3E7766501AEF95 /* Signing.xcconfig */;
 			buildSettings = {
+				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
@@ -617,7 +621,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(MLX_SERVER_KIT_BUNDLE_IDENTIFIER)";
 				SDKROOT = macosx;
-				SKIP_INSTALL = NO;
+				SKIP_INSTALL = YES;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;

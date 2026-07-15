@@ -9,6 +9,7 @@ settings:
     SWIFT_VERSION: "5.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     ARCHS: arm64
+    ENABLE_HARDENED_RUNTIME: YES
 packages:
   textual:
     url: https://github.com/gonzalezreal/textual.git
@@ -48,12 +49,10 @@ targets:
           python3 "$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py"
     settings:
       base:
+        ARCHS: arm64
         PRODUCT_BUNDLE_IDENTIFIER: $(MLX_SERVER_KIT_BUNDLE_IDENTIFIER)
         GENERATE_INFOPLIST_FILE: YES
-        SKIP_INSTALL: NO
-      configs:
-        Release:
-          ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
   MLXVLMServer:
     type: application
     platform: macOS
@@ -73,6 +72,7 @@ targets:
         product: Textual
     settings:
       base:
+        ARCHS: arm64
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         PRODUCT_BUNDLE_IDENTIFIER: $(MLX_VLM_SERVER_BUNDLE_IDENTIFIER)
         GENERATE_INFOPLIST_FILE: YES
@@ -84,6 +84,3 @@ targets:
         INFOPLIST_KEY_NSHighResolutionCapable: YES
         MARKETING_VERSION: 0.1
         CURRENT_PROJECT_VERSION: 1
-      configs:
-        Release:
-          ENABLE_HARDENED_RUNTIME: YES

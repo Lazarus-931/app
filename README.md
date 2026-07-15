@@ -97,6 +97,75 @@ make xcode-lifecycle-smoke
 The lifecycle smoke test starts `mlx-vlm-server` without arguments, confirms it
 continues running, then stops it through `MLXServerProcessController`.
 
+## Release Signing And Notarization
+
+Distribution outside the Mac App Store requires a `Developer ID Application`
+certificate and Apple notarization credentials. Create a timestamped unsigned
+Release archive under `dist/archive/`:
+
+```sh
+scripts/archive_macos_release.sh
+```
+
+The script prints the archive and application paths. It regenerates the Xcode
+project, archives with Xcode signing disabled, and verifies that Organizer will
+recognize the result as a macOS app archive. To archive and immediately sign in
+one command, let the script infer `DEVELOPMENT_TEAM` from the Release build
+settings and resolve the matching Developer ID certificate:
+
+```sh
+scripts/archive_macos_release.sh --sign
+```
+
+For a local test with an Apple Development certificate, also pass
+`--no-timestamp`; Team ID resolution will select Apple Development instead of
+Developer ID Application:
+
+```sh
+scripts/archive_macos_release.sh --sign --no-timestamp
+```
+
+You can override the configured team with `--team-id TEAMID`, or bypass
+resolution with `--identity`. Apple Development signing does not produce a
+distributable build, but it exercises the same recursive hardened-runtime path.
+
+To sign an existing archive separately, pass its app to the signing script:
+
+```sh
+scripts/sign_macos_release.sh \
+  --identity "Developer ID Application: Example Company (TEAMID)" \
+  path/to/MLXVLMServer.app
+```
+
+The signing script discovers every Mach-O file in the embedded Python runtime,
+signs nested bundles, re-signs the application, removes development-only
+entitlements, and performs strict signature verification. For local validation
+with an Apple Development certificate, pass `--no-timestamp`; that option is
+rejected for Developer ID identities. The embedded launcher disables Python
+bytecode writes so launching the server does not invalidate the sealed bundle.
+
+For local notarization, store credentials in the Keychain once:
+
+```sh
+xcrun notarytool store-credentials mlx-vlm-server-notary \
+  --apple-id developer@example.com \
+  --team-id TEAMID \
+  --password APP_SPECIFIC_PASSWORD
+```
+
+Then submit, wait, staple, validate, and create the final ZIP:
+
+```sh
+scripts/notarize_macos_release.sh path/to/MLXVLMServer.app
+```
+
+The Keychain profile defaults to `mlx-vlm-server-notary`. Override it with
+`--keychain-profile` or `NOTARYTOOL_PROFILE`. CI can use an App Store Connect
+API key instead by setting `NOTARY_KEY_PATH`, `NOTARY_KEY_ID`, and optionally
+`NOTARY_ISSUER`.
+Notarization results and failure logs are written beside the final archive
+under `dist/release/` by default.
+
 To exercise the stats menu manually, start the app or server and run:
 
 ```sh
