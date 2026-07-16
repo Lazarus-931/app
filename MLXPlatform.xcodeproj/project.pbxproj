@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5F3B2A195A6B4C7D8E9F0102 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5F3B2A195A6B4C7D8E9F0101 /* Assets.xcassets */; };
 		0742C765B9160A29FCD9478D /* ChatConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8ECD51410493D4D5463DEAB /* ChatConfigurationView.swift */; };
 		09BD37A10A985C7C9F7B7C6E /* MLXServerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00894697C171C6B288BF0103 /* MLXServerModel.swift */; };
 		0E204CDE3A896369EB992489 /* MLXServerKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */; };
@@ -62,6 +63,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5F3B2A195A6B4C7D8E9F0101 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		00894697C171C6B288BF0103 /* MLXServerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerModel.swift; sourceTree = "<group>"; };
 		0CAD4146AC9719AD9863EF4D /* ImageGenerationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageGenerationViewModel.swift; sourceTree = "<group>"; };
 		15AE0B934327136178FAC319 /* MLXServerImageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXServerImageClient.swift; sourceTree = "<group>"; };
@@ -184,6 +186,7 @@
 		B8E0B913F58F550A06804B77 /* MLXVLMServer */ = {
 			isa = PBXGroup;
 			children = (
+				5F3B2A195A6B4C7D8E9F0101 /* Assets.xcassets */,
 				16AF7B20AD527C9F2714A3E4 /* AppDelegate.swift */,
 				96E4D31D5B9C910FF22A43EC /* ControlPanelView.swift */,
 				7BCE86ED81B58ABC9D504A16 /* Main.swift */,
@@ -305,6 +308,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5F3B2A195A6B4C7D8E9F0102 /* Assets.xcassets in Resources */,
 				56D7E25EDF2B04A4C5286C60 /* ModelProviderIcons in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

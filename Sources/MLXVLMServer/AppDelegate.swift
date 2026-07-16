@@ -335,6 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private weak var highlightedMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        applyApplicationIcon()
         runtime.start()
         model.onMenuStateChanged = { [weak self] in
             guard let self else {
@@ -356,6 +357,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         refreshLocalModels()
         model.startServer()
+    }
+
+    private func applyApplicationIcon() {
+        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+              let icon = NSImage(contentsOf: iconURL) else {
+            return
+        }
+        NSApplication.shared.applicationIconImage = icon
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -459,9 +468,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func configureStatusItem() {
-        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "MLX"
-        statusItem.button?.toolTip = "MLX VLM Server"
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = statusItem.button {
+            if let image = NSImage(named: "MenuBarLogo") {
+                image.isTemplate = true
+                image.size = NSSize(width: 22, height: 22)
+                button.image = image
+                button.imagePosition = .imageOnly
+            } else {
+                button.title = "MLX"
+            }
+            button.toolTip = "MLX VLM Server"
+        }
 
         let menu = NSMenu()
         menu.delegate = self
