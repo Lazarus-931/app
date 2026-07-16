@@ -41,13 +41,55 @@ private struct ChatImageThumbnail: View {
     }
 }
 
+private enum ChatReasoningLevel: String, CaseIterable, Identifiable {
+    case off = "Off"
+    case low = "Low"
+    case medium = "Medium"
+    case high = "High"
+    case max = "Max"
+
+    var id: Self { self }
+
+    var tokenBudget: Int? {
+        switch self {
+        case .off, .max:
+            nil
+        case .low:
+            512
+        case .medium:
+            2_048
+        case .high:
+            8_192
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .off:
+            ""
+        case .low:
+            "Max 512 tokens"
+        case .medium:
+            "Max 2,048 tokens"
+        case .high:
+            "Max 8,192 tokens"
+        case .max:
+            "Unlimited"
+        }
+    }
+
+}
+
 struct ChatComposer: View {
+    @ObservedObject var model: MLXServerModel
     @ObservedObject var viewModel: ChatViewModel
+    @StateObject private var localLibrary = LocalModelLibrary()
     let unavailableReason: String?
     let canCompose: Bool
     let canSend: Bool
     let onSend: () -> Void
     @State private var editorContentHeight: CGFloat = 0
+    @State private var didApplyInitialReasoningDefault = false
     private let textInset = EdgeInsets(top: 14, leading: 14, bottom: 10, trailing: 14)
     private let editorMinimumHeight: CGFloat = 64
     private let editorMaximumHeight: CGFloat = 120
@@ -116,25 +158,17 @@ struct ChatComposer: View {
                     .padding(.bottom, 8)
                 }
 
-                HStack {
-                    Menu {
-                        Button {
-                            viewModel.chooseImageAttachments()
-                        } label: {
-                            Label("Attach Image", systemImage: "photo.badge.plus")
-                        }
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .regular))
-                            .frame(width: 30, height: 30)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .disabled(!canCompose)
+                HStack(spacing: 8) {
+                    ChatComposerActionMenu(
+                        isEnabled: canCompose,
+                        onAttachImages: viewModel.chooseImageAttachments
+                    )
+                    .frame(width: 30, height: 30)
                     .help("Add attachment")
 
                     Spacer(minLength: 12)
+
+                    modelPicker
 
                     Button {
                         if showsStopButton {
@@ -167,6 +201,304 @@ struct ChatComposer: View {
             .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
         }
         .padding(.vertical, 18)
+        .task(id: model.settings.modelSearchPath) {
+            localLibrary.scan(path: model.settings.modelSearchPath)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .localModelLibraryDidChange)) { _ in
+            localLibrary.scan(path: model.settings.modelSearchPath)
+        }
+        .onChange(of: localLibrary.models) { _, models in
+            disableThinkingIfUnsupported(modelID: selectedModelID, models: models)
+            applyInitialReasoningDefaultIfNeeded(modelID: selectedModelID, models: models)
+        }
+        .onChange(of: selectedModelID) { _, modelID in
+            configureReasoningForSelectedModel(modelID: modelID, models: localLibrary.models)
+        }
+        .onDisappear {
+            localLibrary.cancel()
+        }
+    }
+
+    private var modelPicker: some View {
+        Menu {
+            modelSelectionMenu
+
+            if selectedModelSupportsThinking {
+                reasoningSelectionMenu
+            }
+        } label: {
+            HStack(spacing: 6) {
+                if model.modelSwitchInProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    ChatComposerModelIcon(provider: selectedModelProvider)
+                }
+
+                Text(selectedModelLabel)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .layoutPriority(0)
+
+                if selectedModelSupportsThinking {
+                    Text(reasoningLevel.rawValue)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                        .layoutPriority(2)
+                }
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10)
+                    .layoutPriority(3)
+            }
+            .font(.caption.weight(.medium))
+            .padding(.leading, 10)
+            .padding(.trailing, 8)
+            .frame(height: 30)
+            .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color(nsColor: .separatorColor).opacity(0.8), lineWidth: 0.75)
+            }
+            .contentShape(Capsule())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .disabled(model.modelSwitchInProgress || viewModel.hasPendingRequests)
+        .help(modelPickerHelp)
+        .accessibilityLabel("Model")
+        .accessibilityValue(modelPickerAccessibilityValue)
+    }
+
+    private var modelSelectionMenu: some View {
+        Menu {
+            if let selectedModelID,
+               !localLibrary.models.contains(where: { $0.repoID == selectedModelID }) {
+                Button {
+                    model.switchLanguageModel(to: selectedModelID)
+                } label: {
+                    HStack {
+                        ChatComposerModelIcon(provider: provider(for: selectedModelID))
+                        Text(modelMenuLabel(selectedModelID))
+                        Spacer()
+                        Image(systemName: "checkmark")
+                    }
+                }
+
+                if !localLibrary.models.isEmpty {
+                    Divider()
+                }
+            }
+
+            ForEach(localLibrary.models) { localModel in
+                Button {
+                    select(localModel)
+                } label: {
+                    HStack {
+                        ChatComposerModelIcon(provider: localModel.provider)
+                        Text(modelMenuLabel(localModel.repoID))
+                        if localModel.repoID == selectedModelID {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+
+            if localLibrary.models.isEmpty && selectedModelID == nil {
+                Button(localModelStatusLabel) {}
+                    .disabled(true)
+            }
+        } label: {
+            menuSummaryText(title: "Model", value: selectedModelLabel)
+        }
+    }
+
+    private var reasoningSelectionMenu: some View {
+        Menu {
+            ForEach(ChatReasoningLevel.allCases) { level in
+                Button {
+                    applyReasoningLevel(level)
+                } label: {
+                    if level == reasoningLevel {
+                        Label {
+                            reasoningMenuText(level)
+                        } icon: {
+                            Image(systemName: "checkmark")
+                        }
+                    } else {
+                        reasoningMenuText(level)
+                    }
+                }
+            }
+        } label: {
+            menuSummaryText(title: "Reasoning", value: reasoningLevel.rawValue)
+        }
+    }
+
+    private var selectedModelID: String? {
+        model.settings.normalized().languageModelID
+    }
+
+    private var selectedModelLabel: String {
+        guard let selectedModelID else {
+            return "Choose model"
+        }
+        return modelMenuLabel(selectedModelID)
+    }
+
+    private var modelPickerAccessibilityValue: String {
+        selectedModelSupportsThinking
+            ? "\(selectedModelLabel), reasoning \(reasoningLevel.rawValue)"
+            : selectedModelLabel
+    }
+
+    private var selectedLocalModel: LocalModel? {
+        guard let selectedModelID else { return nil }
+        return localLibrary.models.first { $0.repoID == selectedModelID }
+    }
+
+    private var selectedModelProvider: LocalModelProvider? {
+        if let provider = selectedLocalModel?.provider {
+            return provider
+        }
+        guard let selectedModelID else { return nil }
+        return provider(for: selectedModelID)
+    }
+
+    private var selectedModelSupportsThinking: Bool {
+        model.settings.thinkingEnabled
+            || selectedLocalModel?.capabilities.contains(.reasoning) == true
+    }
+
+    private var reasoningLevel: ChatReasoningLevel {
+        guard model.settings.thinkingEnabled else {
+            return .off
+        }
+        guard model.settings.thinkingBudgetEnabled else {
+            return .max
+        }
+
+        switch model.settings.thinkingBudget {
+        case ...512:
+            return .low
+        case ...2_048:
+            return .medium
+        default:
+            return .high
+        }
+    }
+
+    private var localModelStatusLabel: String {
+        if localLibrary.isScanning {
+            return "Scanning for models…"
+        }
+        return localLibrary.error ?? "No installed models"
+    }
+
+    private var modelPickerHelp: String {
+        if viewModel.hasPendingRequests {
+            return "Model switching is unavailable while requests are active or queued"
+        }
+        if model.modelSwitchInProgress {
+            return "Restarting the server with \(selectedModelLabel)"
+        }
+        return "Change model"
+    }
+
+    private func modelMenuLabel(_ modelID: String) -> String {
+        let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
+        return MLXServerFormatting.truncateModelName(shortName, maxLength: 28)
+    }
+
+    private func menuSummaryText(title: String, value: String) -> Text {
+        Text(title) + Text("  \(value)").foregroundColor(.secondary)
+    }
+
+    private func reasoningMenuText(_ level: ChatReasoningLevel) -> Text {
+        guard !level.detail.isEmpty else {
+            return Text(level.rawValue)
+        }
+        return Text(level.rawValue)
+            + Text("    \(level.detail)").foregroundColor(Color(nsColor: .tertiaryLabelColor))
+    }
+
+    private func select(_ localModel: LocalModel) {
+        if localModel.capabilities.contains(.reasoning) {
+            applyReasoningLevel(.max)
+        } else {
+            model.settings.thinkingEnabled = false
+        }
+        model.switchLanguageModel(to: localModel.repoID)
+    }
+
+    private func applyReasoningLevel(_ level: ChatReasoningLevel) {
+        switch level {
+        case .off:
+            model.settings.thinkingEnabled = false
+        case .max:
+            model.settings.thinkingEnabled = true
+            model.settings.thinkingBudgetEnabled = false
+        case .low, .medium, .high:
+            model.settings.thinkingEnabled = true
+            model.settings.thinkingBudgetEnabled = true
+            model.settings.thinkingBudget = level.tokenBudget ?? model.settings.thinkingBudget
+        }
+    }
+
+    private func disableThinkingIfUnsupported(modelID: String?, models: [LocalModel]) {
+        guard model.settings.thinkingEnabled,
+              let modelID,
+              let localModel = models.first(where: { $0.repoID == modelID }),
+              !localModel.capabilities.contains(.reasoning)
+        else {
+            return
+        }
+        model.settings.thinkingEnabled = false
+    }
+
+    private func applyInitialReasoningDefaultIfNeeded(
+        modelID: String?,
+        models: [LocalModel]
+    ) {
+        guard !didApplyInitialReasoningDefault,
+              let modelID,
+              let localModel = models.first(where: { $0.repoID == modelID })
+        else {
+            return
+        }
+
+        didApplyInitialReasoningDefault = true
+        if localModel.capabilities.contains(.reasoning) {
+            applyReasoningLevel(.max)
+        }
+    }
+
+    private func configureReasoningForSelectedModel(
+        modelID: String?,
+        models: [LocalModel]
+    ) {
+        guard let modelID,
+              let localModel = models.first(where: { $0.repoID == modelID })
+        else {
+            return
+        }
+
+        if localModel.capabilities.contains(.reasoning) {
+            applyReasoningLevel(.max)
+        } else {
+            model.settings.thinkingEnabled = false
+        }
+    }
+
+    private func provider(for modelID: String) -> LocalModelProvider? {
+        LocalModelProviderResolver.resolve(
+            repoID: modelID,
+            modelType: nil,
+            architectures: []
+        )
     }
 
     private var actionButtonColor: Color {
@@ -186,6 +518,124 @@ struct ChatComposer: View {
 
     private var editorHeight: CGFloat {
         min(max(editorContentHeight, editorMinimumHeight), editorMaximumHeight)
+    }
+}
+
+private struct ChatComposerModelIcon: View {
+    let provider: LocalModelProvider?
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ZStack {
+            if provider?.needsLightIconBackgroundInDarkMode == true, colorScheme == .dark {
+                Circle()
+                    .fill(Color.white.opacity(0.94))
+                    .frame(width: 18, height: 18)
+            }
+
+            if let provider, let image = LocalModelProviderIcon.image(for: provider) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(Color(nsColor: provider.iconTintColor))
+                    .frame(width: 15, height: 15)
+            } else if let provider {
+                Text(provider.monogram)
+                    .font(.system(size: provider.monogram.count > 2 ? 7 : 9, weight: .bold))
+                    .foregroundStyle(Color(nsColor: provider.iconTintColor))
+            } else {
+                Image(systemName: "cube.transparent")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 18, height: 18)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct ChatComposerActionMenu: NSViewRepresentable {
+    let isEnabled: Bool
+    let onAttachImages: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton()
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.focusRingType = .none
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.showMenu(_:))
+        button.image = NSImage(
+            systemSymbolName: "plus",
+            accessibilityDescription: "More message options"
+        )?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        )
+        button.setAccessibilityLabel("More message options")
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.parent = self
+        button.isEnabled = isEnabled
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: ChatComposerActionMenu
+
+        init(parent: ChatComposerActionMenu) {
+            self.parent = parent
+        }
+
+        @objc func showMenu(_ sender: NSButton) {
+            let menu = makeMenu()
+            if let event = NSApp.currentEvent {
+                NSMenu.popUpContextMenu(menu, with: event, for: sender)
+            } else {
+                menu.popUp(
+                    positioning: nil,
+                    at: NSPoint(x: -8, y: sender.bounds.maxY + 4),
+                    in: sender
+                )
+            }
+        }
+
+        private func makeMenu() -> NSMenu {
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            menu.minimumWidth = 190
+
+            let imageItem = NSMenuItem(
+                title: "Attach Image",
+                action: #selector(attachImages(_:)),
+                keyEquivalent: ""
+            )
+            imageItem.target = self
+            imageItem.image = menuImage("photo.badge.plus", description: "Attach Image")
+            imageItem.isEnabled = true
+            menu.addItem(imageItem)
+
+            return menu
+        }
+
+        @objc private func attachImages(_ sender: NSMenuItem) {
+            parent.onAttachImages()
+        }
+
+        private func menuImage(_ systemName: String, description: String) -> NSImage? {
+            NSImage(
+                systemSymbolName: systemName,
+                accessibilityDescription: description
+            )?.withSymbolConfiguration(
+                NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            )
+        }
+
     }
 }
 

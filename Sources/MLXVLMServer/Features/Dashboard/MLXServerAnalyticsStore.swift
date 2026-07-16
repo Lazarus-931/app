@@ -55,6 +55,8 @@ struct MLXServerHistoricalAnalyticsSummary: Sendable {
     var generatedTokensTotal: Int = 0
     var requestTimeTotalMilliseconds: Int64 = 0
     var decodeTimeTotalMilliseconds: Int64 = 0
+    var averageTTFTMilliseconds: Double?
+    var ttftSampleCount: Int = 0
     var peakMemoryBytesMax: Int64?
     var lastUpdatedAt: Date?
 
@@ -195,6 +197,11 @@ struct MLXServerAnalyticsRequestEvent: Identifiable, Sendable {
     }
 }
 
+struct MLXServerAnalyticsTTFTEvent: Sendable {
+    let completedAt: Date
+    let milliseconds: Int64
+}
+
 final class MLXServerAnalyticsStore {
     private let databaseURL: URL
 
@@ -256,6 +263,12 @@ final class MLXServerAnalyticsStore {
             return .empty
         }
 
+        let ttftSummary = fetchTTFTSummary(
+            connection: connection,
+            range: range,
+            modelID: modelID
+        )
+
         return MLXServerHistoricalAnalyticsSummary(
             requestsCompleted: Int(statement.int64(at: 0)),
             requestsFailed: Int(statement.int64(at: 1)),
@@ -264,10 +277,50 @@ final class MLXServerAnalyticsStore {
             generatedTokensTotal: Int(statement.int64(at: 4)),
             requestTimeTotalMilliseconds: statement.int64(at: 5),
             decodeTimeTotalMilliseconds: statement.int64(at: 6),
+            averageTTFTMilliseconds: ttftSummary.averageMilliseconds,
+            ttftSampleCount: ttftSummary.sampleCount,
             peakMemoryBytesMax: statement.isNull(at: 7) ? nil : statement.int64(at: 7),
             lastUpdatedAt: statement.isNull(at: 8)
                 ? nil
                 : Date(timeIntervalSince1970: statement.double(at: 8))
+        )
+    }
+
+    private func fetchTTFTSummary(
+        connection: SQLiteConnection,
+        range: MLXServerAnalyticsRange,
+        modelID: String?
+    ) -> (averageMilliseconds: Double?, sampleCount: Int) {
+        let sql = """
+            SELECT AVG(ttft_ms), COUNT(ttft_ms)
+            FROM request_events
+            WHERE ttft_ms IS NOT NULL
+                AND ttft_ms >= 0
+            \(range.rangeStartUnix == nil ? "" : "AND completed_at >= ?")
+            \(normalizedModelID(modelID) == nil ? "" : "AND model_id = ?")
+            """
+
+        guard let statement = try? connection.prepare(sql) else {
+            return (nil, 0)
+        }
+
+        var parameterIndex: Int32 = 1
+        if let rangeStartUnix = range.rangeStartUnix {
+            statement.bind(double: rangeStartUnix, at: parameterIndex)
+            parameterIndex += 1
+        }
+
+        if let modelID = normalizedModelID(modelID) {
+            statement.bind(text: modelID, at: parameterIndex)
+        }
+
+        guard (try? statement.step()) == true else {
+            return (nil, 0)
+        }
+
+        return (
+            averageMilliseconds: statement.isNull(at: 0) ? nil : statement.double(at: 0),
+            sampleCount: Int(statement.int64(at: 1))
         )
     }
 
@@ -474,6 +527,50 @@ final class MLXServerAnalyticsStore {
             )
         }
 
+        return rows
+    }
+
+    func fetchTTFTEvents(
+        range: MLXServerAnalyticsRange,
+        modelID: String? = nil
+    ) -> [MLXServerAnalyticsTTFTEvent] {
+        guard let connection = try? SQLiteConnection(url: databaseURL) else {
+            return []
+        }
+
+        let sql = """
+            SELECT completed_at, ttft_ms
+            FROM request_events
+            WHERE ttft_ms IS NOT NULL
+                AND ttft_ms >= 0
+            \(range.rangeStartUnix == nil ? "" : "AND completed_at >= ?")
+            \(normalizedModelID(modelID) == nil ? "" : "AND model_id = ?")
+            ORDER BY completed_at ASC
+            """
+
+        guard let statement = try? connection.prepare(sql) else {
+            return []
+        }
+
+        var parameterIndex: Int32 = 1
+        if let rangeStartUnix = range.rangeStartUnix {
+            statement.bind(double: rangeStartUnix, at: parameterIndex)
+            parameterIndex += 1
+        }
+
+        if let modelID = normalizedModelID(modelID) {
+            statement.bind(text: modelID, at: parameterIndex)
+        }
+
+        var rows: [MLXServerAnalyticsTTFTEvent] = []
+        while (try? statement.step()) == true {
+            rows.append(
+                MLXServerAnalyticsTTFTEvent(
+                    completedAt: Date(timeIntervalSince1970: statement.double(at: 0)),
+                    milliseconds: statement.int64(at: 1)
+                )
+            )
+        }
         return rows
     }
 

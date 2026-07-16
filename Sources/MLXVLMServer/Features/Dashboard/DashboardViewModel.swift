@@ -86,6 +86,8 @@ final class DashboardViewModel: ObservableObject {
         let streamingRequests: Int
         let requestTimeTotalMilliseconds: Int64
         let decodeTimeTotalMilliseconds: Int64
+        let averageTTFTMilliseconds: Double?
+        let ttftSampleCount: Int
         let peakMemoryBytesMax: Int64?
 
         var id: Date { bucketStart }
@@ -268,6 +270,10 @@ final class DashboardViewModel: ObservableObject {
                 modelID: selectedModelID,
                 granularityOverride: .hour
             )
+            let ttftEvents = store.fetchTTFTEvents(
+                range: range.analyticsRange,
+                modelID: selectedModelID
+            )
             let recentRequestEvents = store.fetchRecentRequestEvents(
                 range: range.analyticsRange,
                 modelID: selectedModelID,
@@ -276,6 +282,7 @@ final class DashboardViewModel: ObservableObject {
             let knownModelIDs = store.fetchKnownModelIDs()
             let points = Self.bucketPoints(
                 from: rawBuckets,
+                ttftEvents: ttftEvents,
                 range: range,
                 granularity: displayGranularity
             )
@@ -486,6 +493,7 @@ private extension DashboardViewModel {
 
     nonisolated static func bucketPoints(
         from rawBuckets: [MLXServerAnalyticsBucketPoint],
+        ttftEvents: [MLXServerAnalyticsTTFTEvent] = [],
         range: RangeOption,
         granularity: MLXServerAnalyticsGranularity,
         calendar: Calendar = .current
@@ -495,6 +503,13 @@ private extension DashboardViewModel {
         }
 
         let grouped = Dictionary(grouping: rawBuckets, by: \.bucketStart)
+        let ttftByBucket = Dictionary(grouping: ttftEvents) { event in
+            normalizedBucketDate(
+                for: event.completedAt,
+                granularity: granularity,
+                calendar: calendar
+            )
+        }
         let filledDates = bucketDates(
             from: rawBuckets.map(\.bucketStart),
             range: range,
@@ -504,6 +519,11 @@ private extension DashboardViewModel {
 
         return filledDates.map { bucketStart in
             let rows = grouped[bucketStart] ?? []
+            let ttftSamples = ttftByBucket[bucketStart, default: []]
+            let averageTTFT = ttftSamples.isEmpty
+                ? nil
+                : Double(ttftSamples.reduce(Int64.zero) { $0 + $1.milliseconds })
+                    / Double(ttftSamples.count)
             return BucketPoint(
                 granularity: rows.first?.granularity ?? granularity,
                 bucketStart: bucketStart,
@@ -516,6 +536,8 @@ private extension DashboardViewModel {
                 streamingRequests: rows.reduce(0) { $0 + $1.streamingRequests },
                 requestTimeTotalMilliseconds: rows.reduce(0) { $0 + $1.requestTimeTotalMilliseconds },
                 decodeTimeTotalMilliseconds: rows.reduce(0) { $0 + $1.decodeTimeTotalMilliseconds },
+                averageTTFTMilliseconds: averageTTFT,
+                ttftSampleCount: ttftSamples.count,
                 peakMemoryBytesMax: rows.compactMap(\.peakMemoryBytesMax).max()
             )
         }

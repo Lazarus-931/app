@@ -81,6 +81,13 @@ enum MLXServerFormatting {
         return integerFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
+    static func milliseconds(_ value: Double?, fractionDigits: Int = 0) -> String {
+        guard let value, value >= 0, value.isFinite else {
+            return "--"
+        }
+        return "\(decimal(value, fractionDigits: fractionDigits)) ms"
+    }
+
     static func seconds(fromMilliseconds value: Int64?, fractionDigits: Int = 2) -> String {
         guard let value, value >= 0 else {
             return "--"

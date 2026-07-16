@@ -223,7 +223,7 @@ private struct DashboardContentView: View, Equatable {
             AnalyticsMetricCard(
                 title: "Requests",
                 value: compact(totalRequests),
-                detail: "\(compact(dashboard.historicalSummary.requestsCompleted)) completed",
+                detail: requestDetail,
                 icon: "arrow.up.arrow.down",
                 tint: DashboardPalette.indigo,
                 isSelected: selectedChartMetric == .requests
@@ -360,6 +360,17 @@ private struct DashboardContentView: View, Equatable {
         return MLXServerFormatting.percent(
             Double(dashboard.historicalSummary.requestsCompleted) / Double(totalRequests)
         )
+    }
+
+    private var requestDetail: String {
+        let completed = "\(compact(dashboard.historicalSummary.requestsCompleted)) completed"
+        guard dashboard.historicalSummary.ttftSampleCount > 0 else {
+            return completed
+        }
+        let ttft = MLXServerFormatting.milliseconds(
+            dashboard.historicalSummary.averageTTFTMilliseconds
+        )
+        return "\(completed) · \(ttft) TTFT"
     }
 
     private var lastUpdatedLabel: String {
@@ -1228,7 +1239,7 @@ private struct TokenUsagePanel: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 190)
-                } else if !showsAllModels {
+                } else if !showsAllModels || metric == .requests {
                     chartLegend
                 }
             }
@@ -1280,6 +1291,20 @@ private struct TokenUsagePanel: View {
                                     .foregroundStyle(DashboardPalette.axisText)
                             }
                         }
+                        if metric == .requests && hasTTFTData {
+                            AxisMarks(position: .trailing, values: ttftAxisPlotValues) { value in
+                                AxisTick().foregroundStyle(DashboardPalette.latency.opacity(0.7))
+                                if let raw = value.as(Double.self) {
+                                    AxisValueLabel(
+                                        MLXServerFormatting.milliseconds(
+                                            ttftMilliseconds(forPlotValue: raw)
+                                        )
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(DashboardPalette.latency)
+                                }
+                            }
+                        }
                     }
                 }
                 .chartYScale(domain: yDomain)
@@ -1314,6 +1339,7 @@ private struct TokenUsagePanel: View {
                                         ModelTokenUsageTooltip(
                                             date: hoveredPoint.bucketStart,
                                             points: modelValues(at: hoveredPoint.bucketStart),
+                                            modelColorDomain: modelColorDomain,
                                             granularity: granularity
                                         )
                                     } else if showsAllModels {
@@ -1321,6 +1347,10 @@ private struct TokenUsagePanel: View {
                                             metric: metric,
                                             date: hoveredPoint.bucketStart,
                                             points: tooltipModelValues(at: hoveredPoint.bucketStart),
+                                            modelColorDomain: modelColorDomain,
+                                            ttftMilliseconds: metric == .requests
+                                                ? hoveredPoint.averageTTFTMilliseconds
+                                                : nil,
                                             granularity: granularity
                                         )
                                     } else if metric == .tokens {
@@ -1378,8 +1408,8 @@ private struct TokenUsagePanel: View {
             showsAllModels ? "Total tokens by model over time" : "Input and output tokens over time"
         case .requests:
             showsAllModels
-                ? "Total requests by model over time"
-                : "Completed and failed requests over time"
+                ? "Request volume by model with average TTFT"
+                : "Completed, failed, and average TTFT over time"
         case .successRate:
             if showsAllModels && modelSuccessSummaries.count > 50 {
                 "Reliability versus request volume across models"
@@ -1405,8 +1435,11 @@ private struct TokenUsagePanel: View {
                 ChartLegendDot(color: DashboardPalette.accent, title: "Input")
                 ChartLegendDot(color: DashboardPalette.indigo, title: "Output")
             case .requests:
-                ChartLegendDot(color: DashboardPalette.positive, title: "Completed")
-                ChartLegendDot(color: DashboardPalette.negative, title: "Failed")
+                if !showsAllModels {
+                    ChartLegendDot(color: DashboardPalette.positive, title: "Completed")
+                    ChartLegendDot(color: DashboardPalette.negative, title: "Failed")
+                }
+                ChartLegendDot(color: DashboardPalette.latency, title: "TTFT (ms)")
             case .successRate:
                 ChartLegendDot(color: DashboardPalette.positive, title: "Success rate")
                 ChartLegendDot(color: DashboardPalette.orange, title: "95% target")
@@ -1431,6 +1464,7 @@ private struct TokenUsagePanel: View {
             } else {
                 requestMarks
             }
+            ttftMarks
         case .successRate:
             if showsAllModels {
                 allModelSuccessRateMarks
@@ -1543,6 +1577,28 @@ private struct TokenUsagePanel: View {
                     ? 0.92
                     : 0.35
             )
+        }
+    }
+
+    @ChartContentBuilder
+    private var ttftMarks: some ChartContent {
+        ForEach(points) { point in
+            if let ttft = point.averageTTFTMilliseconds {
+                LineMark(
+                    x: .value("Time", hoverDate(for: point)),
+                    y: .value("TTFT", scaledTTFT(ttft))
+                )
+                .foregroundStyle(DashboardPalette.latency)
+                .lineStyle(StrokeStyle(lineWidth: 2.2))
+                .interpolationMethod(.monotone)
+
+                PointMark(
+                    x: .value("Time", hoverDate(for: point)),
+                    y: .value("TTFT", scaledTTFT(ttft))
+                )
+                .foregroundStyle(DashboardPalette.latency)
+                .symbolSize(20)
+            }
         }
     }
 
@@ -1722,6 +1778,14 @@ private struct TokenUsagePanel: View {
                         .symbolSize(48)
                     }
                 }
+                if let ttft = hoveredPoint.averageTTFTMilliseconds {
+                    PointMark(
+                        x: .value("Selected time", hoverDate(for: hoveredPoint)),
+                        y: .value("TTFT", scaledTTFT(ttft))
+                    )
+                    .foregroundStyle(DashboardPalette.latency)
+                    .symbolSize(58)
+                }
             case .successRate:
                 if showsAllModels {
                     ForEach(successModelValues(at: hoveredPoint.bucketStart)) { modelPoint in
@@ -1838,6 +1902,27 @@ private struct TokenUsagePanel: View {
         }
 
         return 0...max(maximum * 1.1, 1)
+    }
+
+    private var hasTTFTData: Bool {
+        points.contains { $0.averageTTFTMilliseconds != nil }
+    }
+
+    private var ttftAxisMaximum: Double {
+        max((points.compactMap(\.averageTTFTMilliseconds).max() ?? 0) * 1.1, 1)
+    }
+
+    private var ttftAxisPlotValues: [Double] {
+        let maximum = yDomain.upperBound
+        return [0, maximum / 2, maximum]
+    }
+
+    private func scaledTTFT(_ milliseconds: Double) -> Double {
+        milliseconds / ttftAxisMaximum * yDomain.upperBound
+    }
+
+    private func ttftMilliseconds(forPlotValue value: Double) -> Double {
+        value / yDomain.upperBound * ttftAxisMaximum
     }
 
     private func yAxisLabel(for value: Double) -> String {
@@ -2052,7 +2137,12 @@ private struct TokenUsagePanel: View {
         let tooltipSize = CGSize(
             width: showsAllModels ? 230 : 210,
             height: showsAllModels
-                ? min(CGFloat(tooltipModelValues(at: point.bucketStart).count) * 25 + 72, 272)
+                ? min(
+                    CGFloat(tooltipModelValues(at: point.bucketStart).count) * 25
+                        + 72
+                        + (metric == .requests && point.averageTTFTMilliseconds != nil ? 32 : 0),
+                    304
+                )
                 : singleMetricTooltipHeight
         )
         let spacing: CGFloat = 12
@@ -2082,9 +2172,11 @@ private struct TokenUsagePanel: View {
         switch metric {
         case .tokens:
             142
+        case .requests:
+            137
         case .successRate:
             137
-        case .requests, .decodeSpeed:
+        case .decodeSpeed:
             112
         }
     }
@@ -2100,7 +2192,10 @@ private struct TokenUsagePanel: View {
         case .tokens:
             return Double(max(point.promptTokensTotal, point.generatedTokensTotal))
         case .requests:
-            return Double(point.requestsCompleted + point.requestsFailed)
+            return max(
+                Double(point.requestsCompleted + point.requestsFailed),
+                point.averageTTFTMilliseconds.map(scaledTTFT) ?? 0
+            )
         case .successRate:
             if showsAllModels {
                 return successModelValues(at: point.bucketStart).compactMap(\.successRate).max() ?? 0
@@ -2833,6 +2928,7 @@ private struct SuccessRateHealthTooltip: View {
 private struct ModelTokenUsageTooltip: View {
     let date: Date
     let points: [DashboardViewModel.ModelTokenPoint]
+    let modelColorDomain: [String]
     let granularity: MLXServerAnalyticsGranularity
 
     var body: some View {
@@ -2844,6 +2940,9 @@ private struct ModelTokenUsageTooltip: View {
                 VStack(spacing: 7) {
                     ForEach(points) { point in
                         HStack(spacing: 10) {
+                            Circle()
+                                .fill(DashboardModelColorScale.color(for: point.modelID, in: modelColorDomain))
+                                .frame(width: 7, height: 7)
                             Text(point.modelID)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -2897,6 +2996,8 @@ private struct ModelOverviewTooltip: View {
     let metric: DashboardOverviewMetric
     let date: Date
     let points: [DashboardViewModel.ModelTokenPoint]
+    let modelColorDomain: [String]
+    let ttftMilliseconds: Double?
     let granularity: MLXServerAnalyticsGranularity
 
     var body: some View {
@@ -2908,6 +3009,9 @@ private struct ModelOverviewTooltip: View {
                 VStack(spacing: 7) {
                     ForEach(points) { point in
                         HStack(spacing: 10) {
+                            Circle()
+                                .fill(DashboardModelColorScale.color(for: point.modelID, in: modelColorDomain))
+                                .frame(width: 7, height: 7)
                             Text(point.modelID)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -2924,6 +3028,23 @@ private struct ModelOverviewTooltip: View {
             .frame(maxHeight: 190)
 
             Divider()
+
+            if metric == .requests, let ttftMilliseconds {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(DashboardPalette.latency)
+                        .frame(width: 7, height: 7)
+                    Text("Average TTFT")
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 12)
+                    Text(MLXServerFormatting.milliseconds(ttftMilliseconds))
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
+                }
+                .font(.caption)
+
+                Divider()
+            }
 
             HStack {
                 Text("All models")
@@ -3082,6 +3203,11 @@ private struct DashboardMetricTooltip: View {
                     "Failed",
                     value: MLXServerFormatting.integer(point.requestsFailed),
                     color: DashboardPalette.negative
+                )
+                metricRow(
+                    "Average TTFT",
+                    value: MLXServerFormatting.milliseconds(point.averageTTFTMilliseconds),
+                    color: DashboardPalette.latency
                 )
             case .successRate:
                 metricRow(
@@ -4728,6 +4854,7 @@ private struct DashboardEmptyChart: View {
 private enum DashboardPalette {
     static let accent = Color(red: 71 / 255, green: 151 / 255, blue: 232 / 255)
     static let indigo = Color(red: 119 / 255, green: 105 / 255, blue: 234 / 255)
+    static let latency = Color(red: 71 / 255, green: 174 / 255, blue: 207 / 255)
     static let positive = Color(red: 62 / 255, green: 179 / 255, blue: 131 / 255)
     static let negative = Color(red: 225 / 255, green: 91 / 255, blue: 101 / 255)
     static let orange = Color(red: 232 / 255, green: 151 / 255, blue: 65 / 255)

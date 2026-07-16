@@ -31,6 +31,7 @@ struct ChatView: View {
                 transcript
                     .overlay(alignment: .bottom) {
                         ChatComposer(
+                            model: model,
                             viewModel: chat,
                             unavailableReason: unavailableReason,
                             canCompose: canCompose,
@@ -208,6 +209,10 @@ final class ChatViewModel: ObservableObject {
             return false
         }
         return activeRequestSessionID == currentSessionID
+    }
+
+    var hasPendingRequests: Bool {
+        activeRequestSessionID != nil || !requestQueue.isEmpty
     }
 
     var visibleMessages: [ChatTranscriptMessage] {
@@ -803,6 +808,8 @@ final class ChatViewModel: ObservableObject {
 }
 
 private struct ChatMessageRow: View {
+    private static let maximumUserBubbleWidth: CGFloat = 560
+
     let message: ChatTranscriptMessage
     @State private var didCopyResponse = false
     @State private var isHoveringMessage = false
@@ -888,6 +895,7 @@ private struct ChatMessageRow: View {
         .font(.body)
         .padding(.horizontal, message.role == .assistant ? 0 : 12)
         .padding(.vertical, message.role == .assistant ? 3 : 9)
+        .frame(maxWidth: bubbleMaximumWidth, alignment: alignment)
         .foregroundStyle(foregroundStyle)
         .background(
             RoundedRectangle(cornerRadius: 8)
@@ -914,12 +922,16 @@ private struct ChatMessageRow: View {
         message.role == .user ? .trailing : .leading
     }
 
+    private var bubbleMaximumWidth: CGFloat? {
+        message.role == .user && !usesCompactBubble ? Self.maximumUserBubbleWidth : nil
+    }
+
     private var alignment: Alignment {
-        message.role == .user ? .trailing : .leading
+        .leading
     }
 
     private var textAlignment: TextAlignment {
-        message.role == .user ? .trailing : .leading
+        .leading
     }
 
     private var contentStackAlignment: HorizontalAlignment {
