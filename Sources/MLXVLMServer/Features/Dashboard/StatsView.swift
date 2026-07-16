@@ -4248,6 +4248,8 @@ private struct DashboardRecentRequestsDataRow: View {
 }
 
 private struct DashboardRequestBadge: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let text: String
     let style: DashboardRequestBadgeStyle
     let systemImage: String?
@@ -4275,39 +4277,87 @@ private struct DashboardRequestBadge: View {
                 .lineLimit(1)
         }
         .font(.caption.weight(isProminent ? .semibold : .medium))
-        .foregroundStyle(style.foregroundColor)
+        .foregroundStyle(badgeForegroundColor)
         .padding(.horizontal, systemImage == nil ? 12 : 10)
         .padding(.vertical, isProminent ? 5.5 : 5)
         .background {
             if isProminent {
                 Capsule(style: .continuous)
-                    .fill(style.backgroundColor)
+                    .fill(badgeBackgroundColor)
             } else {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(style.backgroundColor)
+                    .fill(badgeBackgroundColor)
             }
         }
         .overlay {
             if isProminent {
                 Capsule(style: .continuous)
-                    .stroke(style.foregroundColor.opacity(0.22), lineWidth: 0.7)
+                    .stroke(
+                        badgeForegroundColor.opacity(colorScheme == .light ? 0.18 : 0.22),
+                        lineWidth: colorScheme == .light ? 0.8 : 0.7
+                    )
             }
         }
         .shadow(
-            color: isProminent ? style.backgroundColor.opacity(0.28) : .clear,
-            radius: isProminent ? 3 : 0,
+            color: badgeShadowColor,
+            radius: isProminent ? (colorScheme == .light ? 2 : 3) : 0,
             y: isProminent ? 1 : 0
         )
+    }
+
+    private var badgeForegroundColor: Color {
+        style.foregroundColor(for: colorScheme)
+    }
+
+    private var badgeBackgroundColor: Color {
+        style.backgroundColor(for: colorScheme)
+    }
+
+    private var badgeShadowColor: Color {
+        guard isProminent else { return .clear }
+        return colorScheme == .light
+            ? Color.black.opacity(0.08)
+            : badgeBackgroundColor.opacity(0.28)
     }
 }
 
 private struct DashboardRequestBadgeStyle {
     let foregroundColor: Color
     let backgroundColor: Color
+    let lightForegroundColor: Color?
+    let lightBackgroundColor: Color?
+
+    init(
+        foregroundColor: Color,
+        backgroundColor: Color,
+        lightForegroundColor: Color? = nil,
+        lightBackgroundColor: Color? = nil
+    ) {
+        self.foregroundColor = foregroundColor
+        self.backgroundColor = backgroundColor
+        self.lightForegroundColor = lightForegroundColor
+        self.lightBackgroundColor = lightBackgroundColor
+    }
+
+    func foregroundColor(for colorScheme: ColorScheme) -> Color {
+        if colorScheme == .light, let lightForegroundColor {
+            return lightForegroundColor
+        }
+        return foregroundColor
+    }
+
+    func backgroundColor(for colorScheme: ColorScheme) -> Color {
+        if colorScheme == .light, let lightBackgroundColor {
+            return lightBackgroundColor
+        }
+        return backgroundColor
+    }
 
     static let finish = DashboardRequestBadgeStyle(
         foregroundColor: DashboardPalette.finishBadgeForeground,
-        backgroundColor: DashboardPalette.finishBadgeBackground
+        backgroundColor: DashboardPalette.finishBadgeBackground,
+        lightForegroundColor: DashboardPalette.finishBadgeLightForeground,
+        lightBackgroundColor: DashboardPalette.finishBadgeLightBackground
     )
     static let failure = DashboardRequestBadgeStyle(
         foregroundColor: DashboardPalette.failureBadgeForeground,
@@ -4692,6 +4742,8 @@ private enum DashboardPalette {
     static let axisGrid = Color(nsColor: .separatorColor).opacity(0.72)
     static let finishBadgeForeground = Color(red: 150 / 255, green: 188 / 255, blue: 245 / 255)
     static let finishBadgeBackground = Color(red: 34 / 255, green: 58 / 255, blue: 100 / 255)
+    static let finishBadgeLightForeground = Color(red: 34 / 255, green: 96 / 255, blue: 176 / 255)
+    static let finishBadgeLightBackground = Color(red: 232 / 255, green: 241 / 255, blue: 253 / 255)
     static let failureBadgeForeground = Color(red: 245 / 255, green: 183 / 255, blue: 188 / 255)
     static let failureBadgeBackground = Color(red: 95 / 255, green: 28 / 255, blue: 36 / 255)
     static let jsonBadgeForeground = Color(red: 205 / 255, green: 245 / 255, blue: 140 / 255)
