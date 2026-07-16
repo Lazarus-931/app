@@ -220,122 +220,23 @@ struct ChatComposer: View {
     }
 
     private var modelPicker: some View {
-        Menu {
-            modelSelectionMenu
-
-            if selectedModelSupportsThinking {
-                reasoningSelectionMenu
-            }
-        } label: {
-            HStack(spacing: 6) {
-                if model.modelSwitchInProgress {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    ChatComposerModelIcon(provider: selectedModelProvider)
-                }
-
-                Text(selectedModelLabel)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .layoutPriority(0)
-
-                if selectedModelSupportsThinking {
-                    Text(reasoningLevel.rawValue)
-                        .foregroundStyle(.secondary)
-                        .fixedSize()
-                        .layoutPriority(2)
-                }
-
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 10)
-                    .layoutPriority(3)
-            }
-            .font(.caption.weight(.medium))
-            .padding(.leading, 10)
-            .padding(.trailing, 8)
-            .frame(height: 30)
-            .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(Color(nsColor: .separatorColor).opacity(0.8), lineWidth: 0.75)
-            }
-            .contentShape(Capsule())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .disabled(model.modelSwitchInProgress || viewModel.hasPendingRequests)
-        .help(modelPickerHelp)
-        .accessibilityLabel("Model")
-        .accessibilityValue(modelPickerAccessibilityValue)
-    }
-
-    private var modelSelectionMenu: some View {
-        Menu {
-            if let selectedModelID,
-               !localLibrary.models.contains(where: { $0.repoID == selectedModelID }) {
-                Button {
-                    model.switchLanguageModel(to: selectedModelID)
-                } label: {
-                    HStack {
-                        ChatComposerModelIcon(provider: provider(for: selectedModelID))
-                        Text(modelMenuLabel(selectedModelID))
-                        Spacer()
-                        Image(systemName: "checkmark")
-                    }
-                }
-
-                if !localLibrary.models.isEmpty {
-                    Divider()
-                }
-            }
-
-            ForEach(localLibrary.models) { localModel in
-                Button {
-                    select(localModel)
-                } label: {
-                    HStack {
-                        ChatComposerModelIcon(provider: localModel.provider)
-                        Text(modelMenuLabel(localModel.repoID))
-                        if localModel.repoID == selectedModelID {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-
-            if localLibrary.models.isEmpty && selectedModelID == nil {
-                Button(localModelStatusLabel) {}
-                    .disabled(true)
-            }
-        } label: {
-            menuSummaryText(title: "Model", value: selectedModelLabel)
-        }
-    }
-
-    private var reasoningSelectionMenu: some View {
-        Menu {
-            ForEach(ChatReasoningLevel.allCases) { level in
-                Button {
-                    applyReasoningLevel(level)
-                } label: {
-                    if level == reasoningLevel {
-                        Label {
-                            reasoningMenuText(level)
-                        } icon: {
-                            Image(systemName: "checkmark")
-                        }
-                    } else {
-                        reasoningMenuText(level)
-                    }
-                }
-            }
-        } label: {
-            menuSummaryText(title: "Reasoning", value: reasoningLevel.rawValue)
-        }
+        StableChatModelPicker(
+            models: localLibrary.models,
+            selectedModelID: selectedModelID,
+            selectedModelLabel: selectedModelLabel,
+            selectedModelProvider: selectedModelProvider,
+            supportsReasoning: selectedModelSupportsThinking,
+            reasoningLevel: reasoningLevel,
+            modelSwitchInProgress: model.modelSwitchInProgress,
+            isDisabled: model.modelSwitchInProgress || viewModel.hasPendingRequests,
+            statusLabel: localModelStatusLabel,
+            helpText: modelPickerHelp,
+            accessibilityValue: modelPickerAccessibilityValue,
+            onSelectModel: select,
+            onSwitchModel: { model.switchLanguageModel(to: $0) },
+            onSelectReasoning: applyReasoningLevel
+        )
+        .equatable()
     }
 
     private var selectedModelID: String? {
@@ -411,18 +312,6 @@ struct ChatComposer: View {
     private func modelMenuLabel(_ modelID: String) -> String {
         let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
         return MLXServerFormatting.truncateModelName(shortName, maxLength: 28)
-    }
-
-    private func menuSummaryText(title: String, value: String) -> Text {
-        Text(title) + Text("  \(value)").foregroundColor(.secondary)
-    }
-
-    private func reasoningMenuText(_ level: ChatReasoningLevel) -> Text {
-        guard !level.detail.isEmpty else {
-            return Text(level.rawValue)
-        }
-        return Text(level.rawValue)
-            + Text("    \(level.detail)").foregroundColor(Color(nsColor: .tertiaryLabelColor))
     }
 
     private func select(_ localModel: LocalModel) {
@@ -518,6 +407,173 @@ struct ChatComposer: View {
 
     private var editorHeight: CGFloat {
         min(max(editorContentHeight, editorMinimumHeight), editorMaximumHeight)
+    }
+}
+
+private struct StableChatModelPicker: View, Equatable {
+    let models: [LocalModel]
+    let selectedModelID: String?
+    let selectedModelLabel: String
+    let selectedModelProvider: LocalModelProvider?
+    let supportsReasoning: Bool
+    let reasoningLevel: ChatReasoningLevel
+    let modelSwitchInProgress: Bool
+    let isDisabled: Bool
+    let statusLabel: String
+    let helpText: String
+    let accessibilityValue: String
+    let onSelectModel: (LocalModel) -> Void
+    let onSwitchModel: (String) -> Void
+    let onSelectReasoning: (ChatReasoningLevel) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.models == rhs.models
+            && lhs.selectedModelID == rhs.selectedModelID
+            && lhs.selectedModelLabel == rhs.selectedModelLabel
+            && lhs.selectedModelProvider == rhs.selectedModelProvider
+            && lhs.supportsReasoning == rhs.supportsReasoning
+            && lhs.reasoningLevel == rhs.reasoningLevel
+            && lhs.modelSwitchInProgress == rhs.modelSwitchInProgress
+            && lhs.isDisabled == rhs.isDisabled
+            && lhs.statusLabel == rhs.statusLabel
+            && lhs.helpText == rhs.helpText
+            && lhs.accessibilityValue == rhs.accessibilityValue
+    }
+
+    var body: some View {
+        Menu {
+            modelSelectionMenu
+
+            if supportsReasoning {
+                reasoningSelectionMenu
+            }
+        } label: {
+            pickerLabel
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .fixedSize()
+        .disabled(isDisabled)
+        .help(helpText)
+        .accessibilityLabel("Model")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var pickerLabel: some View {
+        Label {
+            pickerTitle
+                .lineLimit(1)
+        } icon: {
+            Group {
+                if modelSwitchInProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    ChatComposerModelIcon(provider: selectedModelProvider)
+                }
+            }
+        }
+        .font(.caption.weight(.medium))
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .frame(height: 30)
+        .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(Color(nsColor: .separatorColor).opacity(0.8), lineWidth: 0.75)
+        }
+        .contentShape(Capsule())
+    }
+
+    private var pickerTitle: Text {
+        let modelName = Text(selectedModelLabel)
+        guard supportsReasoning else {
+            return modelName
+        }
+        return modelName + Text("  \(reasoningLevel.rawValue)").foregroundColor(.secondary)
+    }
+
+    private var modelSelectionMenu: some View {
+        Menu {
+            if let selectedModelID,
+               !models.contains(where: { $0.repoID == selectedModelID }) {
+                Button {
+                    onSwitchModel(selectedModelID)
+                } label: {
+                    HStack {
+                        ChatComposerModelIcon(provider: selectedModelProvider)
+                        Text(modelMenuLabel(selectedModelID))
+                        Spacer()
+                        Image(systemName: "checkmark")
+                    }
+                }
+
+                if !models.isEmpty {
+                    Divider()
+                }
+            }
+
+            ForEach(models) { localModel in
+                Button {
+                    onSelectModel(localModel)
+                } label: {
+                    HStack {
+                        ChatComposerModelIcon(provider: localModel.provider)
+                        Text(modelMenuLabel(localModel.repoID))
+                        if localModel.repoID == selectedModelID {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+
+            if models.isEmpty && selectedModelID == nil {
+                Button(statusLabel) {}
+                    .disabled(true)
+            }
+        } label: {
+            menuSummaryText(title: "Model", value: selectedModelLabel)
+        }
+    }
+
+    private var reasoningSelectionMenu: some View {
+        Menu {
+            ForEach(ChatReasoningLevel.allCases) { level in
+                Button {
+                    onSelectReasoning(level)
+                } label: {
+                    if level == reasoningLevel {
+                        Label {
+                            reasoningMenuText(level)
+                        } icon: {
+                            Image(systemName: "checkmark")
+                        }
+                    } else {
+                        reasoningMenuText(level)
+                    }
+                }
+            }
+        } label: {
+            menuSummaryText(title: "Reasoning", value: reasoningLevel.rawValue)
+        }
+    }
+
+    private func modelMenuLabel(_ modelID: String) -> String {
+        let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
+        return MLXServerFormatting.truncateModelName(shortName, maxLength: 28)
+    }
+
+    private func menuSummaryText(title: String, value: String) -> Text {
+        Text(title) + Text("  \(value)").foregroundColor(.secondary)
+    }
+
+    private func reasoningMenuText(_ level: ChatReasoningLevel) -> Text {
+        guard !level.detail.isEmpty else {
+            return Text(level.rawValue)
+        }
+        return Text(level.rawValue)
+            + Text("    \(level.detail)").foregroundColor(Color(nsColor: .tertiaryLabelColor))
     }
 }
 
