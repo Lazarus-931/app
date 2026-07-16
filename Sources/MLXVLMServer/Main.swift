@@ -88,6 +88,7 @@ enum Main {
 
 private struct MLXServerApplication: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    private let softwareUpdater = SoftwareUpdater()
 
     var body: some Scene {
         Window("MLX Server", id: "main") {
@@ -98,6 +99,10 @@ private struct MLXServerApplication: App {
         .windowStyle(.hiddenTitleBar)
         .windowBackgroundDragBehavior(.enabled)
         .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesCommand(updater: softwareUpdater.updater)
+            }
+
             CommandGroup(replacing: .newItem) {
                 Button("New Chat") {
                     appDelegate.createNewChat()

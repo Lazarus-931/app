@@ -166,6 +166,74 @@ API key instead by setting `NOTARY_KEY_PATH`, `NOTARY_KEY_ID`, and optionally
 Notarization results and failure logs are written beside the final archive
 under `dist/release/` by default.
 
+To run the complete local release pipeline, including a signed Sparkle feed:
+
+```sh
+scripts/release_macos.sh \
+  --release-notes path/to/release-notes.md \
+  0.2.0
+```
+
+This stamps the app version, assigns a timestamp-based build number, builds and
+signs the archive, notarizes and staples the app, creates
+`dist/release/MLXVLMServer-0.2.0.zip`, and writes
+`dist/release/appcast.xml`. Pass `--build-number` when a specific monotonically
+increasing `CFBundleVersion` is required.
+
+## Software Updates And GitHub Releases
+
+The app uses Sparkle 2.9.4. GitHub Releases are the source of truth for release
+versions and assets, while GitHub Pages hosts the stable feed at
+`https://marvis-labs.github.io/mlx-platform/appcast.xml`. The feed is published
+only after the notarized ZIP has been uploaded to its GitHub Release, so clients
+never see an update whose asset is not yet available.
+
+The app's Sparkle EdDSA public key is committed in
+`Configuration/Signing.xcconfig`. Its private key remains in the local Keychain
+under the `Marvis-Labs` account. `scripts/generate_macos_appcast.sh` uses that
+Keychain key locally. Export it once for GitHub Actions with Sparkle's bundled
+tool, then copy the file into the `SPARKLE_PRIVATE_KEY` Actions secret:
+
+```sh
+umask 077
+build/XcodeDerivedData/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys \
+  --account Marvis-Labs \
+  -x /tmp/mlx-vlm-server-sparkle-private-key
+gh secret set SPARKLE_PRIVATE_KEY < /tmp/mlx-vlm-server-sparkle-private-key
+rm /tmp/mlx-vlm-server-sparkle-private-key
+```
+
+The release workflow in `.github/workflows/release.yml` requires these
+repository variables:
+
+- `APPLE_TEAM_ID`
+- `MLX_VLM_SERVER_BUNDLE_IDENTIFIER`
+- `MLX_SERVER_KIT_BUNDLE_IDENTIFIER`
+
+It also requires these Actions secrets:
+
+- `DEVELOPER_ID_APPLICATION_P12_BASE64`: base64-encoded Developer ID
+  Application certificate and private key exported as a `.p12`.
+- `DEVELOPER_ID_APPLICATION_P12_PASSWORD`: password used for that `.p12`.
+- `APPLE_API_KEY_P8_BASE64`: base64-encoded App Store Connect API `.p8` key.
+- `APPLE_API_KEY_ID` and `APPLE_API_ISSUER_ID`: identifiers for the API key.
+- `SPARKLE_PRIVATE_KEY`: the exported Sparkle key described above.
+
+For example, encode the binary credentials without line wrapping:
+
+```sh
+base64 -i DeveloperIDApplication.p12 | tr -d '\n' | \
+  gh secret set DEVELOPER_ID_APPLICATION_P12_BASE64
+base64 -i AuthKey_ABC123.p8 | tr -d '\n' | \
+  gh secret set APPLE_API_KEY_P8_BASE64
+```
+
+Before the first release, configure the repository's Pages source to **GitHub
+Actions**. Then create a GitHub Release with a stable numeric tag such as
+`v0.2.0` and publish it. Publishing triggers the workflow to check out that tag,
+build and notarize the app, attach `MLXVLMServer-0.2.0.zip`, and finally deploy
+the signed appcast. Draft and prerelease releases do not publish updates.
+
 To exercise the stats menu manually, start the app or server and run:
 
 ```sh

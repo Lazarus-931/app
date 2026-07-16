@@ -14,6 +14,9 @@ Options:
                         under dist/archive/.
   --derived-data PATH   DerivedData directory. Defaults to
                         build/XcodeDerivedData.
+  --marketing-version VERSION
+                        CFBundleShortVersionString for this archive.
+  --build-number NUMBER CFBundleVersion for this archive.
   --skip-generate       Do not run xcodegen before archiving.
   --sign                Sign after archiving, inferring DEVELOPMENT_TEAM from
                         the Release build settings.
@@ -39,6 +42,8 @@ sign_archive=false
 identity=""
 team_id=""
 no_timestamp=false
+marketing_version=""
+build_number=""
 
 while (($# > 0)); do
     case "$1" in
@@ -50,6 +55,16 @@ while (($# > 0)); do
         --derived-data)
             (($# >= 2)) || fail "--derived-data requires a value"
             derived_data_path="$2"
+            shift 2
+            ;;
+        --marketing-version)
+            (($# >= 2)) || fail "--marketing-version requires a value"
+            marketing_version="$2"
+            shift 2
+            ;;
+        --build-number)
+            (($# >= 2)) || fail "--build-number requires a value"
+            build_number="$2"
             shift 2
             ;;
         --skip-generate)
@@ -92,6 +107,12 @@ fi
 if [[ "$no_timestamp" == true && "$sign_archive" == false ]]; then
     fail "--no-timestamp requires --sign, --team-id, or --identity"
 fi
+if [[ -n "$marketing_version" && ! "$marketing_version" =~ ^[0-9]+([.][0-9]+){1,2}$ ]]; then
+    fail "invalid marketing version: $marketing_version"
+fi
+if [[ -n "$build_number" && ! "$build_number" =~ ^[1-9][0-9]*$ ]]; then
+    fail "build number must be a positive integer: $build_number"
+fi
 
 command -v xcodebuild >/dev/null 2>&1 || fail "xcodebuild is required"
 if [[ "$generate_project" == true ]]; then
@@ -122,13 +143,22 @@ if [[ "$generate_project" == true ]]; then
 fi
 
 echo "Building unsigned Release archive..."
+xcodebuild_arguments=(
+    -project MLXPlatform.xcodeproj
+    -scheme MLXVLMServer
+    -configuration Release
+    -derivedDataPath "$derived_data_path"
+    -archivePath "$archive_path"
+    CODE_SIGNING_ALLOWED=NO
+)
+if [[ -n "$marketing_version" ]]; then
+    xcodebuild_arguments+=(MARKETING_VERSION="$marketing_version")
+fi
+if [[ -n "$build_number" ]]; then
+    xcodebuild_arguments+=(CURRENT_PROJECT_VERSION="$build_number")
+fi
 xcodebuild \
-    -project MLXPlatform.xcodeproj \
-    -scheme MLXVLMServer \
-    -configuration Release \
-    -derivedDataPath "$derived_data_path" \
-    -archivePath "$archive_path" \
-    CODE_SIGNING_ALLOWED=NO \
+    "${xcodebuild_arguments[@]}" \
     archive
 
 archive_info="$archive_path/Info.plist"
@@ -142,6 +172,15 @@ app_path="$archive_path/Products/$application_path"
 [[ ! -e "$archive_path/Products/Library/Frameworks/MLXServerKit.framework" ]] || \
     fail "MLXServerKit was installed as a top-level archive product; check SKIP_INSTALL"
 
+archived_marketing_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Contents/Info.plist")"
+archived_build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_path/Contents/Info.plist")"
+if [[ -n "$marketing_version" && "$archived_marketing_version" != "$marketing_version" ]]; then
+    fail "archived marketing version is $archived_marketing_version, expected $marketing_version"
+fi
+if [[ -n "$build_number" && "$archived_build_number" != "$build_number" ]]; then
+    fail "archived build number is $archived_build_number, expected $build_number"
+fi
+
 if [[ "$sign_archive" == true ]]; then
     signing_arguments=()
     if [[ -n "$identity" ]]; then
@@ -152,12 +191,17 @@ if [[ "$sign_archive" == true ]]; then
     if [[ "$no_timestamp" == true ]]; then
         signing_arguments+=(--no-timestamp)
     fi
-    "$script_directory/sign_macos_release.sh" "${signing_arguments[@]}" "$app_path"
+    if ((${#signing_arguments[@]} > 0)); then
+        "$script_directory/sign_macos_release.sh" "${signing_arguments[@]}" "$app_path"
+    else
+        "$script_directory/sign_macos_release.sh" "$app_path"
+    fi
 fi
 
 echo
 echo "Archive: $archive_path"
 echo "App:     $app_path"
+echo "Version: $archived_marketing_version ($archived_build_number)"
 if [[ "$sign_archive" == false ]]; then
     echo
     echo "Next, sign the archived app:"

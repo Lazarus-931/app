@@ -11,6 +11,9 @@ settings:
     ARCHS: arm64
     ENABLE_HARDENED_RUNTIME: YES
 packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.9.4
   textual:
     url: https://github.com/gonzalezreal/textual.git
     exactVersion: 0.5.0
@@ -68,6 +71,8 @@ targets:
         buildPhase: resources
     dependencies:
       - target: MLXServerKit
+      - package: Sparkle
+        product: Sparkle
       - package: textual
         product: Textual
     settings:
@@ -75,12 +80,7 @@ targets:
         ARCHS: arm64
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         PRODUCT_BUNDLE_IDENTIFIER: $(MLX_VLM_SERVER_BUNDLE_IDENTIFIER)
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: MLX Server
-        INFOPLIST_KEY_CFBundleShortVersionString: $(MARKETING_VERSION)
-        INFOPLIST_KEY_CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        INFOPLIST_KEY_NSHumanReadableCopyright: Copyright © 2025 Prince Canuma & contributors
-        INFOPLIST_KEY_NSPrincipalClass: NSApplication
-        INFOPLIST_KEY_NSHighResolutionCapable: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Configuration/MLXVLMServer-Info.plist
         MARKETING_VERSION: 0.1
         CURRENT_PROJECT_VERSION: 1

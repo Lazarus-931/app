@@ -16,9 +16,11 @@
 		31A731F75D693E46F09F2AB9 /* MLXServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 687D116C9C28C6413A9549E2 /* MLXServerSettings.swift */; };
 		35AB8B41E6BDAC29B2B35AC7 /* LocalModelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29DBC04420F64DAD6CBF90ED /* LocalModelProvider.swift */; };
 		48A224C95E9B112859EAE0CC /* ImageGenerationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CAD4146AC9719AD9863EF4D /* ImageGenerationViewModel.swift */; };
+		53700E8E9D75C5ED0043EDEF /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = 6EC9B105D8EE975D457592E4 /* Textual */; };
 		559891D535CC6A05E036008C /* ModelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF697E2D43BA29469CD8D488 /* ModelsView.swift */; };
 		56D7E25EDF2B04A4C5286C60 /* ModelProviderIcons in Resources */ = {isa = PBXBuildFile; fileRef = 4B449F1D492B0FB584C3307E /* ModelProviderIcons */; };
-		7460B4A2D36DD1E51A0441D0 /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = 6EC9B105D8EE975D457592E4 /* Textual */; };
+		57694A6E7922CDB50524A93D /* SoftwareUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389A033497187AB4DCEF509B /* SoftwareUpdater.swift */; };
+		7460B4A2D36DD1E51A0441D0 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 6E4AD1B1DA477B3AA68B8D5A /* Sparkle */; };
 		76BE29583173613B38297801 /* ChatSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E3568182FCF0ED02196B011 /* ChatSessionStore.swift */; };
 		809CFC3BDFF7CDDE361A1BD1 /* ChatComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DAA68101502BE47E4CCEF98 /* ChatComposer.swift */; };
 		95F147527789271CC67FED1F /* MarkdownFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB6A9FBC8B4784C12A43E62 /* MarkdownFormatting.swift */; };
@@ -72,6 +74,7 @@
 		29DBC04420F64DAD6CBF90ED /* LocalModelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelProvider.swift; sourceTree = "<group>"; };
 		2B61BAD9813F4D87AC7898E8 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
 		32C59FCF6B22E2798D525B70 /* MLXServerKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MLXServerKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		389A033497187AB4DCEF509B /* SoftwareUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftwareUpdater.swift; sourceTree = "<group>"; };
 		42B2F073842042B04E4BB7F2 /* LocalModelDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelDiscovery.swift; sourceTree = "<group>"; };
 		4B449F1D492B0FB584C3307E /* ModelProviderIcons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ModelProviderIcons; path = Sources/MLXVLMServer/ModelProviderIcons; sourceTree = SOURCE_ROOT; };
 		5E990F983103BE071A5DFE51 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
@@ -98,7 +101,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				0E204CDE3A896369EB992489 /* MLXServerKit.framework in Frameworks */,
-				7460B4A2D36DD1E51A0441D0 /* Textual in Frameworks */,
+				7460B4A2D36DD1E51A0441D0 /* Sparkle in Frameworks */,
+				53700E8E9D75C5ED0043EDEF /* Textual in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -192,6 +196,7 @@
 				00894697C171C6B288BF0103 /* MLXServerModel.swift */,
 				687D116C9C28C6413A9549E2 /* MLXServerSettings.swift */,
 				4B449F1D492B0FB584C3307E /* ModelProviderIcons */,
+				389A033497187AB4DCEF509B /* SoftwareUpdater.swift */,
 				9CBA415AADC587E610B8DEA1 /* Features */,
 				13DC51C6F3D2E4CCFB2E2E67 /* Utilities */,
 			);
@@ -272,6 +277,7 @@
 			);
 			name = MLXVLMServer;
 			packageProductDependencies = (
+				6E4AD1B1DA477B3AA68B8D5A /* Sparkle */,
 				6EC9B105D8EE975D457592E4 /* Textual */,
 			);
 			productName = MLXVLMServer;
@@ -307,6 +313,7 @@
 			mainGroup = 67EB185605F5572E9547B0AD;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				85B0AF47CE6F8D3E66CBE563 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				EE56DF359FB68B1195E2EBAE /* XCRemoteSwiftPackageReference "textual" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -388,6 +395,7 @@
 				F2D7A645EE478C022C30752E /* Main.swift in Sources */,
 				95F147527789271CC67FED1F /* MarkdownFormatting.swift in Sources */,
 				559891D535CC6A05E036008C /* ModelsView.swift in Sources */,
+				57694A6E7922CDB50524A93D /* SoftwareUpdater.swift in Sources */,
 				E53B4D1ACAC317E37B697C53 /* StatsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -500,13 +508,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "MLX Server";
-				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
-				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
-				INFOPLIST_KEY_NSHighResolutionCapable = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Prince Canuma & contributors";
-				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Configuration/MLXVLMServer-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -584,13 +587,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "MLX Server";
-				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
-				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
-				INFOPLIST_KEY_NSHighResolutionCapable = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Prince Canuma & contributors";
-				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Configuration/MLXVLMServer-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -659,6 +657,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		85B0AF47CE6F8D3E66CBE563 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.4;
+			};
+		};
 		EE56DF359FB68B1195E2EBAE /* XCRemoteSwiftPackageReference "textual" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/gonzalezreal/textual.git";
@@ -670,6 +676,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		6E4AD1B1DA477B3AA68B8D5A /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 85B0AF47CE6F8D3E66CBE563 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
 		6EC9B105D8EE975D457592E4 /* Textual */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = EE56DF359FB68B1195E2EBAE /* XCRemoteSwiftPackageReference "textual" */;
