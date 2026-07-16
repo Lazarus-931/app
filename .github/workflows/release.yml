@@ -125,9 +125,34 @@ jobs:
 
       - name: Upload notarized app to GitHub Release
         run: |
-          gh release upload "$RELEASE_TAG" \
-            "dist/release/MLXVLMServer-${RELEASE_VERSION}.dmg" \
-            --clobber
+          set -euo pipefail
+          asset_path="dist/release/MLXVLMServer-${RELEASE_VERSION}.dmg"
+          asset_name="$(basename "$asset_path")"
+          response_path="$RUNNER_TEMP/release-upload-response.json"
+          upload_url="$(jq -r '.release.upload_url // empty' "$GITHUB_EVENT_PATH")"
+          upload_url="${upload_url%%\{*}"
+          if [[ "$upload_url" != https://uploads.github.com/* ]]; then
+            echo "::error::Release event does not contain a valid GitHub upload URL"
+            exit 1
+          fi
+
+          curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            --retry 6 \
+            --retry-delay 10 \
+            --retry-max-time 300 \
+            --retry-all-errors \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2026-03-10" \
+            --header "Content-Type: application/x-apple-diskimage" \
+            --data-binary "@$asset_path" \
+            --output "$response_path" \
+            "${upload_url}?name=${asset_name}"
+          jq -r '"Uploaded \(.name): \(.browser_download_url)"' "$response_path"
 
       - name: Prepare GitHub Pages feed
         run: |
