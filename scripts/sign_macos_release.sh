@@ -4,10 +4,11 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: sign_macos_release.sh [options] APP_PATH
+Usage: sign_macos_release.sh [options] TARGET
 
 Signs every Mach-O file inside a macOS app from the inside out, then signs
-nested code bundles and the app itself.
+nested code bundles and the app itself. TARGET may also be a .dmg disk image;
+in that case, only the disk image container is signed.
 
 Options:
   --identity ID    Codesigning identity name or SHA-1 hash.
@@ -66,11 +67,17 @@ done
     exit 2
 }
 
-app_path="$1"
-[[ -d "$app_path" && -d "$app_path/Contents" ]] || fail "not a macOS app bundle: $app_path"
+target_path="$1"
+is_disk_image=false
+if [[ -f "$target_path" && "$target_path" == *.dmg ]]; then
+    is_disk_image=true
+elif [[ ! -d "$target_path" || ! -d "$target_path/Contents" ]]; then
+    fail "target must be a macOS app bundle or .dmg disk image: $target_path"
+fi
 
-app_directory="$(cd "$(dirname "$app_path")" && pwd -P)"
-app_path="$app_directory/$(basename "$app_path")"
+target_directory="$(cd "$(dirname "$target_path")" && pwd -P)"
+target_path="$target_directory/$(basename "$target_path")"
+app_path="$target_path"
 
 [[ -z "$identity" || -z "$team_id" ]] || fail "use either --identity or --team-id, not both"
 
@@ -151,6 +158,27 @@ sign_target() {
         "${timestamp_arguments[@]}" \
         "$target"
 }
+
+if [[ "$is_disk_image" == true ]]; then
+    echo "Signing disk image with: $identity"
+    codesign \
+        --force \
+        --sign "$identity" \
+        "${timestamp_arguments[@]}" \
+        "$target_path"
+    codesign --verify --strict --verbose=2 "$target_path"
+
+    disk_image_signature="$(codesign -dvvv "$target_path" 2>&1)"
+    if [[ "$use_timestamp" == true ]]; then
+        [[ "$disk_image_signature" == *"Authority=Developer ID Application:"* ]] || \
+            fail "disk image is not signed with a Developer ID Application certificate"
+        [[ "$disk_image_signature" == *"Timestamp="* ]] || \
+            fail "disk image signature does not contain a secure timestamp"
+    fi
+
+    echo "Signed and verified: $target_path"
+    exit 0
+fi
 
 native_files=()
 while IFS= read -r -d '' candidate; do

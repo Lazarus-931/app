@@ -4,10 +4,12 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: notarize_macos_release.sh [options] APP_PATH
+Usage: notarize_macos_release.sh [options] DISTRIBUTION_PATH
 
-Submits a Developer ID-signed app to Apple's notary service, staples and
-validates the accepted ticket, and creates the final ZIP release asset.
+Submits a Developer ID-signed .dmg or app to Apple's notary service, then
+staples and validates the accepted ticket. A .dmg is submitted and stapled
+directly. When an app is supplied for backward compatibility, the script uses
+a temporary ZIP submission and creates a final ZIP release asset.
 
 Authentication (choose one):
   --keychain-profile NAME           notarytool Keychain profile. Defaults to
@@ -19,9 +21,10 @@ The corresponding environment variables are NOTARYTOOL_PROFILE,
 NOTARY_KEY_PATH, NOTARY_KEY_ID, and NOTARY_ISSUER.
 
 Options:
-  --output PATH     Final ZIP path. Defaults to
-                    dist/release/APP-VERSION.zip.
+  --output PATH     Final ZIP path when DISTRIBUTION_PATH is an app. Not valid
+                    for a .dmg, which is notarized in place.
   --timeout VALUE   notarytool wait timeout. Defaults to 30m.
+  --validate-only   Run all local signature/container checks without submitting.
   -h, --help        Show this help.
 EOF
 }
@@ -37,6 +40,7 @@ key_id="${NOTARY_KEY_ID:-}"
 issuer="${NOTARY_ISSUER:-}"
 output_path=""
 timeout="30m"
+validate_only=false
 
 while (($# > 0)); do
     case "$1" in
@@ -70,6 +74,10 @@ while (($# > 0)); do
             timeout="$2"
             shift 2
             ;;
+        --validate-only)
+            validate_only=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -88,11 +96,19 @@ done
     exit 2
 }
 
-app_path="$1"
-[[ -d "$app_path" && -f "$app_path/Contents/Info.plist" ]] || fail "not a macOS app bundle: $app_path"
+distribution_path="$1"
+is_disk_image=false
+if [[ -f "$distribution_path" && "$distribution_path" == *.dmg ]]; then
+    is_disk_image=true
+elif [[ ! -d "$distribution_path" || ! -f "$distribution_path/Contents/Info.plist" ]]; then
+    fail "distribution must be a macOS app bundle or .dmg disk image: $distribution_path"
+fi
+if [[ "$is_disk_image" == true && -n "$output_path" ]]; then
+    fail "--output is only valid when notarizing an app bundle"
+fi
 
-app_directory="$(cd "$(dirname "$app_path")" && pwd -P)"
-app_path="$app_directory/$(basename "$app_path")"
+distribution_directory="$(cd "$(dirname "$distribution_path")" && pwd -P)"
+distribution_path="$distribution_directory/$(basename "$distribution_path")"
 
 if [[ -z "$keychain_profile" && -z "$key_path" && -z "$key_id" && -z "$issuer" ]]; then
     keychain_profile="mlx-vlm-server-notary"
@@ -113,6 +129,41 @@ else
     fi
 fi
 
+temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/mlx-vlm-notary.XXXXXX")"
+mount_path="$temporary_directory/mount"
+is_mounted=false
+cleanup() {
+    if [[ "$is_mounted" == true ]]; then
+        hdiutil detach "$mount_path" -quiet || true
+    fi
+    rm -rf "$temporary_directory"
+}
+trap cleanup EXIT
+
+if [[ "$is_disk_image" == true ]]; then
+    codesign --verify --strict --verbose=2 "$distribution_path"
+    disk_image_signature="$(codesign -dvvv "$distribution_path" 2>&1)"
+    [[ "$disk_image_signature" == *"Authority=Developer ID Application:"* ]] || \
+        fail "the disk image must be signed with a Developer ID Application certificate"
+    [[ "$disk_image_signature" == *"Timestamp="* ]] || \
+        fail "the disk image signature does not contain a secure timestamp"
+    disk_image_team_identifier="$(sed -n 's/^TeamIdentifier=//p' <<< "$disk_image_signature" | head -n 1)"
+    [[ -n "$disk_image_team_identifier" && "$disk_image_team_identifier" != "not set" ]] || \
+        fail "the disk image signature does not contain a Developer Team ID"
+
+    mkdir -p "$mount_path"
+    hdiutil attach -quiet -nobrowse -readonly -mountpoint "$mount_path" "$distribution_path"
+    is_mounted=true
+    app_paths=()
+    while IFS= read -r -d '' candidate; do
+        app_paths+=("$candidate")
+    done < <(find "$mount_path" -maxdepth 1 -type d -name '*.app' -print0)
+    ((${#app_paths[@]} == 1)) || fail "disk image must contain exactly one top-level app bundle"
+    app_path="${app_paths[0]}"
+else
+    app_path="$distribution_path"
+fi
+
 codesign --verify --deep --strict --verbose=2 "$app_path"
 
 signature_details="$(codesign -dvvv "$app_path" 2>&1)"
@@ -124,6 +175,9 @@ fi
 app_team_identifier="$(sed -n 's/^TeamIdentifier=//p' <<< "$signature_details" | head -n 1)"
 [[ -n "$app_team_identifier" && "$app_team_identifier" != "not set" ]] || \
     fail "the app signature does not contain a Developer Team ID"
+if [[ "$is_disk_image" == true && "$disk_image_team_identifier" != "$app_team_identifier" ]]; then
+    fail "the disk image and contained app have different Team IDs"
+fi
 
 native_code_count=0
 while IFS= read -r -d '' candidate; do
@@ -154,24 +208,39 @@ app_name="$(basename "$app_path" .app)"
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist" 2>/dev/null || true)"
 [[ -n "$version" ]] || fail "CFBundleShortVersionString is missing from $info_plist"
 
-if [[ -z "$output_path" ]]; then
-    output_path="dist/release/${app_name}-${version}.zip"
+if [[ "$validate_only" == true ]]; then
+    if [[ "$is_disk_image" == true ]]; then
+        hdiutil detach "$mount_path" -quiet
+        is_mounted=false
+    fi
+    echo "Local notarization preflight passed: $distribution_path"
+    exit 0
 fi
-output_directory="$(dirname "$output_path")"
-mkdir -p "$output_directory"
-output_directory="$(cd "$output_directory" && pwd -P)"
-output_path="$output_directory/$(basename "$output_path")"
 
-result_path="$output_directory/${app_name}-${version}-notary-result.json"
-log_path="$output_directory/${app_name}-${version}-notary-log.json"
-temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/mlx-vlm-notary.XXXXXX")"
-trap 'rm -rf "$temporary_directory"' EXIT
-submission_zip="$temporary_directory/${app_name}-${version}.zip"
+if [[ "$is_disk_image" == true ]]; then
+    hdiutil detach "$mount_path" -quiet
+    is_mounted=false
+    submission_path="$distribution_path"
+    result_directory="$distribution_directory"
+else
+    if [[ -z "$output_path" ]]; then
+        output_path="dist/release/${app_name}-${version}.zip"
+    fi
+    output_directory="$(dirname "$output_path")"
+    mkdir -p "$output_directory"
+    output_directory="$(cd "$output_directory" && pwd -P)"
+    output_path="$output_directory/$(basename "$output_path")"
+    submission_path="$temporary_directory/${app_name}-${version}.zip"
+    result_directory="$output_directory"
 
-echo "Creating notarization submission archive..."
-ditto -c -k --sequesterRsrc --keepParent "$app_path" "$submission_zip"
+    echo "Creating notarization submission archive..."
+    ditto -c -k --sequesterRsrc --keepParent "$app_path" "$submission_path"
+fi
 
-echo "Submitting to Apple's notary service..."
+result_path="$result_directory/${app_name}-${version}-notary-result.json"
+log_path="$result_directory/${app_name}-${version}-notary-log.json"
+
+echo "Submitting $(basename "$submission_path") to Apple's notary service..."
 set +e
 xcrun notarytool submit \
     "${authentication_arguments[@]}" \
@@ -179,7 +248,7 @@ xcrun notarytool submit \
     --timeout "$timeout" \
     --no-progress \
     --output-format json \
-    "$submission_zip" > "$result_path"
+    "$submission_path" > "$result_path"
 submission_exit_code=$?
 set -e
 
@@ -197,13 +266,19 @@ if [[ "$submission_exit_code" -ne 0 || "$notary_status" != "Accepted" ]]; then
 fi
 
 echo "Stapling notarization ticket..."
-xcrun stapler staple "$app_path"
-xcrun stapler validate "$app_path"
-spctl --assess --type execute --verbose=4 "$app_path"
+if [[ "$is_disk_image" == true ]]; then
+    xcrun stapler staple "$distribution_path"
+    xcrun stapler validate "$distribution_path"
+    spctl --assess --type open --context context:primary-signature --verbose=4 "$distribution_path"
+    echo "Notarized release asset: $distribution_path"
+else
+    xcrun stapler staple "$app_path"
+    xcrun stapler validate "$app_path"
+    spctl --assess --type execute --verbose=4 "$app_path"
 
-echo "Creating final release archive..."
-rm -f "$output_path"
-ditto -c -k --sequesterRsrc --keepParent "$app_path" "$output_path"
-
-echo "Notarized release asset: $output_path"
+    echo "Creating final release archive..."
+    rm -f "$output_path"
+    ditto -c -k --sequesterRsrc --keepParent "$app_path" "$output_path"
+    echo "Notarized release asset: $output_path"
+fi
 echo "Notary result: $result_path"

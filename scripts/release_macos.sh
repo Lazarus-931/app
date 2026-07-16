@@ -6,8 +6,9 @@ usage() {
     cat <<'EOF'
 Usage: release_macos.sh [options] VERSION
 
-Builds, Developer ID signs, notarizes, staples, and packages MLX Server, then
-generates its signed Sparkle appcast. VERSION may optionally start with "v".
+Builds and Developer ID signs MLX Server, packages it in a signed disk image,
+notarizes and staples the DMG, then generates its signed Sparkle appcast.
+VERSION may optionally start with "v".
 
 Options:
   --build-number NUMBER CFBundleVersion. Defaults to a UTC timestamp.
@@ -115,10 +116,10 @@ else
     case "$archive_path" in /*) ;; *) archive_path="$repository_root/$archive_path" ;; esac
 fi
 
-release_zip="$output_directory/MLXVLMServer-${version}.zip"
+release_dmg="$output_directory/MLXVLMServer-${version}.dmg"
 appcast_path="$output_directory/appcast.xml"
 [[ ! -e "$archive_path" ]] || fail "archive already exists: $archive_path"
-[[ ! -e "$release_zip" ]] || fail "release ZIP already exists: $release_zip"
+[[ ! -e "$release_dmg" ]] || fail "release DMG already exists: $release_dmg"
 mkdir -p "$output_directory"
 
 archive_arguments=(
@@ -137,19 +138,31 @@ echo "Building MLX Server $version ($build_number)..."
 "$script_directory/archive_macos_release.sh" "${archive_arguments[@]}"
 
 app_path="$archive_path/Products/Applications/MLXVLMServer.app"
-notarization_arguments=(--output "$release_zip")
+packaging_arguments=(--output "$release_dmg")
+if [[ -n "$identity" ]]; then
+    packaging_arguments+=(--identity "$identity")
+elif [[ -n "$team_id" ]]; then
+    packaging_arguments+=(--team-id "$team_id")
+fi
+"$script_directory/package_macos_dmg.sh" "${packaging_arguments[@]}" "$app_path"
+
+notarization_arguments=()
 if [[ -n "$keychain_profile" ]]; then
     notarization_arguments+=(--keychain-profile "$keychain_profile")
 fi
-"$script_directory/notarize_macos_release.sh" "${notarization_arguments[@]}" "$app_path"
+if ((${#notarization_arguments[@]} > 0)); then
+    "$script_directory/notarize_macos_release.sh" "${notarization_arguments[@]}" "$release_dmg"
+else
+    "$script_directory/notarize_macos_release.sh" "$release_dmg"
+fi
 
 appcast_arguments=(--output "$appcast_path")
 if [[ -n "$release_notes" ]]; then
     appcast_arguments+=(--release-notes "$release_notes")
 fi
-"$script_directory/generate_macos_appcast.sh" "${appcast_arguments[@]}" "$release_zip"
+"$script_directory/generate_macos_appcast.sh" "${appcast_arguments[@]}" "$release_dmg"
 
 echo
 echo "Release is ready to publish:"
-echo "  Asset:   $release_zip"
+echo "  Asset:   $release_dmg"
 echo "  Appcast: $appcast_path"

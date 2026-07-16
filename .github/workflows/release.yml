@@ -127,7 +127,7 @@ jobs:
       - name: Upload notarized app to GitHub Release
         run: |
           gh release upload "$RELEASE_TAG" \
-            "dist/release/MLXVLMServer-${RELEASE_VERSION}.zip" \
+            "dist/release/MLXVLMServer-${RELEASE_VERSION}.dmg" \
             --clobber
 
       - name: Prepare GitHub Pages feed

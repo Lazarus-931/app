@@ -153,18 +153,28 @@ xcrun notarytool store-credentials mlx-vlm-server-notary \
   --password APP_SPECIFIC_PASSWORD
 ```
 
-Then submit, wait, staple, validate, and create the final ZIP:
+Package the signed app into a compressed DMG with an Applications shortcut:
 
 ```sh
-scripts/notarize_macos_release.sh path/to/MLXVLMServer.app
+scripts/package_macos_dmg.sh path/to/MLXVLMServer.app
 ```
+
+Then submit that final distribution image, wait, staple, and validate it:
+
+```sh
+scripts/notarize_macos_release.sh dist/release/MLXVLMServer-VERSION.dmg
+```
+
+Use `--validate-only` to run the same disk-image, Team ID, secure timestamp,
+hardened-runtime, and nested-code checks without contacting Apple's service.
 
 The Keychain profile defaults to `mlx-vlm-server-notary`. Override it with
 `--keychain-profile` or `NOTARYTOOL_PROFILE`. CI can use an App Store Connect
 API key instead by setting `NOTARY_KEY_PATH`, `NOTARY_KEY_ID`, and optionally
 `NOTARY_ISSUER`.
-Notarization results and failure logs are written beside the final archive
-under `dist/release/` by default.
+Notarization results and failure logs are written beside the DMG. The
+notarization script still accepts an app and produces a ZIP for backward
+compatibility, but the release pipeline uses the DMG path.
 
 To run the complete local release pipeline, including a signed Sparkle feed:
 
@@ -175,8 +185,8 @@ scripts/release_macos.sh \
 ```
 
 This stamps the app version, assigns a timestamp-based build number, builds and
-signs the archive, notarizes and staples the app, creates
-`dist/release/MLXVLMServer-0.2.0.zip`, and writes
+signs the archive, creates and signs the disk image, notarizes and staples the
+DMG, writes `dist/release/MLXVLMServer-0.2.0.dmg`, and generates
 `dist/release/appcast.xml`. Pass `--build-number` when a specific monotonically
 increasing `CFBundleVersion` is required.
 
@@ -185,8 +195,9 @@ increasing `CFBundleVersion` is required.
 The app uses Sparkle 2.9.4. GitHub Releases are the source of truth for release
 versions and assets, while GitHub Pages hosts the stable feed at
 `https://marvis-labs.github.io/mlx-platform/appcast.xml`. The feed is published
-only after the notarized ZIP has been uploaded to its GitHub Release, so clients
-never see an update whose asset is not yet available.
+only after the notarized DMG has been uploaded to its GitHub Release, so clients
+never see an update whose asset is not yet available. The same DMG supports the
+normal drag-to-Applications installation experience and direct Sparkle updates.
 
 The app's Sparkle EdDSA public key is committed in
 `Configuration/Signing.xcconfig`. Its private key remains in the local Keychain
@@ -231,8 +242,8 @@ base64 -i AuthKey_ABC123.p8 | tr -d '\n' | \
 Before the first release, configure the repository's Pages source to **GitHub
 Actions**. Then create a GitHub Release with a stable numeric tag such as
 `v0.2.0` and publish it. Publishing triggers the workflow to check out that tag,
-build and notarize the app, attach `MLXVLMServer-0.2.0.zip`, and finally deploy
-the signed appcast. Draft and prerelease releases do not publish updates.
+build the app, notarize the DMG, attach `MLXVLMServer-0.2.0.dmg`, and finally
+deploy the signed appcast. Draft and prerelease releases do not publish updates.
 
 To exercise the stats menu manually, start the app or server and run:
 

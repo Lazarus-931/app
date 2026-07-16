@@ -4,10 +4,10 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: generate_macos_appcast.sh [options] RELEASE_ZIP
+Usage: generate_macos_appcast.sh [options] RELEASE_ARCHIVE
 
-Creates a signed Sparkle appcast for a notarized release ZIP. The ZIP's app
-version determines the GitHub Release tag and download URL.
+Creates a signed Sparkle appcast for a notarized .dmg or .zip release archive.
+The contained app version determines the GitHub Release tag and download URL.
 
 Options:
   --release-notes PATH  Markdown, HTML, or plain-text release notes to embed.
@@ -82,8 +82,12 @@ done
     exit 2
 }
 
-release_zip="$1"
-[[ -f "$release_zip" && "$release_zip" == *.zip ]] || fail "release ZIP not found: $release_zip"
+release_archive="$1"
+[[ -f "$release_archive" ]] || fail "release archive not found: $release_archive"
+case "$release_archive" in
+    *.dmg|*.zip) ;;
+    *) fail "release archive must end in .dmg or .zip: $release_archive" ;;
+esac
 [[ -z "$private_key_path" || -z "${SPARKLE_PRIVATE_KEY:-}" ]] || \
     fail "use either --private-key or SPARKLE_PRIVATE_KEY, not both"
 if [[ -n "$private_key_path" ]]; then
@@ -97,7 +101,7 @@ if [[ -n "$release_notes" ]]; then
     esac
 fi
 
-case "$release_zip" in /*) ;; *) release_zip="$repository_root/$release_zip" ;; esac
+case "$release_archive" in /*) ;; *) release_archive="$repository_root/$release_archive" ;; esac
 case "$output_path" in /*) ;; *) output_path="$repository_root/$output_path" ;; esac
 case "$derived_data_path" in /*) ;; *) derived_data_path="$repository_root/$derived_data_path" ;; esac
 
@@ -108,25 +112,47 @@ fi
 [[ -x "$generate_appcast" ]] || fail "Sparkle generate_appcast not found at $generate_appcast; resolve packages or set SPARKLE_GENERATE_APPCAST"
 
 temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/mlx-vlm-appcast.XXXXXX")"
-trap 'rm -rf "$temporary_directory"' EXIT
+mount_path="$temporary_directory/mount"
+is_mounted=false
+cleanup() {
+    if [[ "$is_mounted" == true ]]; then
+        hdiutil detach "$mount_path" -quiet || true
+    fi
+    rm -rf "$temporary_directory"
+}
+trap cleanup EXIT
 archive_plist="$temporary_directory/Info.plist"
-archive_plist_entry="$(unzip -Z1 "$release_zip" | awk -F/ 'NF == 3 && $1 ~ /[.]app$/ && $2 == "Contents" && $3 == "Info.plist" { print; exit }')"
-[[ -n "$archive_plist_entry" ]] || fail "could not find an app Info.plist in $release_zip"
-unzip -p "$release_zip" "$archive_plist_entry" > "$archive_plist"
+if [[ "$release_archive" == *.zip ]]; then
+    archive_plist_entry="$(unzip -Z1 "$release_archive" | awk -F/ 'NF == 3 && $1 ~ /[.]app$/ && $2 == "Contents" && $3 == "Info.plist" { print; exit }')"
+    [[ -n "$archive_plist_entry" ]] || fail "could not find an app Info.plist in $release_archive"
+    unzip -p "$release_archive" "$archive_plist_entry" > "$archive_plist"
+else
+    mkdir -p "$mount_path"
+    hdiutil attach -quiet -nobrowse -readonly -mountpoint "$mount_path" "$release_archive"
+    is_mounted=true
+    app_plists=()
+    while IFS= read -r -d '' candidate; do
+        app_plists+=("$candidate")
+    done < <(find "$mount_path" -maxdepth 3 -path '*.app/Contents/Info.plist' -print0)
+    ((${#app_plists[@]} == 1)) || fail "disk image must contain exactly one top-level app Info.plist"
+    cp "${app_plists[0]}" "$archive_plist"
+    hdiutil detach "$mount_path" -quiet
+    is_mounted=false
+fi
 
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$archive_plist" 2>/dev/null || true)"
 build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$archive_plist" 2>/dev/null || true)"
-[[ "$version" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] || fail "invalid or missing app version in release ZIP: $version"
-[[ "$build_number" =~ ^[1-9][0-9]*$ ]] || fail "invalid or missing build number in release ZIP: $build_number"
+[[ "$version" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] || fail "invalid or missing app version in release archive: $version"
+[[ "$build_number" =~ ^[1-9][0-9]*$ ]] || fail "invalid or missing build number in release archive: $build_number"
 
 mkdir -p "$(dirname "$output_path")"
 staging_directory="$temporary_directory/releases"
 mkdir -p "$staging_directory"
-staged_zip="$staging_directory/$(basename "$release_zip")"
-ln "$release_zip" "$staged_zip" 2>/dev/null || cp "$release_zip" "$staged_zip"
+staged_archive="$staging_directory/$(basename "$release_archive")"
+ln "$release_archive" "$staged_archive" 2>/dev/null || cp "$release_archive" "$staged_archive"
 if [[ -n "$release_notes" ]]; then
     notes_extension="${release_notes##*.}"
-    cp "$release_notes" "${staged_zip%.zip}.$notes_extension"
+    cp "$release_notes" "${staged_archive%.*}.$notes_extension"
 fi
 
 download_prefix="https://github.com/Marvis-Labs/mlx-platform/releases/download/v${version}/"
@@ -153,7 +179,7 @@ fi
 generated_appcast="$staging_directory/appcast.xml"
 [[ -s "$generated_appcast" ]] || fail "generate_appcast did not create a feed"
 xmllint --noout "$generated_appcast"
-grep -Fq "url=\"${download_prefix}$(basename "$release_zip")\"" "$generated_appcast" || \
+grep -Fq "url=\"${download_prefix}$(basename "$release_archive")\"" "$generated_appcast" || \
     fail "generated feed does not contain the expected GitHub download URL"
 grep -Fq 'sparkle:edSignature=' "$generated_appcast" || fail "generated feed is not EdDSA signed"
 grep -Fq "<sparkle:shortVersionString>$version</sparkle:shortVersionString>" "$generated_appcast" || \
