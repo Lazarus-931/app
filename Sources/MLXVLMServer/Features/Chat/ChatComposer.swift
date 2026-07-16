@@ -454,7 +454,6 @@ private struct StableChatModelPicker: View, Equatable {
         .menuIndicator(.visible)
         .fixedSize()
         .disabled(isDisabled)
-        .help(helpText)
         .accessibilityLabel("Model")
         .accessibilityValue(accessibilityValue)
     }
@@ -477,12 +476,18 @@ private struct StableChatModelPicker: View, Equatable {
         .padding(.leading, 10)
         .padding(.trailing, 8)
         .frame(height: 30)
-        .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+        .background {
+            ChatPickerHoverBackground(tooltip: pickerTooltip)
+        }
         .overlay {
             Capsule()
                 .stroke(Color(nsColor: .separatorColor).opacity(0.8), lineWidth: 0.75)
         }
         .contentShape(Capsule())
+    }
+
+    private var pickerTooltip: String {
+        isDisabled ? helpText : "Select model"
     }
 
     private var pickerTitle: Text {
@@ -572,8 +577,45 @@ private struct StableChatModelPicker: View, Equatable {
         guard !level.detail.isEmpty else {
             return Text(level.rawValue)
         }
+
+        let columnPadding = menuPadding(
+            from: menuTextWidth(level.rawValue),
+            to: Self.reasoningLabelColumnWidth
+        ) + String(repeating: "\u{2007}", count: 3)
+        let detailPadding = menuPadding(
+            from: menuTextWidth(level.detail),
+            to: Self.reasoningDetailColumnWidth
+        )
         return Text(level.rawValue)
-            + Text("    \(level.detail)").foregroundColor(Color(nsColor: .tertiaryLabelColor))
+            + Text(columnPadding + detailPadding + level.detail)
+                .foregroundColor(Color(nsColor: .tertiaryLabelColor))
+    }
+
+    private static let reasoningMenuFont = NSFont.menuFont(ofSize: NSFont.systemFontSize)
+    private static let reasoningLabelColumnWidth = ChatReasoningLevel.allCases
+        .map { menuTextWidth($0.rawValue) }
+        .max() ?? 0
+    private static let reasoningDetailColumnWidth = ChatReasoningLevel.allCases
+        .map { menuTextWidth($0.detail) }
+        .max() ?? 0
+
+    private static func menuTextWidth(_ text: String) -> CGFloat {
+        (text as NSString).size(withAttributes: [.font: reasoningMenuFont]).width
+    }
+
+    private func menuTextWidth(_ text: String) -> CGFloat {
+        Self.menuTextWidth(text)
+    }
+
+    private func menuPadding(from currentWidth: CGFloat, to targetWidth: CGFloat) -> String {
+        var remainingWidth = max(0, targetWidth - currentWidth)
+        let figureSpaceWidth = max(1, Self.menuTextWidth("\u{2007}"))
+        let hairSpaceWidth = max(1, Self.menuTextWidth("\u{200A}"))
+        let figureSpaces = Int(remainingWidth / figureSpaceWidth)
+        remainingWidth -= CGFloat(figureSpaces) * figureSpaceWidth
+        let hairSpaces = Int((remainingWidth / hairSpaceWidth).rounded())
+        return String(repeating: "\u{2007}", count: figureSpaces)
+            + String(repeating: "\u{200A}", count: hairSpaces)
     }
 }
 
@@ -607,6 +649,83 @@ private struct ChatComposerModelIcon: View {
         }
         .frame(width: 18, height: 18)
         .accessibilityHidden(true)
+    }
+}
+
+private struct ChatPickerHoverBackground: NSViewRepresentable {
+    let tooltip: String
+
+    func makeNSView(context: Context) -> ChatPickerHoverView {
+        let view = ChatPickerHoverView()
+        view.toolTip = tooltip
+        return view
+    }
+
+    func updateNSView(_ view: ChatPickerHoverView, context: Context) {
+        view.toolTip = tooltip
+        view.refreshAppearance()
+    }
+}
+
+private final class ChatPickerHoverView: NSView {
+    private var isHovering = false
+    private var hoverTrackingArea: NSTrackingArea?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        refreshAppearance()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        let trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self
+        )
+        addTrackingArea(trackingArea)
+        hoverTrackingArea = trackingArea
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = bounds.height / 2
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refreshAppearance()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+        refreshAppearance()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+        refreshAppearance()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    fileprivate func refreshAppearance() {
+        let background = NSColor.controlBackgroundColor
+        let color = isHovering
+            ? background.blended(withFraction: 0.24, of: NSColor.labelColor) ?? background
+            : background
+        layer?.backgroundColor = color.cgColor
     }
 }
 
