@@ -312,6 +312,12 @@ private struct ControlPanelSidebarSurfaceReader: NSViewRepresentable {
     }
 
     private func expandSidebarSurface(from view: NSView) {
+        guard #available(macOS 26.0, *) else { return }
+        expandGlassSidebarSurface(from: view)
+    }
+
+    @available(macOS 26.0, *)
+    private func expandGlassSidebarSurface(from view: NSView) {
         DispatchQueue.main.async {
             var ancestor = view.superview
             var glassSurface: NSGlassEffectView?

@@ -72,7 +72,9 @@ struct ChatView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .toolbar {
-            ToolbarSpacer(.flexible)
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.flexible)
+            }
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
