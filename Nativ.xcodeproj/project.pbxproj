@@ -25,7 +25,7 @@
 		8B4DF732A8A6AA5FFBE11982 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64BBF79010B8120057237B52 /* StatsView.swift */; };
 		8B86659B490F58DEC1363135 /* NativServerKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5FC09C3EB40E94FB3D4AA4D6 /* NativServerKit.framework */; };
 		A2606518E424E92625661281 /* ChatComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97F637262DB138A253DEA6F /* ChatComposer.swift */; };
-		AE446D7A6A4814516C466B39 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA07E80C4BAB97A56736670 /* LogsView.swift */; };
+		AE446D7A6A4814516C466B39 /* DeveloperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA07E80C4BAB97A56736670 /* DeveloperView.swift */; };
 		B15353CDE6204176664DB3B2 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0E2EE61C1652C49ECC69658 /* AppDelegate.swift */; };
 		B47F34B1273BEEAA4D5DD314 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F553434CA19B929108FF740F /* ChatView.swift */; };
 		B55A6BE5C7B03181E2CD03D6 /* HuggingFaceHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7FC582B0E18D226E87A1FE /* HuggingFaceHub.swift */; };
@@ -79,7 +79,7 @@
 		7B3D808CCA7AE53C7245C3D7 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
 		7F7FC582B0E18D226E87A1FE /* HuggingFaceHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuggingFaceHub.swift; sourceTree = "<group>"; };
 		822185ADAAC5DA3F034179B0 /* SoftwareUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoftwareUpdater.swift; sourceTree = "<group>"; };
-		9CA07E80C4BAB97A56736670 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
+		9CA07E80C4BAB97A56736670 /* DeveloperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperView.swift; sourceTree = "<group>"; };
 		9FDFD79A8E1B8AA56AB21FE3 /* NativImageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativImageClient.swift; sourceTree = "<group>"; };
 		AAC852B29463217932AE0212 /* NativModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativModel.swift; sourceTree = "<group>"; };
 		ADEC2FFE7F1CFAC59170AC63 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
@@ -170,12 +170,12 @@
 			);
 			sourceTree = "<group>";
 		};
-		7DF0106EA6B398F5E79C986A /* Logs */ = {
+		7DF0106EA6B398F5E79C986A /* Developer */ = {
 			isa = PBXGroup;
 			children = (
-				9CA07E80C4BAB97A56736670 /* LogsView.swift */,
+				9CA07E80C4BAB97A56736670 /* DeveloperView.swift */,
 			);
-			path = Logs;
+			path = Developer;
 			sourceTree = "<group>";
 		};
 		A42368BA82350C2FA4CC12DF /* Features */ = {
@@ -184,7 +184,7 @@
 				ED33631B7BBA892EB4B78808 /* Chat */,
 				C1A973F1FA17175E47FDAB98 /* Dashboard */,
 				374FD298864C11262A44F37B /* ImageGeneration */,
-				7DF0106EA6B398F5E79C986A /* Logs */,
+				7DF0106EA6B398F5E79C986A /* Developer */,
 				BAC9F35045D83344BC059CB2 /* Models */,
 			);
 			path = Features;
@@ -388,7 +388,7 @@
 				BC0753B567DC8935199FCDFB /* ImageGenerationViewModel.swift in Sources */,
 				1423FD497A75A14770FCA9E1 /* LocalModelDiscovery.swift in Sources */,
 				482E08D2A8EFADD566FFDC4D /* LocalModelProvider.swift in Sources */,
-				AE446D7A6A4814516C466B39 /* LogsView.swift in Sources */,
+				AE446D7A6A4814516C466B39 /* DeveloperView.swift in Sources */,
 				DD9CAC7451574C4B05DF1EDB /* Main.swift in Sources */,
 				052BF04D854F36CDA740635F /* MarkdownFormatting.swift in Sources */,
 				C84FA1A269F12B130EAEB57B /* ModelsView.swift in Sources */,

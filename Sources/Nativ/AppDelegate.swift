@@ -612,6 +612,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         submenu.addItem(modelOptionMenuItem(title: "Load on demand", modelID: nil))
 
         let selectedModelID = model.settings.normalized().languageModelID
+        let pickerModels = localModels.filter { localModel in
+            localModel.repoID == selectedModelID
+                || !localModel.capabilities.contains(.speechToText)
+                    && !localModel.capabilities.contains(.textToSpeech)
+        }
         if let selectedModelID,
            !localModels.contains(where: { $0.repoID == selectedModelID }) {
             submenu.addItem(modelOptionMenuItem(
@@ -620,19 +625,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ))
         }
 
-        if !localModels.isEmpty {
+        if !pickerModels.isEmpty {
             submenu.addItem(.separator())
             submenu.addItem(installedModelsHeaderMenuItem())
         }
 
-        for localModel in localModels {
+        for localModel in pickerModels {
             submenu.addItem(modelRowMenuItem(localModel))
         }
 
-        if localModels.isEmpty, selectedModelID == nil {
+        if pickerModels.isEmpty, selectedModelID == nil {
             let message = modelScanInProgress
                 ? "Scanning for local models…"
-                : modelScanError ?? "No local models found"
+                : modelScanError ?? (localModels.isEmpty
+                    ? "No local models found"
+                    : "No language models found")
             submenu.addItem(disabledMenuItem(message))
         }
 

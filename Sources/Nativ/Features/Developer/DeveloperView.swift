@@ -3,7 +3,7 @@ import Darwin
 import NativServerKit
 import SwiftUI
 
-struct LogsView: View {
+struct DeveloperView: View {
     @ObservedObject var model: NativModel
     @ObservedObject var runtime: SystemRuntimeMonitor
     @State private var logQuery = ""
@@ -32,7 +32,7 @@ struct LogsView: View {
     private var pageHeader: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Logs")
+                Text("Developer")
                     .font(.title2.weight(.semibold))
                 Text("Live server output and runtime environment.")
                     .font(.callout)
@@ -968,6 +968,6 @@ private enum LogTextStyler {
 }
 
 #Preview {
-    LogsView(model: .init(), runtime: .init())
+    DeveloperView(model: .init(), runtime: .init())
         .frame(width: 950, height: 650)
 }

@@ -33,7 +33,7 @@ Sources/
 │   │   ├── Chat/
 │   │   ├── Dashboard/
 │   │   ├── ImageGeneration/
-│   │   ├── Logs/
+│   │   ├── Developer/
 │   │   └── Models/
 │   ├── Utilities/
 │   └── ModelProviderIcons/
