@@ -32,7 +32,7 @@ miniaudio==1.71
 mlx-audio==0.4.3
 mlx-lm==0.31.3
 mlx-metal==0.31.2
-mlx-vlm>=0.6.4
+mlx-vlm>=0.6.5
 mlx==0.31.2
 multidict==6.7.1
 multiprocess==0.70.19
