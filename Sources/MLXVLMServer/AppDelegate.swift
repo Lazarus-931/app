@@ -472,7 +472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = statusItem.button {
             if let image = NSImage(named: "MenuBarLogo") {
                 image.isTemplate = true
-                image.size = NSSize(width: 22, height: 22)
+                image.size = NSSize(width: 18, height: 18)
                 button.image = image
                 button.imagePosition = .imageOnly
             } else {
