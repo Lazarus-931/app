@@ -236,7 +236,6 @@ struct ChatComposer: View {
             onSwitchModel: { model.switchLanguageModel(to: $0) },
             onSelectReasoning: applyReasoningLevel
         )
-        .equatable()
     }
 
     private var selectedModelID: String? {
@@ -410,7 +409,10 @@ struct ChatComposer: View {
     }
 }
 
-private struct StableChatModelPicker: View, Equatable {
+private struct StableChatModelPicker: View {
+    @State private var isPickerHovered = false
+    @State private var isMenuOpen = false
+
     let models: [LocalModel]
     let selectedModelID: String?
     let selectedModelLabel: String
@@ -426,68 +428,370 @@ private struct StableChatModelPicker: View, Equatable {
     let onSwitchModel: (String) -> Void
     let onSelectReasoning: (ChatReasoningLevel) -> Void
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.models == rhs.models
-            && lhs.selectedModelID == rhs.selectedModelID
-            && lhs.selectedModelLabel == rhs.selectedModelLabel
-            && lhs.selectedModelProvider == rhs.selectedModelProvider
-            && lhs.supportsReasoning == rhs.supportsReasoning
-            && lhs.reasoningLevel == rhs.reasoningLevel
-            && lhs.modelSwitchInProgress == rhs.modelSwitchInProgress
-            && lhs.isDisabled == rhs.isDisabled
-            && lhs.statusLabel == rhs.statusLabel
-            && lhs.helpText == rhs.helpText
-            && lhs.accessibilityValue == rhs.accessibilityValue
-    }
-
     var body: some View {
-        Menu {
-            modelSelectionMenu
-
-            if supportsReasoning {
-                reasoningSelectionMenu
-            }
-        } label: {
+        ZStack {
             pickerLabel
+                .opacity(0)
+
+            ChatModelPickerMenuControl(
+                models: models,
+                selectedModelID: selectedModelID,
+                selectedModelLabel: selectedModelLabel,
+                selectedModelProvider: selectedModelProvider,
+                supportsReasoning: supportsReasoning,
+                reasoningLevel: reasoningLevel,
+                isEnabled: !isDisabled,
+                statusLabel: statusLabel,
+                onSelectModel: onSelectModel,
+                onSwitchModel: onSwitchModel,
+                onSelectReasoning: onSelectReasoning,
+                onTrackingChanged: { isTracking in
+                    isMenuOpen = isTracking
+                    if !isTracking {
+                        isPickerHovered = false
+                    }
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // The native control owns interaction while this stable SwiftUI copy
+            // preserves the provider logo and exact composer styling.
+            pickerLabel
+                .background {
+                    Capsule()
+                        .fill(isPickerActive ? pickerHighlightColor : pickerRestingColor)
+                }
+                .allowsHitTesting(false)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.visible)
         .fixedSize()
+        .frame(height: 32)
+        .overlay(alignment: .top) {
+            if isPickerHovered && !isMenuOpen {
+                ChatModelPickerTooltip(
+                    title: pickerTooltip,
+                    showsShortcut: !isDisabled
+                )
+                    .offset(y: -50)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
+                    .allowsHitTesting(false)
+            }
+        }
+        .contentShape(Capsule())
         .disabled(isDisabled)
+        .onHover { hovering in
+            guard !isMenuOpen else { return }
+            isPickerHovered = hovering
+        }
+        .animation(.easeOut(duration: 0.1), value: isPickerActive)
         .accessibilityLabel("Model")
         .accessibilityValue(accessibilityValue)
     }
 
     private var pickerLabel: some View {
-        Label {
-            pickerTitle
-                .lineLimit(1)
-        } icon: {
-            Group {
-                if modelSwitchInProgress {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    ChatComposerModelIcon(provider: selectedModelProvider)
-                }
-            }
-        }
-        .font(.caption.weight(.medium))
-        .padding(.leading, 10)
-        .padding(.trailing, 8)
-        .frame(height: 30)
-        .background {
-            ChatPickerHoverBackground(tooltip: pickerTooltip)
-        }
-        .overlay {
-            Capsule()
-                .stroke(Color(nsColor: .separatorColor).opacity(0.8), lineWidth: 0.75)
-        }
-        .contentShape(Capsule())
+        ChatModelPickerLabel(
+            selectedModelLabel: selectedModelLabel,
+            selectedModelProvider: selectedModelProvider,
+            supportsReasoning: supportsReasoning,
+            reasoningLevel: reasoningLevel,
+            modelSwitchInProgress: modelSwitchInProgress
+        )
     }
 
     private var pickerTooltip: String {
         isDisabled ? helpText : "Select model"
+    }
+
+    private var isPickerActive: Bool {
+        isPickerHovered || isMenuOpen
+    }
+
+    private var pickerHighlightColor: Color {
+        let background = NSColor.controlBackgroundColor
+        return Color(
+            nsColor: background.blended(withFraction: 0.24, of: NSColor.labelColor)
+                ?? background
+        )
+    }
+
+    private var pickerRestingColor: Color {
+        Color(nsColor: .textBackgroundColor)
+    }
+
+}
+
+private struct ChatModelPickerMenuControl: NSViewRepresentable {
+    let models: [LocalModel]
+    let selectedModelID: String?
+    let selectedModelLabel: String
+    let selectedModelProvider: LocalModelProvider?
+    let supportsReasoning: Bool
+    let reasoningLevel: ChatReasoningLevel
+    let isEnabled: Bool
+    let statusLabel: String
+    let onSelectModel: (LocalModel) -> Void
+    let onSwitchModel: (String) -> Void
+    let onSelectReasoning: (ChatReasoningLevel) -> Void
+    let onTrackingChanged: (Bool) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton()
+        button.isBordered = false
+        button.title = ""
+        button.image = nil
+        button.focusRingType = .none
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.showMenu(_:))
+        button.setAccessibilityLabel("Model")
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.parent = self
+        button.isEnabled = isEnabled
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: ChatModelPickerMenuControl
+
+        private static let menuFont = NSFont.menuFont(ofSize: NSFont.systemFontSize)
+        private static let reasoningLabelColumnWidth = ChatReasoningLevel.allCases
+            .map { textWidth($0.rawValue) }
+            .max() ?? 0
+        private static let reasoningDetailColumnWidth = ChatReasoningLevel.allCases
+            .map { textWidth($0.detail) }
+            .max() ?? 0
+
+        init(parent: ChatModelPickerMenuControl) {
+            self.parent = parent
+        }
+
+        @objc func showMenu(_ sender: NSButton) {
+            // Build the entire tree before tracking begins. Keeping both submenus
+            // alive for the whole session prevents hover-driven view replacement.
+            let menu = makeMenu()
+            parent.onTrackingChanged(true)
+            defer { parent.onTrackingChanged(false) }
+            menu.update()
+            menu.popUp(
+                positioning: nil,
+                at: NSPoint(
+                    x: -8,
+                    y: sender.bounds.maxY + menu.size.height + 4
+                ),
+                in: sender
+            )
+        }
+
+        private func makeMenu() -> NSMenu {
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+
+            let modelItem = NSMenuItem(
+                title: "Model   \(parent.selectedModelLabel)",
+                action: nil,
+                keyEquivalent: ""
+            )
+            modelItem.submenu = makeModelMenu()
+            menu.addItem(modelItem)
+
+            if parent.supportsReasoning {
+                let reasoningItem = NSMenuItem(
+                    title: "Reasoning   \(parent.reasoningLevel.rawValue)",
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                reasoningItem.submenu = makeReasoningMenu()
+                menu.addItem(reasoningItem)
+            }
+
+            return menu
+        }
+
+        private func makeModelMenu() -> NSMenu {
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+
+            if let selectedModelID = parent.selectedModelID,
+               !parent.models.contains(where: { $0.repoID == selectedModelID }) {
+                let item = modelItem(
+                    title: modelMenuLabel(selectedModelID),
+                    repoID: selectedModelID,
+                    provider: parent.selectedModelProvider,
+                    action: #selector(switchModel(_:))
+                )
+                item.state = .on
+                menu.addItem(item)
+
+                if !parent.models.isEmpty {
+                    menu.addItem(.separator())
+                }
+            }
+
+            for model in parent.models {
+                let item = modelItem(
+                    title: modelMenuLabel(model.repoID),
+                    repoID: model.repoID,
+                    provider: model.provider,
+                    action: #selector(selectModel(_:))
+                )
+                item.state = model.repoID == parent.selectedModelID ? .on : .off
+                menu.addItem(item)
+            }
+
+            if parent.models.isEmpty && parent.selectedModelID == nil {
+                let item = NSMenuItem(title: parent.statusLabel, action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                menu.addItem(item)
+            }
+
+            return menu
+        }
+
+        private func makeReasoningMenu() -> NSMenu {
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+
+            for (index, level) in ChatReasoningLevel.allCases.enumerated() {
+                let item = NSMenuItem(
+                    title: level.rawValue,
+                    action: #selector(selectReasoning(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.tag = index
+                item.state = level == parent.reasoningLevel ? .on : .off
+                item.attributedTitle = reasoningTitle(level)
+                menu.addItem(item)
+            }
+
+            return menu
+        }
+
+        private func modelItem(
+            title: String,
+            repoID: String,
+            provider: LocalModelProvider?,
+            action: Selector
+        ) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.representedObject = repoID
+            item.image = providerImage(provider)
+            return item
+        }
+
+        @objc private func selectModel(_ sender: NSMenuItem) {
+            guard let repoID = sender.representedObject as? String,
+                  let model = parent.models.first(where: { $0.repoID == repoID })
+            else { return }
+            parent.onSelectModel(model)
+        }
+
+        @objc private func switchModel(_ sender: NSMenuItem) {
+            guard let repoID = sender.representedObject as? String else { return }
+            parent.onSwitchModel(repoID)
+        }
+
+        @objc private func selectReasoning(_ sender: NSMenuItem) {
+            guard ChatReasoningLevel.allCases.indices.contains(sender.tag) else { return }
+            parent.onSelectReasoning(ChatReasoningLevel.allCases[sender.tag])
+        }
+
+        private func modelMenuLabel(_ modelID: String) -> String {
+            let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
+            return MLXServerFormatting.truncateModelName(shortName, maxLength: 28)
+        }
+
+        private func providerImage(_ provider: LocalModelProvider?) -> NSImage? {
+            guard let provider,
+                  let source = LocalModelProviderIcon.image(for: provider),
+                  let image = source.copy() as? NSImage
+            else { return nil }
+            image.size = NSSize(width: 16, height: 16)
+            return image
+        }
+
+        private func reasoningTitle(_ level: ChatReasoningLevel) -> NSAttributedString {
+            let title = NSMutableAttributedString(
+                string: level.rawValue,
+                attributes: [.font: Self.menuFont]
+            )
+            guard !level.detail.isEmpty else { return title }
+
+            let labelPadding = padding(
+                from: Self.textWidth(level.rawValue),
+                to: Self.reasoningLabelColumnWidth
+            ) + String(repeating: "\u{2007}", count: 3)
+            let detailPadding = padding(
+                from: Self.textWidth(level.detail),
+                to: Self.reasoningDetailColumnWidth
+            )
+            title.append(
+                NSAttributedString(
+                    string: labelPadding + detailPadding + level.detail,
+                    attributes: [
+                        .font: Self.menuFont,
+                        .foregroundColor: NSColor.tertiaryLabelColor
+                    ]
+                )
+            )
+            return title
+        }
+
+        private static func textWidth(_ text: String) -> CGFloat {
+            (text as NSString).size(withAttributes: [.font: menuFont]).width
+        }
+
+        private func padding(from currentWidth: CGFloat, to targetWidth: CGFloat) -> String {
+            var remainingWidth = max(0, targetWidth - currentWidth)
+            let figureSpaceWidth = max(1, Self.textWidth("\u{2007}"))
+            let hairSpaceWidth = max(1, Self.textWidth("\u{200A}"))
+            let figureSpaces = Int(remainingWidth / figureSpaceWidth)
+            remainingWidth -= CGFloat(figureSpaces) * figureSpaceWidth
+            let hairSpaces = Int((remainingWidth / hairSpaceWidth).rounded())
+            return String(repeating: "\u{2007}", count: figureSpaces)
+                + String(repeating: "\u{200A}", count: hairSpaces)
+        }
+    }
+}
+
+private struct ChatModelPickerLabel: View {
+    let selectedModelLabel: String
+    let selectedModelProvider: LocalModelProvider?
+    let supportsReasoning: Bool
+    let reasoningLevel: ChatReasoningLevel
+    let modelSwitchInProgress: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Label {
+                pickerTitle
+                    .lineLimit(1)
+            } icon: {
+                Group {
+                    if modelSwitchInProgress {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        ChatComposerModelIcon(provider: selectedModelProvider)
+                    }
+                }
+            }
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(Color.primary)
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .frame(height: 32)
     }
 
     private var pickerTitle: Text {
@@ -498,124 +802,37 @@ private struct StableChatModelPicker: View, Equatable {
         return modelName + Text("  \(reasoningLevel.rawValue)").foregroundColor(.secondary)
     }
 
-    private var modelSelectionMenu: some View {
-        Menu {
-            if let selectedModelID,
-               !models.contains(where: { $0.repoID == selectedModelID }) {
-                Button {
-                    onSwitchModel(selectedModelID)
-                } label: {
-                    HStack {
-                        ChatComposerModelIcon(provider: selectedModelProvider)
-                        Text(modelMenuLabel(selectedModelID))
-                        Spacer()
-                        Image(systemName: "checkmark")
-                    }
-                }
+}
 
-                if !models.isEmpty {
-                    Divider()
-                }
-            }
+private struct ChatModelPickerTooltip: View {
+    let title: String
+    let showsShortcut: Bool
 
-            ForEach(models) { localModel in
-                Button {
-                    onSelectModel(localModel)
-                } label: {
-                    HStack {
-                        ChatComposerModelIcon(provider: localModel.provider)
-                        Text(modelMenuLabel(localModel.repoID))
-                        if localModel.repoID == selectedModelID {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .foregroundStyle(.primary)
 
-            if models.isEmpty && selectedModelID == nil {
-                Button(statusLabel) {}
-                    .disabled(true)
+            if showsShortcut {
+                Text("⌃⇧M")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.12), in: Capsule())
             }
-        } label: {
-            menuSummaryText(title: "Model", value: selectedModelLabel)
         }
-    }
-
-    private var reasoningSelectionMenu: some View {
-        Menu {
-            ForEach(ChatReasoningLevel.allCases) { level in
-                Button {
-                    onSelectReasoning(level)
-                } label: {
-                    if level == reasoningLevel {
-                        Label {
-                            reasoningMenuText(level)
-                        } icon: {
-                            Image(systemName: "checkmark")
-                        }
-                    } else {
-                        reasoningMenuText(level)
-                    }
-                }
-            }
-        } label: {
-            menuSummaryText(title: "Reasoning", value: reasoningLevel.rawValue)
+        .font(.callout)
+        .padding(.leading, 12)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.8), lineWidth: 0.75)
         }
-    }
-
-    private func modelMenuLabel(_ modelID: String) -> String {
-        let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
-        return MLXServerFormatting.truncateModelName(shortName, maxLength: 28)
-    }
-
-    private func menuSummaryText(title: String, value: String) -> Text {
-        Text(title) + Text("  \(value)").foregroundColor(.secondary)
-    }
-
-    private func reasoningMenuText(_ level: ChatReasoningLevel) -> Text {
-        guard !level.detail.isEmpty else {
-            return Text(level.rawValue)
-        }
-
-        let columnPadding = menuPadding(
-            from: menuTextWidth(level.rawValue),
-            to: Self.reasoningLabelColumnWidth
-        ) + String(repeating: "\u{2007}", count: 3)
-        let detailPadding = menuPadding(
-            from: menuTextWidth(level.detail),
-            to: Self.reasoningDetailColumnWidth
-        )
-        return Text(level.rawValue)
-            + Text(columnPadding + detailPadding + level.detail)
-                .foregroundColor(Color(nsColor: .tertiaryLabelColor))
-    }
-
-    private static let reasoningMenuFont = NSFont.menuFont(ofSize: NSFont.systemFontSize)
-    private static let reasoningLabelColumnWidth = ChatReasoningLevel.allCases
-        .map { menuTextWidth($0.rawValue) }
-        .max() ?? 0
-    private static let reasoningDetailColumnWidth = ChatReasoningLevel.allCases
-        .map { menuTextWidth($0.detail) }
-        .max() ?? 0
-
-    private static func menuTextWidth(_ text: String) -> CGFloat {
-        (text as NSString).size(withAttributes: [.font: reasoningMenuFont]).width
-    }
-
-    private func menuTextWidth(_ text: String) -> CGFloat {
-        Self.menuTextWidth(text)
-    }
-
-    private func menuPadding(from currentWidth: CGFloat, to targetWidth: CGFloat) -> String {
-        var remainingWidth = max(0, targetWidth - currentWidth)
-        let figureSpaceWidth = max(1, Self.menuTextWidth("\u{2007}"))
-        let hairSpaceWidth = max(1, Self.menuTextWidth("\u{200A}"))
-        let figureSpaces = Int(remainingWidth / figureSpaceWidth)
-        remainingWidth -= CGFloat(figureSpaces) * figureSpaceWidth
-        let hairSpaces = Int((remainingWidth / hairSpaceWidth).rounded())
-        return String(repeating: "\u{2007}", count: figureSpaces)
-            + String(repeating: "\u{200A}", count: hairSpaces)
+        .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+        .fixedSize()
     }
 }
 
@@ -625,7 +842,8 @@ private struct ChatComposerModelIcon: View {
 
     var body: some View {
         ZStack {
-            if provider?.needsLightIconBackgroundInDarkMode == true, colorScheme == .dark {
+            if provider?.needsLightIconBackgroundInDarkMode == true,
+               colorScheme == .dark {
                 Circle()
                     .fill(Color.white.opacity(0.94))
                     .frame(width: 18, height: 18)
@@ -649,83 +867,6 @@ private struct ChatComposerModelIcon: View {
         }
         .frame(width: 18, height: 18)
         .accessibilityHidden(true)
-    }
-}
-
-private struct ChatPickerHoverBackground: NSViewRepresentable {
-    let tooltip: String
-
-    func makeNSView(context: Context) -> ChatPickerHoverView {
-        let view = ChatPickerHoverView()
-        view.toolTip = tooltip
-        return view
-    }
-
-    func updateNSView(_ view: ChatPickerHoverView, context: Context) {
-        view.toolTip = tooltip
-        view.refreshAppearance()
-    }
-}
-
-private final class ChatPickerHoverView: NSView {
-    private var isHovering = false
-    private var hoverTrackingArea: NSTrackingArea?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        refreshAppearance()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let hoverTrackingArea {
-            removeTrackingArea(hoverTrackingArea)
-        }
-        let trackingArea = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self
-        )
-        addTrackingArea(trackingArea)
-        hoverTrackingArea = trackingArea
-    }
-
-    override func layout() {
-        super.layout()
-        layer?.cornerRadius = bounds.height / 2
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        refreshAppearance()
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        isHovering = true
-        refreshAppearance()
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        isHovering = false
-        refreshAppearance()
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
-    }
-
-    fileprivate func refreshAppearance() {
-        let background = NSColor.controlBackgroundColor
-        let color = isHovering
-            ? background.blended(withFraction: 0.24, of: NSColor.labelColor) ?? background
-            : background
-        layer?.backgroundColor = color.cgColor
     }
 }
 
