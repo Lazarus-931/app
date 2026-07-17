@@ -9,12 +9,14 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Lock
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import Request
 from fastapi.responses import Response
 
 import mlx_vlm.server as base
+import mlx_vlm.server.cli as base_cli
 
 
 BACKEND_NAME = f"mlx_vlm/{base.__version__}"
@@ -92,7 +94,7 @@ def analytics_db_path() -> str:
         return os.path.expanduser(configured_path)
 
     return os.path.expanduser(
-        "~/Library/Application Support/MLXServerDemo/Analytics.sqlite3"
+        "~/Library/Application Support/Nativ/Analytics.sqlite3"
     )
 
 
@@ -1036,7 +1038,17 @@ def install_metrics_overlay() -> None:
 
 def main() -> None:
     install_metrics_overlay()
-    base.main()
+    original_argparse = base_cli.argparse
+
+    def nativ_argument_parser(*args: Any, **kwargs: Any):
+        kwargs["description"] = "Nativ."
+        return original_argparse.ArgumentParser(*args, **kwargs)
+
+    base_cli.argparse = SimpleNamespace(ArgumentParser=nativ_argument_parser)
+    try:
+        base.main()
+    finally:
+        base_cli.argparse = original_argparse
 
 
 install_metrics_overlay()

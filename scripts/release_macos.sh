@@ -6,7 +6,7 @@ usage() {
     cat <<'EOF'
 Usage: release_macos.sh [options] VERSION
 
-Builds and Developer ID signs MLX Server, packages it in a signed disk image,
+Builds and Developer ID signs Nativ, packages it in a signed disk image,
 notarizes and staples the DMG, then generates its signed Sparkle appcast.
 VERSION may optionally start with "v".
 
@@ -111,12 +111,12 @@ fi
 
 case "$output_directory" in /*) ;; *) output_directory="$repository_root/$output_directory" ;; esac
 if [[ -z "$archive_path" ]]; then
-    archive_path="$repository_root/dist/archive/MLXVLMServer-${version}-${build_number}.xcarchive"
+    archive_path="$repository_root/dist/archive/Nativ-${version}-${build_number}.xcarchive"
 else
     case "$archive_path" in /*) ;; *) archive_path="$repository_root/$archive_path" ;; esac
 fi
 
-release_dmg="$output_directory/MLXVLMServer-${version}.dmg"
+release_dmg="$output_directory/Nativ-${version}.dmg"
 appcast_path="$output_directory/appcast.xml"
 [[ ! -e "$archive_path" ]] || fail "archive already exists: $archive_path"
 [[ ! -e "$release_dmg" ]] || fail "release DMG already exists: $release_dmg"
@@ -134,10 +134,10 @@ elif [[ -n "$team_id" ]]; then
     archive_arguments+=(--team-id "$team_id")
 fi
 
-echo "Building MLX Server $version ($build_number)..."
+echo "Building Nativ $version ($build_number)..."
 "$script_directory/archive_macos_release.sh" "${archive_arguments[@]}"
 
-app_path="$archive_path/Products/Applications/MLXVLMServer.app"
+app_path="$archive_path/Products/Applications/Nativ.app"
 packaging_arguments=(--output "$release_dmg")
 if [[ -n "$identity" ]]; then
     packaging_arguments+=(--identity "$identity")

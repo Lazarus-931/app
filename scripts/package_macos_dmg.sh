@@ -12,7 +12,7 @@ an Applications directory shortcut.
 Options:
   --output PATH       Output DMG. Defaults to
                       dist/release/APP-VERSION.dmg.
-  --volume-name NAME  Mounted volume name. Defaults to MLX Server.
+  --volume-name NAME  Mounted volume name. Defaults to nativ.
   --identity ID       Developer ID Application identity name or SHA-1 hash.
   --team-id ID        Resolve the Developer ID identity from a Team ID.
   -h, --help          Show this help.
@@ -27,7 +27,7 @@ fail() {
 script_directory="$(cd "$(dirname "$0")" && pwd -P)"
 repository_root="$(cd "$script_directory/.." && pwd -P)"
 output_path=""
-volume_name="MLX Server"
+volume_name="Nativ"
 identity=""
 team_id=""
 

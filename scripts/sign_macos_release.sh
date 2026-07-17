@@ -30,7 +30,7 @@ fail() {
 script_directory="$(cd "$(dirname "$0")" && pwd -P)"
 repository_root="$(cd "$script_directory/.." && pwd -P)"
 identity="${CODE_SIGN_IDENTITY:-}"
-team_id="${MLX_VLM_SERVER_TEAM_ID:-}"
+team_id="${NATIV_TEAM_ID:-}"
 use_timestamp=true
 
 while (($# > 0)); do
@@ -84,8 +84,8 @@ app_path="$target_path"
 if [[ -z "$identity" && -z "$team_id" ]]; then
     team_id="$(
         xcodebuild \
-            -project "$repository_root/MLXPlatform.xcodeproj" \
-            -scheme MLXVLMServer \
+            -project "$repository_root/Nativ.xcodeproj" \
+            -scheme Nativ \
             -configuration Release \
             -showBuildSettings 2>/dev/null |
             sed -n 's/^[[:space:]]*DEVELOPMENT_TEAM = //p' |

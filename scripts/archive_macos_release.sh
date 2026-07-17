@@ -36,7 +36,7 @@ fail() {
 script_directory="$(cd "$(dirname "$0")" && pwd -P)"
 repository_root="$(cd "$script_directory/.." && pwd -P)"
 archive_path=""
-derived_data_path="${MLX_VLM_SERVER_DERIVED_DATA:-build/XcodeDerivedData}"
+derived_data_path="${NATIV_DERIVED_DATA:-build/XcodeDerivedData}"
 generate_project=true
 sign_archive=false
 identity=""
@@ -120,7 +120,7 @@ if [[ "$generate_project" == true ]]; then
 fi
 
 if [[ -z "$archive_path" ]]; then
-    archive_path="dist/archive/MLXVLMServer-$(date +%Y%m%d-%H%M%S).xcarchive"
+    archive_path="dist/archive/Nativ-$(date +%Y%m%d-%H%M%S).xcarchive"
 fi
 
 case "$archive_path" in
@@ -138,14 +138,14 @@ mkdir -p "$(dirname "$archive_path")" "$derived_data_path"
 
 cd "$repository_root"
 if [[ "$generate_project" == true ]]; then
-    echo "Generating MLXPlatform.xcodeproj..."
+    echo "Generating Nativ.xcodeproj..."
     xcodegen generate
 fi
 
 echo "Building unsigned Release archive..."
 xcodebuild_arguments=(
-    -project MLXPlatform.xcodeproj
-    -scheme MLXVLMServer
+    -project Nativ.xcodeproj
+    -scheme Nativ
     -configuration Release
     -derivedDataPath "$derived_data_path"
     -archivePath "$archive_path"
@@ -169,8 +169,8 @@ application_path="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:App
 app_path="$archive_path/Products/$application_path"
 [[ -d "$app_path" && -f "$app_path/Contents/Info.plist" ]] || \
     fail "archived app is missing: $app_path"
-[[ ! -e "$archive_path/Products/Library/Frameworks/MLXServerKit.framework" ]] || \
-    fail "MLXServerKit was installed as a top-level archive product; check SKIP_INSTALL"
+[[ ! -e "$archive_path/Products/Library/Frameworks/NativServerKit.framework" ]] || \
+    fail "NativServerKit was installed as a top-level archive product; check SKIP_INSTALL"
 
 archived_marketing_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Contents/Info.plist")"
 archived_build_number="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_path/Contents/Info.plist")"

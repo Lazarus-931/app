@@ -35,7 +35,7 @@ release_notes=""
 output_path="dist/release/appcast.xml"
 account="${SPARKLE_KEY_ACCOUNT:-Marvis-Labs}"
 private_key_path=""
-derived_data_path="${MLX_VLM_SERVER_DERIVED_DATA:-build/XcodeDerivedData}"
+derived_data_path="${NATIV_DERIVED_DATA:-build/XcodeDerivedData}"
 
 while (($# > 0)); do
     case "$1" in
@@ -167,7 +167,7 @@ appcast_arguments=(
     "$staging_directory"
 )
 
-echo "Generating signed appcast for MLX Server $version ($build_number)..."
+echo "Generating signed appcast for Nativ $version ($build_number)..."
 if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
     printf '%s\n' "$SPARKLE_PRIVATE_KEY" | "$generate_appcast" --ed-key-file - "${appcast_arguments[@]}"
 elif [[ -n "$private_key_path" ]]; then

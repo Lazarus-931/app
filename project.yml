@@ -1,4 +1,4 @@
-name: MLXPlatform
+name: Nativ
 options:
   bundleIdPrefix: dev.local
   deploymentTarget:
@@ -18,10 +18,10 @@ packages:
     url: https://github.com/gonzalezreal/textual.git
     exactVersion: 0.5.0
 schemes:
-  MLXVLMServer:
+  Nativ:
     build:
       targets:
-        MLXVLMServer: all
+        Nativ: all
     run:
       config: Debug
     profile:
@@ -31,14 +31,14 @@ schemes:
     archive:
       config: Release
 targets:
-  MLXServerKit:
+  NativServerKit:
     type: framework
     platform: macOS
     configFiles:
       Debug: Configuration/Signing.xcconfig
       Release: Configuration/Signing.xcconfig
     sources:
-      - path: Sources/MLXServerKit
+      - path: Sources/NativServerKit
     postBuildScripts:
       - name: Build mlx-vlm-server resource
         basedOnDependencyAnalysis: false
@@ -53,24 +53,24 @@ targets:
     settings:
       base:
         ARCHS: arm64
-        PRODUCT_BUNDLE_IDENTIFIER: $(MLX_SERVER_KIT_BUNDLE_IDENTIFIER)
+        PRODUCT_BUNDLE_IDENTIFIER: $(NATIV_SERVER_KIT_BUNDLE_IDENTIFIER)
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
-  MLXVLMServer:
+  Nativ:
     type: application
     platform: macOS
     configFiles:
       Debug: Configuration/Signing.xcconfig
       Release: Configuration/Signing.xcconfig
     sources:
-      - path: Sources/MLXVLMServer
+      - path: Sources/Nativ
         excludes:
           - ModelProviderIcons
-      - path: Sources/MLXVLMServer/ModelProviderIcons
+      - path: Sources/Nativ/ModelProviderIcons
         type: folder
         buildPhase: resources
     dependencies:
-      - target: MLXServerKit
+      - target: NativServerKit
       - package: Sparkle
         product: Sparkle
       - package: textual
@@ -79,8 +79,10 @@ targets:
       base:
         ARCHS: arm64
         MACOSX_DEPLOYMENT_TARGET: "26.0"
-        PRODUCT_BUNDLE_IDENTIFIER: $(MLX_VLM_SERVER_BUNDLE_IDENTIFIER)
+        PRODUCT_BUNDLE_IDENTIFIER: $(NATIV_BUNDLE_IDENTIFIER)
         GENERATE_INFOPLIST_FILE: NO
-        INFOPLIST_FILE: Configuration/MLXVLMServer-Info.plist
+        INFOPLIST_FILE: Configuration/Nativ-Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Nativ
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         MARKETING_VERSION: 0.2.3
         CURRENT_PROJECT_VERSION: 5

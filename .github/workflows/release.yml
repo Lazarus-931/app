@@ -22,8 +22,8 @@ jobs:
       url: ${{ steps.pages.outputs.page_url }}
     env:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-      APP_BUNDLE_ID: ${{ vars.MLX_VLM_SERVER_BUNDLE_IDENTIFIER }}
-      FRAMEWORK_BUNDLE_ID: ${{ vars.MLX_SERVER_KIT_BUNDLE_IDENTIFIER }}
+      APP_BUNDLE_ID: ${{ vars.NATIV_BUNDLE_IDENTIFIER }}
+      FRAMEWORK_BUNDLE_ID: ${{ vars.NATIV_SERVER_KIT_BUNDLE_IDENTIFIER }}
       RELEASE_TAG: ${{ github.event.release.tag_name }}
       GH_TOKEN: ${{ github.token }}
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
@@ -68,8 +68,8 @@ jobs:
       - name: Configure project signing values
         run: |
           cat > Configuration/Signing.local.xcconfig <<EOF
-          MLX_VLM_SERVER_BUNDLE_IDENTIFIER = $APP_BUNDLE_ID
-          MLX_SERVER_KIT_BUNDLE_IDENTIFIER = $FRAMEWORK_BUNDLE_ID
+          NATIV_BUNDLE_IDENTIFIER = $APP_BUNDLE_ID
+          NATIV_SERVER_KIT_BUNDLE_IDENTIFIER = $FRAMEWORK_BUNDLE_ID
           DEVELOPMENT_TEAM = $APPLE_TEAM_ID
           EOF
 
@@ -126,7 +126,7 @@ jobs:
       - name: Upload notarized app to GitHub Release
         run: |
           set -euo pipefail
-          asset_path="dist/release/MLXVLMServer-${RELEASE_VERSION}.dmg"
+          asset_path="dist/release/Nativ-${RELEASE_VERSION}.dmg"
           asset_name="$(basename "$asset_path")"
           response_path="$RUNNER_TEMP/release-upload-response.json"
           upload_url="$(jq -r '.release.upload_url // empty' "$GITHUB_EVENT_PATH")"

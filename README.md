@@ -5,13 +5,13 @@
 
 The primary targets are:
 
-- `MLXServerKit`: a framework that embeds a relocatable `mlx-vlm` server bundle
+- `NativServerKit`: a framework that embeds a relocatable `mlx-vlm` server bundle
   and exposes Swift APIs to locate, launch, monitor, and stop it.
-- `MLXVLMServer`: a macOS app that uses `MLXServerKit`, starts the bundled
+- `Nativ`: a macOS app that uses `NativServerKit`, starts the bundled
   server, streams its log output, and exposes Start/Stop actions from a menu bar
   extra.
 
-The Python packaging flow exists to support `MLXServerKit`: the framework build
+The Python packaging flow exists to support `NativServerKit`: the framework build
 phase creates a self-contained Python runtime and installs `mlx-vlm` into the
 framework resources.
 
@@ -19,7 +19,7 @@ framework resources.
 
 - macOS Apple Silicon for MLX runtime use.
 - Xcode and `xcodebuild`.
-- `xcodegen` for regenerating `MLXPlatform.xcodeproj`.
+- `xcodegen` for regenerating `Nativ.xcodeproj`.
 - `python3` on the build machine.
 - Network access to GitHub releases and PyPI when the embedded Python bundle
   needs to be built or refreshed.
@@ -28,7 +28,7 @@ framework resources.
 
 ```text
 Sources/
-├── MLXVLMServer/
+├── Nativ/
 │   ├── Features/
 │   │   ├── Chat/
 │   │   ├── Dashboard/
@@ -37,7 +37,7 @@ Sources/
 │   │   └── Models/
 │   ├── Utilities/
 │   └── ModelProviderIcons/
-└── MLXServerKit/
+└── NativServerKit/
 PythonDistribution/
 ├── Launcher/
 ├── Requirements/
@@ -62,13 +62,13 @@ make xcode-build
 Run the demo app from Xcode, or launch the built app directly:
 
 ```sh
-open build/XcodeDerivedData/Build/Products/Debug/MLXVLMServer.app
+open build/XcodeDerivedData/Build/Products/Debug/Nativ.app
 ```
 
-When launched normally, `MLXVLMServer` starts `mlx-vlm-server` without
+When launched normally, `Nativ` starts `mlx-vlm-server` without
 arguments. The app keeps a reference to the long-running process, streams
 stdout/stderr into the window, and provides `Start`, `Stop`, and `Quit` actions
-from the `MLX` menu bar extra.
+from the `Nativ` menu bar extra.
 
 When the server is running, the menu also polls
 `http://127.0.0.1:8080/metrics` and shows a read-only `Serving Stats` submenu.
@@ -78,7 +78,7 @@ Its model submenu discovers locally cached models, displays their on-disk size
 and context capacity, and can restart the server to load a different language
 model directly from the menu bar.
 Session values reset with the server process. All-time counters are accumulated
-by the app in `~/Library/Caches/<bundle-id>/MLXServerStats.plist`.
+by the app in `~/Library/Caches/<bundle-id>/NativStats.plist`.
 
 ## Smoke Tests
 
@@ -95,7 +95,7 @@ make xcode-lifecycle-smoke
 ```
 
 The lifecycle smoke test starts `mlx-vlm-server` without arguments, confirms it
-continues running, then stops it through `MLXServerProcessController`.
+continues running, then stops it through `NativProcessController`.
 
 ## Release Signing And Notarization
 
@@ -134,7 +134,7 @@ To sign an existing archive separately, pass its app to the signing script:
 ```sh
 scripts/sign_macos_release.sh \
   --identity "Developer ID Application: Example Company (TEAMID)" \
-  path/to/MLXVLMServer.app
+  path/to/Nativ.app
 ```
 
 The signing script discovers every Mach-O file in the embedded Python runtime,
@@ -156,13 +156,13 @@ xcrun notarytool store-credentials mlx-vlm-server-notary \
 Package the signed app into a compressed DMG with an Applications shortcut:
 
 ```sh
-scripts/package_macos_dmg.sh path/to/MLXVLMServer.app
+scripts/package_macos_dmg.sh path/to/Nativ.app
 ```
 
 Then submit that final distribution image, wait, staple, and validate it:
 
 ```sh
-scripts/notarize_macos_release.sh dist/release/MLXVLMServer-VERSION.dmg
+scripts/notarize_macos_release.sh dist/release/Nativ-VERSION.dmg
 ```
 
 Use `--validate-only` to run the same disk-image, Team ID, secure timestamp,
@@ -186,7 +186,7 @@ scripts/release_macos.sh \
 
 This stamps the app version, assigns a timestamp-based build number, builds and
 signs the archive, creates and signs the disk image, notarizes and staples the
-DMG, writes `dist/release/MLXVLMServer-0.2.0.dmg`, and generates
+DMG, writes `dist/release/Nativ-0.2.0.dmg`, and generates
 `dist/release/appcast.xml`. Pass `--build-number` when a specific monotonically
 increasing `CFBundleVersion` is required.
 
@@ -218,8 +218,8 @@ The release workflow in `.github/workflows/release.yml` requires these
 repository variables:
 
 - `APPLE_TEAM_ID`
-- `MLX_VLM_SERVER_BUNDLE_IDENTIFIER`
-- `MLX_SERVER_KIT_BUNDLE_IDENTIFIER`
+- `NATIV_BUNDLE_IDENTIFIER`
+- `NATIV_SERVER_KIT_BUNDLE_IDENTIFIER`
 
 It also requires these Actions secrets:
 
@@ -242,7 +242,7 @@ base64 -i AuthKey_ABC123.p8 | tr -d '\n' | \
 Before the first release, configure the repository's Pages source to **GitHub
 Actions**. Then create a GitHub Release with a stable numeric tag such as
 `v0.2.0` and publish it. Publishing triggers the workflow to check out that tag,
-build the app, notarize the DMG, attach `MLXVLMServer-0.2.0.dmg`, and finally
+build the app, notarize the DMG, attach `Nativ-0.2.0.dmg`, and finally
 deploy the signed appcast. Draft and prerelease releases do not publish updates.
 
 To exercise the stats menu manually, start the app or server and run:
@@ -256,32 +256,32 @@ The script sends a few `/v1/chat/completions` requests with
 values and deltas. The first request may take longer while the model downloads
 and loads.
 
-## MLXServerKit
+## NativServerKit
 
-`MLXServerKit` embeds this resource in the built framework:
+`NativServerKit` embeds this resource in the built framework:
 
 ```text
-MLXServerKit.framework/Resources/mlx-vlm-server/
+NativServerKit.framework/Resources/mlx-vlm-server/
 ├── bin/mlx-vlm-server
 └── python/
 ```
 
 The framework exposes:
 
-- `MLXServer.distributionURL()`
-- `MLXServer.executableURL()`
-- `MLXServer.makeProcess(arguments:)`
-- `MLXServer.run(arguments:timeout:)`
-- `MLXServerProcessController.start(arguments:)`
-- `MLXServerProcessController.stop(timeout:)`
+- `Nativ.distributionURL()`
+- `Nativ.executableURL()`
+- `Nativ.makeProcess(arguments:)`
+- `Nativ.run(arguments:timeout:)`
+- `NativProcessController.start(arguments:)`
+- `NativProcessController.stop(timeout:)`
 
-`MLXServerProcessController` is the app-facing API for long-running server
+`NativProcessController` is the app-facing API for long-running server
 management. It retains the active `Process`, streams output through callbacks,
 and clears its state when the server exits.
 
 ## Embedded Python Bundle
 
-The `MLXServerKit` build phase runs:
+The `NativServerKit` build phase runs:
 
 ```sh
 python3 "$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py"
