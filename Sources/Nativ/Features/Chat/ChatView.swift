@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import NativKit
+import NativServerKit
 import SwiftUI
 import Textual
 import UniformTypeIdentifiers

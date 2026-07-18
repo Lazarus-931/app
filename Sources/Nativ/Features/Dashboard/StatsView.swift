@@ -1,5 +1,5 @@
 import Charts
-import NativKit
+import NativServerKit
 import SwiftUI
 
 struct StatsView: View {

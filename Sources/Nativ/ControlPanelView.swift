@@ -9,7 +9,7 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     case developer = "Developer"
 
     static var allCases: [ControlPanelTab] {
-        [.chat, .dashboard, .models, .logs]
+        [.chat, .dashboard, .models, .developer]
     }
 
     var id: String { rawValue }
@@ -195,7 +195,7 @@ struct ControlPanelView: View {
                 case .models:
                     ModelsView(model: model)
                 case .developer:
-                    LogsView(model: model, runtime: runtime)
+                    DeveloperView(model: model, runtime: runtime)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

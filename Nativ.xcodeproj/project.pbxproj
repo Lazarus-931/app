@@ -356,7 +356,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nMLX_VLM_MAIN_CHECKOUT=\"$SRCROOT/../mlx-vlm\"\nif [ -d \"$MLX_VLM_MAIN_CHECKOUT/.git\" ] && command -v git >/dev/null 2>&1; then\n  echo \"Using local mlx-vlm checkout: $MLX_VLM_MAIN_CHECKOUT ($(git -C \"$MLX_VLM_MAIN_CHECKOUT\" branch --show-current))\"\n  export MLX_VLM_SOURCE_PATH=\"$MLX_VLM_MAIN_CHECKOUT\"\nfi\npython3 \"$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py\"\n";
+			shellScript = "set -euo pipefail\npython3 \"$SRCROOT/PythonDistribution/Scripts/build_xcode_framework_resource.py\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

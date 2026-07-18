@@ -1,5 +1,5 @@
 import AppKit
-import NativKit
+import NativServerKit
 import SwiftUI
 
 @MainActor
