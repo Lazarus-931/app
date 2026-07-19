@@ -739,22 +739,13 @@ private struct IntegrationDetailView: View {
                     guard let workingDirectory else { return }
                     viewModel.configureAndOpen(tool, workingDirectory: workingDirectory)
                 } label: {
-                    Label("Open CLI", systemImage: "terminal")
-                }
-                .buttonStyle(.bordered)
-                .disabled(viewModel.isBusy || viewModel.selectedModelID == nil || workingDirectory == nil)
-
-                Button {
-                    guard let workingDirectory else { return }
-                    viewModel.configureAndOpenCodexDesktop(workingDirectory: workingDirectory)
-                } label: {
                     if viewModel.activeOperation == tool {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
                             Text("Preparing…")
                         }
                     } else {
-                        Label("Open Codex App", systemImage: "macwindow")
+                        Label("Open CLI", systemImage: "terminal")
                     }
                 }
                 .buttonStyle(.borderedProminent)
