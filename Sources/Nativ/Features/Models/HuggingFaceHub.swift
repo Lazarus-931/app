@@ -445,8 +445,8 @@ final class HuggingFaceDownloadManager: ObservableObject {
             ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         }
 
-        let ram = Int64(ProcessInfo.processInfo.physicalMemory)
-        if sizeBytes > (ram / 4) * 3 {
+        let ram = ModelCapacity.unifiedMemory
+        if ModelCapacity.tier(weightBytes: sizeBytes) == .tooBig {
             return
                 "Can't download: this model is too big for this Mac. It needs \(format(sizeBytes)) of memory to run, but the machine has \(format(ram)) of RAM."
         }

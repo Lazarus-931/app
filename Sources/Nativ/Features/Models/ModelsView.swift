@@ -666,6 +666,7 @@ private struct InstalledModelRow: View {
                                     title: ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file),
                                     systemImage: "internaldrive"
                                 )
+                                ModelCapacityPills(weightBytes: sizeBytes)
                             }
                         }
 
@@ -771,6 +772,7 @@ private struct HubModelRow: View {
                                 title: ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file),
                                 systemImage: "internaldrive"
                             )
+                            ModelCapacityPills(weightBytes: sizeBytes)
                         }
                     }
 
@@ -967,6 +969,25 @@ private struct ModelProviderBadge: View {
         }
         .frame(width: 46, height: 46)
         .help(provider?.displayName ?? "Unknown provider")
+    }
+}
+
+private struct ModelCapacityPills: View {
+    let weightBytes: Int64
+
+    var body: some View {
+        switch ModelCapacity.tier(weightBytes: weightBytes) {
+        case .recommended:
+            ModelPill(title: "Recommended", systemImage: "sparkles", color: .green)
+        case .fits:
+            EmptyView()
+        case .tooBig:
+            ModelPill(title: "Too big for this Mac", systemImage: "exclamationmark.triangle", color: .red)
+        }
+        if ModelCapacity.tier(weightBytes: weightBytes) != .tooBig,
+           ModelCapacity.cpuCapable(weightBytes: weightBytes) {
+            ModelPill(title: "CPU OK", systemImage: "cpu", color: .orange)
+        }
     }
 }
 
