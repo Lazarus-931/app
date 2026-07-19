@@ -177,6 +177,13 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         thinkingDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .thinkingDuration)
         imageAttachments = try container.decodeIfPresent([ChatImageAttachment].self, forKey: .imageAttachments) ?? []
         responseMetrics = try container.decodeIfPresent(ChatResponseMetrics.self, forKey: .responseMetrics)
+
+        if role == .error,
+           content == NativChatError.missingAssistantContent.localizedDescription,
+           !reasoningContent.isEmpty {
+            role = .assistant
+            content = ""
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -208,7 +215,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
 
             return MLXChatMessage(role: "user", content: content)
         case .assistant:
-            guard !content.isEmpty else {
+            guard !content.isEmpty || !reasoningContent.isEmpty else {
                 return nil
             }
             return MLXChatMessage(

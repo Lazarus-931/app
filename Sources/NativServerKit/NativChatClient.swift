@@ -446,17 +446,18 @@ public final class NativChatClient {
         }
 
         let decoded = try decoder.decode(ChatCompletionResponse.self, from: data)
-        guard let choice = decoded.choices.first,
-              let content = choice.message.textContent,
-              !content.isEmpty
-        else {
+        guard let choice = decoded.choices.first else {
             throw NativChatError.missingAssistantContent
         }
+        let resolvedContent = try validatedAssistantContent(
+            content: choice.message.textContent ?? "",
+            reasoningContent: choice.message.reasoningContent
+        )
 
         return MLXChatCompletion(
             model: decoded.model,
-            content: content,
-            reasoningContent: choice.message.reasoningContent,
+            content: resolvedContent.content,
+            reasoningContent: resolvedContent.reasoningContent,
             finishReason: choice.finishReason,
             usage: decoded.resolvedUsage,
             requestElapsedSeconds: Date().timeIntervalSince(requestStartedAt)
@@ -549,18 +550,29 @@ public final class NativChatClient {
             }
         }
 
-        guard !content.isEmpty else {
-            throw NativChatError.missingAssistantContent
-        }
+        let resolvedContent = try validatedAssistantContent(
+            content: content,
+            reasoningContent: reasoningContent.isEmpty ? nil : reasoningContent
+        )
 
         return MLXChatCompletion(
             model: responseModel,
-            content: content,
-            reasoningContent: reasoningContent.isEmpty ? nil : reasoningContent,
+            content: resolvedContent.content,
+            reasoningContent: resolvedContent.reasoningContent,
             finishReason: finishReason,
             usage: resolvedUsage(usage: usage, timings: timings),
             requestElapsedSeconds: Date().timeIntervalSince(requestStartedAt)
         )
+    }
+
+    private func validatedAssistantContent(
+        content: String,
+        reasoningContent: String?
+    ) throws -> (content: String, reasoningContent: String?) {
+        if !content.isEmpty || reasoningContent?.isEmpty == false {
+            return (content, reasoningContent)
+        }
+        throw NativChatError.missingAssistantContent
     }
 
     private func makeURLRequest(payload: MLXChatCompletionRequest, accepts: String) throws -> URLRequest {
