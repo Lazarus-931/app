@@ -6,10 +6,11 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     case imageGeneration = "Image Generation"
     case dashboard = "Dashboard"
     case models = "Models"
+    case integrations = "Integrations"
     case developer = "Developer"
 
     static var allCases: [ControlPanelTab] {
-        [.chat, .dashboard, .models, .developer]
+        [.chat, .dashboard, .models, .integrations, .developer]
     }
 
     var id: String { rawValue }
@@ -24,6 +25,8 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
             "chart.bar.xaxis"
         case .models:
             "cube.transparent"
+        case .integrations:
+            "puzzlepiece.extension"
         case .developer:
             "hammer"
         }
@@ -194,6 +197,8 @@ struct ControlPanelView: View {
                     StatsView(model: model, dashboard: dashboard)
                 case .models:
                     ModelsView(model: model)
+                case .integrations:
+                    IntegrationsView(model: model)
                 case .developer:
                     DeveloperView(model: model, runtime: runtime)
                 }

@@ -12,7 +12,7 @@ from threading import Lock
 from types import SimpleNamespace
 from typing import Any
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
 import mlx_vlm.server as base
@@ -1034,6 +1034,36 @@ def install_metrics_overlay() -> None:
     @base.app.get("/v1/metrics", include_in_schema=False)
     async def metrics_endpoint():
         return TRACKER.snapshot()
+
+    @base.app.post("/models/load", include_in_schema=False)
+    @base.app.post("/v1/models/load")
+    def load_model_endpoint(request: Request, payload: dict[str, Any]):
+        """Load or hot-swap the text model without restarting the server."""
+        require_api_key = getattr(base, "_require_management_api_key", None)
+        if require_api_key is not None:
+            require_api_key(request)
+
+        model = payload.get("model")
+        if not isinstance(model, str) or not model.strip():
+            raise HTTPException(status_code=400, detail="A non-empty model is required.")
+
+        adapter = payload.get("adapter_path")
+        if adapter is not None and not isinstance(adapter, str):
+            raise HTTPException(status_code=400, detail="adapter_path must be a string or null.")
+
+        try:
+            base.get_cached_model(model.strip(), adapter)
+        except HTTPException:
+            raise
+        except Exception as error:
+            raise HTTPException(status_code=500, detail=f"Failed to load model: {error}") from error
+
+        snapshot = current_runtime_snapshot()
+        return {
+            "status": "loaded",
+            "model": snapshot.get("loaded_model"),
+            "loaded_models": snapshot.get("loaded_models", {}),
+        }
 
 
 def main() -> None:
