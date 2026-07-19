@@ -8,7 +8,6 @@ struct DeveloperView: View {
     @ObservedObject var runtime: SystemRuntimeMonitor
     @State private var logQuery = ""
     @State private var logLevelFilter: LogLevelFilter = .all
-    @State private var selectedEndpointCategory: ServerEndpointCategory = .openAI
 
     var body: some View {
         GeometryReader { geometry in
@@ -16,7 +15,18 @@ struct DeveloperView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     pageHeader
                     runtimeGrid
-                    serverEndpointsPanel
+                    ServerEndpointsPanel(
+                        title: "GPU server",
+                        port: NativSettings.serverPort,
+                        isLive: model.isRunning
+                    )
+                    if model.settings.cpuInstanceEnabled || model.cpuIsRunning {
+                        ServerEndpointsPanel(
+                            title: "CPU server",
+                            port: NativSettings.cpuServerPort,
+                            isLive: model.cpuIsRunning
+                        )
+                    }
                     logPanel
                         .frame(height: max(320, geometry.size.height - 430))
                 }
@@ -128,91 +138,6 @@ struct DeveloperView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         )
-    }
-
-    private var serverEndpointsPanel: some View {
-        VStack(spacing: 0) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 14) {
-                    endpointPanelTitle
-
-                    endpointCategoryPicker
-                        .frame(width: 300, alignment: .leading)
-                }
-                .frame(width: 560, alignment: .leading)
-
-                VStack(alignment: .leading, spacing: 9) {
-                    endpointPanelTitle
-
-                    HStack(spacing: 10) {
-                        endpointCategoryPicker
-                            .frame(width: 320)
-
-                        Spacer()
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            ScrollView {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 245), spacing: 8)],
-                    alignment: .leading,
-                    spacing: 8
-                ) {
-                    ForEach(ServerEndpoint.endpoints(in: selectedEndpointCategory)) { endpoint in
-                        ServerEndpointRow(endpoint: endpoint) {
-                            copyEndpoint(endpoint)
-                        }
-                    }
-                }
-                .padding(10)
-            }
-            .frame(height: endpointListHeight)
-        }
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
-    }
-
-    private var endpointPanelTitle: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .foregroundStyle(.blue)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Server endpoints")
-                    .font(.callout.weight(.semibold))
-                Text(ServerEndpoint.baseURL.absoluteString)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var endpointCategoryPicker: some View {
-        Picker("Endpoint category", selection: $selectedEndpointCategory) {
-            ForEach(ServerEndpointCategory.allCases) { category in
-                Text(category.shortTitle).tag(category)
-            }
-        }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-    }
-
-    private var endpointListHeight: CGFloat {
-        switch selectedEndpointCategory {
-        case .openAI: 148
-        case .anthropic: 50
-        case .metrics: 86
-        }
     }
 
     private func logPanelToolbar(_ output: LogOutput) -> some View {
@@ -330,22 +255,122 @@ struct DeveloperView: View {
         pasteboard.setString(text, forType: .string)
     }
 
+}
+
+private struct ServerEndpointsPanel: View {
+    let title: String
+    let port: Int
+    let isLive: Bool
+
+    @State private var selectedCategory: ServerEndpointCategory = .openAI
+
+    private var baseURLString: String {
+        "http://127.0.0.1:\(port)"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
+                    panelTitle
+
+                    categoryPicker
+                        .frame(width: 300, alignment: .leading)
+                }
+                .frame(width: 620, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 9) {
+                    panelTitle
+
+                    HStack(spacing: 10) {
+                        categoryPicker
+                            .frame(width: 320)
+
+                        Spacer()
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            ScrollView {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 245), spacing: 8)],
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+                    ForEach(ServerEndpoint.endpoints(in: selectedCategory)) { endpoint in
+                        ServerEndpointRow(endpoint: endpoint, baseURLString: baseURLString) {
+                            copyEndpoint(endpoint)
+                        }
+                    }
+                }
+                .padding(10)
+            }
+            .frame(height: listHeight)
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
+    }
+
+    private var panelTitle: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .foregroundStyle(.blue)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 7) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                    Label(isLive ? "Live" : "Offline", systemImage: "circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(isLive ? .green : .secondary)
+                }
+                Text(baseURLString)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var categoryPicker: some View {
+        Picker("Endpoint category", selection: $selectedCategory) {
+            ForEach(ServerEndpointCategory.allCases) { category in
+                Text(category.shortTitle).tag(category)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+    }
+
+    private var listHeight: CGFloat {
+        switch selectedCategory {
+        case .openAI: 148
+        case .anthropic: 50
+        case .metrics: 86
+        }
+    }
+
     private func copyEndpoint(_ endpoint: ServerEndpoint) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(endpoint.absoluteURL, forType: .string)
+        pasteboard.setString(baseURLString + endpoint.path, forType: .string)
     }
 }
 
 private struct ServerEndpoint: Identifiable {
-    static let baseURL = URL(string: "http://127.0.0.1:8080")!
-
     let method: ServerEndpointMethod
     let path: String
     let category: ServerEndpointCategory
 
     var id: String { "\(method.rawValue):\(path)" }
-    var absoluteURL: String { Self.baseURL.absoluteString + path }
 
     static func endpoints(in category: ServerEndpointCategory) -> [ServerEndpoint] {
         supported.filter { $0.category == category }
@@ -408,6 +433,7 @@ private enum ServerEndpointMethod: String {
 
 private struct ServerEndpointRow: View {
     let endpoint: ServerEndpoint
+    let baseURLString: String
     let copyAction: () -> Void
     @State private var isHovering = false
 
@@ -441,7 +467,7 @@ private struct ServerEndpointRow: View {
                 .fill(isHovering ? Color.secondary.opacity(0.08) : .clear)
         )
         .onHover { isHovering = $0 }
-        .help("Copy \(endpoint.absoluteURL)")
+        .help("Copy \(baseURLString + endpoint.path)")
     }
 }
 

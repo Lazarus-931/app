@@ -3,9 +3,12 @@ import NativServerKit
 
 struct NativSettings: Codable, Equatable {
     static let defaultModelSearchPath = "~/.cache/huggingface/hub"
+    static let serverPort = 8080
+    static let cpuServerPort = 8081
 
     var modelSearchPath: String
-    var inferenceDevice: String
+    var cpuInstanceEnabled: Bool
+    var cpuLanguageModelID: String?
     var languageModelID: String?
     var imageGenerationModelID: String?
     var textToSpeechModelID: String?
@@ -42,7 +45,8 @@ struct NativSettings: Codable, Equatable {
 
     init(
         modelSearchPath: String = Self.defaultModelSearchPath,
-        inferenceDevice: String = "gpu",
+        cpuInstanceEnabled: Bool = false,
+        cpuLanguageModelID: String? = nil,
         languageModelID: String? = nil,
         imageGenerationModelID: String? = nil,
         textToSpeechModelID: String? = nil,
@@ -78,7 +82,8 @@ struct NativSettings: Codable, Equatable {
         prefixCacheBlockSize: Int = 16
     ) {
         self.modelSearchPath = modelSearchPath
-        self.inferenceDevice = inferenceDevice
+        self.cpuInstanceEnabled = cpuInstanceEnabled
+        self.cpuLanguageModelID = cpuLanguageModelID
         self.languageModelID = languageModelID
         self.imageGenerationModelID = imageGenerationModelID
         self.textToSpeechModelID = textToSpeechModelID
@@ -116,7 +121,8 @@ struct NativSettings: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case modelSearchPath
-        case inferenceDevice
+        case cpuInstanceEnabled
+        case cpuLanguageModelID
         case languageModelID
         case imageGenerationModelID
         case textToSpeechModelID
@@ -158,7 +164,8 @@ struct NativSettings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let legacySelectedModelID = try container.decodeIfPresent(String.self, forKey: .selectedModelID)
         modelSearchPath = try container.decodeIfPresent(String.self, forKey: .modelSearchPath) ?? defaults.modelSearchPath
-        inferenceDevice = try container.decodeIfPresent(String.self, forKey: .inferenceDevice) ?? defaults.inferenceDevice
+        cpuInstanceEnabled = try container.decodeIfPresent(Bool.self, forKey: .cpuInstanceEnabled) ?? defaults.cpuInstanceEnabled
+        cpuLanguageModelID = try container.decodeIfPresent(String.self, forKey: .cpuLanguageModelID) ?? defaults.cpuLanguageModelID
         languageModelID = try container.decodeIfPresent(String.self, forKey: .languageModelID) ?? legacySelectedModelID ?? defaults.languageModelID
         imageGenerationModelID = try container.decodeIfPresent(String.self, forKey: .imageGenerationModelID) ?? defaults.imageGenerationModelID
         textToSpeechModelID = try container.decodeIfPresent(String.self, forKey: .textToSpeechModelID) ?? defaults.textToSpeechModelID
@@ -197,7 +204,8 @@ struct NativSettings: Codable, Equatable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(modelSearchPath, forKey: .modelSearchPath)
-        try container.encode(inferenceDevice, forKey: .inferenceDevice)
+        try container.encode(cpuInstanceEnabled, forKey: .cpuInstanceEnabled)
+        try container.encodeIfPresent(cpuLanguageModelID, forKey: .cpuLanguageModelID)
         try container.encodeIfPresent(languageModelID, forKey: .languageModelID)
         try container.encodeIfPresent(imageGenerationModelID, forKey: .imageGenerationModelID)
         try container.encodeIfPresent(textToSpeechModelID, forKey: .textToSpeechModelID)
@@ -258,10 +266,8 @@ struct NativSettings: Codable, Equatable {
         var settings = self
         let trimmedPath = settings.modelSearchPath.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.modelSearchPath = trimmedPath.isEmpty ? Self.defaultModelSearchPath : trimmedPath
-        if !["gpu", "cpu"].contains(settings.inferenceDevice) {
-            settings.inferenceDevice = "gpu"
-        }
         settings.languageModelID = Self.normalizedModelID(settings.languageModelID)
+        settings.cpuLanguageModelID = Self.normalizedModelID(settings.cpuLanguageModelID)
         settings.imageGenerationModelID = Self.normalizedModelID(settings.imageGenerationModelID)
         settings.textToSpeechModelID = Self.normalizedModelID(settings.textToSpeechModelID)
         settings.speechToTextModelID = Self.normalizedModelID(settings.speechToTextModelID)
@@ -296,7 +302,8 @@ struct NativSettings: Codable, Equatable {
         let lhsSpeculativeDecodingActive = lhs.speculativeDecodingEnabled && !lhs.draftModelID.isEmpty
         let rhsSpeculativeDecodingActive = rhs.speculativeDecodingEnabled && !rhs.draftModelID.isEmpty
         return lhs.modelSearchPath == rhs.modelSearchPath
-            && lhs.inferenceDevice == rhs.inferenceDevice
+            && lhs.cpuInstanceEnabled == rhs.cpuInstanceEnabled
+            && (!lhs.cpuInstanceEnabled || lhs.cpuLanguageModelID == rhs.cpuLanguageModelID)
             && lhs.languageModelID == rhs.languageModelID
             && lhs.maxTokens == rhs.maxTokens
             && lhs.maxKVSize == rhs.maxKVSize
@@ -344,10 +351,6 @@ struct NativSettings: Codable, Equatable {
             arguments.append(contentsOf: ["--model", languageModelID])
         }
 
-        if settings.inferenceDevice == "cpu" {
-            arguments.append(contentsOf: ["--device", "cpu"])
-        }
-
         if settings.maxKVSize > 0 {
             arguments.append(contentsOf: ["--max-kv-size", "\(settings.maxKVSize)"])
         }
@@ -371,6 +374,19 @@ struct NativSettings: Codable, Equatable {
             }
         }
 
+        return arguments
+    }
+
+    var cpuLaunchArguments: [String] {
+        let settings = normalized()
+        var arguments = [
+            "--device", "cpu",
+            "--port", "\(Self.cpuServerPort)",
+            "--max-tokens", "\(settings.maxTokens)"
+        ]
+        if let cpuLanguageModelID = settings.cpuLanguageModelID {
+            arguments.append(contentsOf: ["--model", cpuLanguageModelID])
+        }
         return arguments
     }
 

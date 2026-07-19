@@ -978,16 +978,44 @@ private struct ModelCapacityPills: View {
     var body: some View {
         switch ModelCapacity.tier(weightBytes: weightBytes) {
         case .recommended:
-            ModelPill(title: "Recommended", systemImage: "sparkles", color: .green)
+            CapacityIconPill(
+                systemImage: "sparkles",
+                color: .green,
+                helpText: "Recommended: fits comfortably in this Mac's memory"
+            )
         case .fits:
             EmptyView()
         case .tooBig:
-            ModelPill(title: "Too big for this Mac", systemImage: "exclamationmark.triangle", color: .red)
+            CapacityIconPill(
+                systemImage: "exclamationmark.triangle.fill",
+                color: .red,
+                helpText: "Too big for this Mac"
+            )
         }
         if ModelCapacity.tier(weightBytes: weightBytes) != .tooBig,
            ModelCapacity.cpuCapable(weightBytes: weightBytes) {
-            ModelPill(title: "CPU OK", systemImage: "cpu", color: .orange)
+            CapacityIconPill(
+                systemImage: "cpu",
+                color: .orange,
+                helpText: "Small enough for the CPU instance"
+            )
         }
+    }
+}
+
+private struct CapacityIconPill: View {
+    let systemImage: String
+    let color: Color
+    let helpText: String
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(color.opacity(0.10)))
+            .help(helpText)
     }
 }
 

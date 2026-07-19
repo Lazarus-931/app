@@ -81,7 +81,11 @@ struct StatsView: View {
 
 private struct DashboardModelState: Equatable {
     let isRunning: Bool
-    let activeInferenceDevice: String?
+    let cpuIsRunning: Bool
+    let cpuLoadedModelID: String?
+    let cpuTotalTokens: Int?
+    let cpuRequestsCompleted: Int?
+    let cpuRequestsFailed: Int?
     let modelSearchPath: String
     let analyticsDatabaseURL: URL
     let loadedModelID: String?
@@ -90,7 +94,11 @@ private struct DashboardModelState: Equatable {
     @MainActor
     init(model: NativModel) {
         isRunning = model.isRunning
-        activeInferenceDevice = model.activeInferenceDevice
+        cpuIsRunning = model.cpuIsRunning
+        cpuLoadedModelID = model.cpuLoadedModelID
+        cpuTotalTokens = model.cpuMetrics?.summary.totalProcessedTokens
+        cpuRequestsCompleted = model.cpuMetrics?.summary.requestsCompleted
+        cpuRequestsFailed = model.cpuMetrics?.summary.requestsFailed
         modelSearchPath = model.settings.modelSearchPath
         analyticsDatabaseURL = model.analyticsDatabaseURL
         loadedModelID = model.metrics?.server.loadedModel
@@ -120,6 +128,9 @@ private struct DashboardContentView: View, Equatable {
                 pageHeader
                 filterBar
                 overviewCards
+                if modelState.cpuIsRunning {
+                    cpuInstancePanel
+                }
                 analyticsGrid
                 modelPerformanceSection
                 recentRequestsSection
@@ -171,17 +182,11 @@ private struct DashboardContentView: View, Equatable {
                 Text(modelState.isRunning ? "Live" : "Offline")
                     .font(.caption.weight(.semibold))
 
-                if let device = modelState.activeInferenceDevice {
-                    Text(device.uppercased())
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule().fill(device == "cpu"
-                                ? Color.orange.opacity(0.2)
-                                : Color.blue.opacity(0.2))
-                        )
-                        .help("Inference device the server was started with")
+                if modelState.isRunning {
+                    DeviceChip(title: "GPU", color: .blue)
+                }
+                if modelState.cpuIsRunning {
+                    DeviceChip(title: "CPU", color: .orange)
                 }
 
                 Button {
@@ -195,6 +200,41 @@ private struct DashboardContentView: View, Equatable {
                 .disabled(dashboard.isLoadingHistory)
             }
             .fixedSize()
+        }
+    }
+
+    private var cpuInstancePanel: some View {
+        HStack(alignment: .center, spacing: 24) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 7) {
+                    DeviceChip(title: "CPU", color: .orange)
+                    Text("CPU instance")
+                        .font(.callout.weight(.semibold))
+                }
+                Text(modelState.cpuLoadedModelID ?? "Loading model\u{2026}")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 16)
+
+            cpuStat("Tokens", modelState.cpuTotalTokens)
+            cpuStat("Completed", modelState.cpuRequestsCompleted)
+            cpuStat("Failed", modelState.cpuRequestsFailed)
+        }
+        .padding(12)
+        .dashboardPanelStyle(cornerRadius: 12)
+    }
+
+    private func cpuStat(_ title: String, _ value: Int?) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value.map { compact($0) } ?? "\u{2014}")
+                .font(.callout.weight(.semibold).monospacedDigit())
         }
     }
 
@@ -441,6 +481,19 @@ private struct DashboardContentView: View, Equatable {
         if reloadHistory {
             dashboard.reloadHistorical()
         }
+    }
+}
+
+private struct DeviceChip: View {
+    let title: String
+    let color: Color
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(color.opacity(0.2)))
     }
 }
 

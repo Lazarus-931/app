@@ -12,6 +12,20 @@ struct ChatQueuedPrompt: Identifiable, Equatable {
     let position: Int
 }
 
+enum ChatInferenceDevice: String, CaseIterable, Identifiable {
+    case gpu
+    case cpu
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .gpu: "GPU"
+        case .cpu: "CPU"
+        }
+    }
+}
+
 struct ChatView: View {
     private enum Layout {
         static let conversationMaxWidth: CGFloat = 680
@@ -72,9 +86,26 @@ struct ChatView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onChange(of: model.cpuIsRunning) { _, running in
+            if !running {
+                chat.targetDevice = .gpu
+            }
+        }
         .toolbar {
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
+            }
+
+            if model.cpuIsRunning {
+                ToolbarItem(placement: .primaryAction) {
+                    Picker("Device", selection: $chat.targetDevice) {
+                        ForEach(ChatInferenceDevice.allCases) { device in
+                            Text(device.title).tag(device)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Which server answers this chat")
+                }
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -95,17 +126,25 @@ struct ChatView: View {
         showsConfiguration ? "Hide model configuration" : "Show model configuration"
     }
 
+    private var chatTargetsCPU: Bool {
+        model.cpuIsRunning && chat.targetDevice == .cpu
+    }
+
     private var selectedModelID: String? {
-        model.settings.normalized().languageModelID
+        chatTargetsCPU ? model.cpuChatModelID : model.settings.normalized().languageModelID
+    }
+
+    private var chatTargetIsRunning: Bool {
+        chatTargetsCPU ? model.cpuIsRunning : model.isRunning
     }
 
     private var canSend: Bool {
         model.settings.structuredOutputValidationError == nil
-            && chat.canSend(isRunning: model.isRunning, selectedModelID: selectedModelID)
+            && chat.canSend(isRunning: chatTargetIsRunning, selectedModelID: selectedModelID)
     }
 
     private var canCompose: Bool {
-        model.isRunning
+        chatTargetIsRunning
             && selectedModelID?.isEmpty == false
             && model.settings.structuredOutputValidationError == nil
     }
@@ -170,6 +209,8 @@ final class ChatViewModel: ObservableObject {
         let userMessageID: UUID
         let assistantMessageID: UUID
         let settings: NativSettings
+        let modelID: String
+        let device: ChatInferenceDevice
     }
 
     @Published private(set) var sessions: [ChatSessionSummary] = []
@@ -180,8 +221,12 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var activeRequestSessionID: UUID?
     @Published private(set) var sendingStartedAt: Date?
     @Published private(set) var scrollToken = 0
+    @Published var targetDevice: ChatInferenceDevice = .gpu
 
     private let client = NativChatClient()
+    private let cpuClient = NativChatClient(
+        baseURL: URL(string: "http://127.0.0.1:\(NativSettings.cpuServerPort)")!
+    )
     private let sessionStore = ChatSessionStore()
     private var activeTask: Task<Void, Never>?
     private var activeRequestID: UUID?
@@ -342,8 +387,11 @@ final class ChatViewModel: ObservableObject {
 
     func send(using appModel: NativModel) {
         let settings = appModel.settings.normalized()
-        guard canSend(isRunning: appModel.isRunning, selectedModelID: settings.languageModelID),
-              let modelID = settings.languageModelID,
+        let device = appModel.cpuIsRunning ? targetDevice : .gpu
+        let deviceIsRunning = device == .cpu ? appModel.cpuIsRunning : appModel.isRunning
+        let deviceModelID = device == .cpu ? appModel.cpuChatModelID : settings.languageModelID
+        guard canSend(isRunning: deviceIsRunning, selectedModelID: deviceModelID),
+              let modelID = deviceModelID,
               let currentSession
         else {
             return
@@ -368,7 +416,9 @@ final class ChatViewModel: ObservableObject {
             sessionID: currentSession.id,
             userMessageID: userMessage.id,
             assistantMessageID: UUID(),
-            settings: settings
+            settings: settings,
+            modelID: modelID,
+            device: device
         ))
         bumpScroll()
         startNextRequestIfNeeded()
@@ -470,8 +520,9 @@ final class ChatViewModel: ObservableObject {
                     return
                 }
 
+                let requestClient = queuedRequest.device == .cpu ? cpuClient : client
                 do {
-                    let completion = try await client.streamChat(request, onEvent: { [weak self] event in
+                    let completion = try await requestClient.streamChat(request, onEvent: { [weak self] event in
                         await MainActor.run {
                             self?.append(
                                 event: event,
@@ -524,8 +575,8 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func makeCompletionRequest(for queuedRequest: QueuedChatRequest) -> MLXChatCompletionRequest? {
-        guard let modelID = queuedRequest.settings.languageModelID,
-              let sessionMessages = sessionMessages(for: queuedRequest.sessionID),
+        let modelID = queuedRequest.modelID
+        guard let sessionMessages = sessionMessages(for: queuedRequest.sessionID),
               let userMessageIndex = sessionMessages.firstIndex(where: { $0.id == queuedRequest.userMessageID })
         else {
             return nil

@@ -82,6 +82,7 @@ struct ControlPanelView: View {
             detail
         }
         .navigationSplitViewStyle(.balanced)
+        .toolbarBackground(.hidden, for: .windowToolbar)
         .frame(minWidth: 1040, minHeight: 600)
         .background {
             ControlPanelWindowStateReader(isFullScreen: $isFullScreen)

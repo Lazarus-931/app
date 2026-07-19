@@ -220,6 +220,12 @@ final class NativAnalyticsStore {
             .appendingPathComponent("Analytics.sqlite3")
     }
 
+    static func cpuDatabaseURL() -> URL {
+        defaultDatabaseURL()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Analytics-CPU.sqlite3")
+    }
+
     func fetchSummary(
         range: NativAnalyticsRange = .allTime,
         modelID: String? = nil,

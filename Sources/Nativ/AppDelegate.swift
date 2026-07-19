@@ -430,6 +430,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openModelsFromMenu(_ sender: Any?) {
+        controlPanelNavigation.open(.models)
+        showMainWindow()
+    }
+
+    @objc private func openSettingsFromMenu(_ sender: Any?) {
         openSettings()
     }
 
@@ -551,6 +556,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         modelsMenuItem.keyEquivalentModifierMask = [.command]
         modelsMenuItem.image = menuIcon("cube.transparent", description: "Models")
         menu.addItem(modelsMenuItem)
+
+        let settingsMenuItem = NSMenuItem(
+            title: "Settings\u{2026}",
+            action: #selector(openSettingsFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        settingsMenuItem.target = self
+        settingsMenuItem.image = menuIcon("gearshape", description: "Settings")
+        menu.addItem(settingsMenuItem)
 
         let quitMenuItem = NSMenuItem(
             title: "Quit", 
@@ -1048,7 +1062,7 @@ private struct SessionStatsContainerView: View {
                     displayModel: isLoading
                         ? model.selectedModelDisplay
                         : metrics.server.displayLoadedModel,
-                    inferenceDevice: model.activeInferenceDevice
+                    inferenceDevice: model.runningDevicesDisplay
                 )
             } else {
                 SessionStatsLoadingMenuView(
