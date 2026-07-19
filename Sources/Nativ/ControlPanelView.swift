@@ -8,6 +8,7 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     case models = "Models"
     case integrations = "Integrations"
     case developer = "Developer"
+    case settings = "Settings"
 
     static var allCases: [ControlPanelTab] {
         [.chat, .dashboard, .models, .integrations, .developer]
@@ -29,6 +30,8 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
             "puzzlepiece.extension"
         case .developer:
             "hammer"
+        case .settings:
+            "gearshape"
         }
     }
 }
@@ -79,6 +82,16 @@ struct ControlPanelView: View {
             detail
         }
         .navigationSplitViewStyle(.balanced)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    applySidebarSelection(.tab(.settings))
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .help("Settings")
+            }
+        }
         .frame(minWidth: 1040, minHeight: 600)
         .background {
             ControlPanelWindowStateReader(isFullScreen: $isFullScreen)
@@ -201,6 +214,8 @@ struct ControlPanelView: View {
                     IntegrationsView(model: model)
                 case .developer:
                     DeveloperView(model: model, runtime: runtime)
+                case .settings:
+                    SettingsView(model: model)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

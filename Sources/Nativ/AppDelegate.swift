@@ -453,7 +453,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func openSettings() {
-        controlPanelNavigation.open(.models)
+        controlPanelNavigation.open(.settings)
         showMainWindow()
     }
 
