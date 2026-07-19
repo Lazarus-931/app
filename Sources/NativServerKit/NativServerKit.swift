@@ -468,13 +468,13 @@ public final class NativMetricsClient {
         self.session = URLSession(configuration: configuration)
     }
 
-    public func fetchMetrics() async throws -> NativMetrics {
+    public func fetchMetrics(apiKey: String? = nil) async throws -> NativMetrics {
         let paths = ["metrics", "v1/metrics"]
         var lastError: Error?
 
         for path in paths {
             do {
-                return try await fetchMetrics(path: path)
+                return try await fetchMetrics(path: path, apiKey: apiKey)
             } catch NativMetricsError.httpStatus(404) {
                 lastError = NativMetricsError.httpStatus(404)
                 continue
@@ -486,10 +486,13 @@ public final class NativMetricsClient {
         throw lastError ?? NativMetricsError.invalidResponse
     }
 
-    private func fetchMetrics(path: String) async throws -> NativMetrics {
+    private func fetchMetrics(path: String, apiKey: String?) async throws -> NativMetrics {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.timeoutInterval = timeout
         request.cachePolicy = .reloadIgnoringLocalCacheData
+        if let apiKey, !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {

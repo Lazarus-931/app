@@ -357,7 +357,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             object: nil
         )
         refreshLocalModels()
-        model.startServer()
+        if WelcomePreferences.hasCompleted {
+            model.startServer()
+        }
     }
 
     private func applyApplicationIcon() {
@@ -438,6 +440,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         openSettings()
     }
 
+    @objc private func openWelcomeFromMenu(_ sender: Any?) {
+        showMainWindow()
+    }
+
     @objc private func localModelLibraryDidChange(_ notification: Notification) {
         refreshLocalModels()
     }
@@ -447,10 +453,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     var rootView: some View {
-        ControlPanelView(
+        WelcomeGateView(
             model: model,
             navigation: controlPanelNavigation,
-            runtime: runtime
+            runtime: runtime,
+            onComplete: { [weak self] modelID, serverAPIKey in
+                self?.completeWelcome(modelID: modelID, serverAPIKey: serverAPIKey)
+            }
         )
     }
 
@@ -471,6 +480,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func showMainWindow() {
         mainWindowOpener?()
         NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    private func completeWelcome(modelID: String?, serverAPIKey: String?) {
+        var settings = model.settings
+        settings.languageModelID = modelID
+        settings.serverAPIKey = serverAPIKey
+        model.settings = settings.normalized()
+        WelcomePreferences.markCompleted()
+
+        if !model.isRunning {
+            model.startServer()
+        }
+        rebuildMenu()
     }
 
     private func configureStatusItem() {
@@ -503,6 +525,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = statusItem.menu ?? NSMenu()
         menu.delegate = self
         menu.removeAllItems()
+
+        guard WelcomePreferences.hasCompleted else {
+            let setupItem = NSMenuItem(
+                title: "Finish Setup…",
+                action: #selector(openWelcomeFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            setupItem.target = self
+            setupItem.image = menuIcon("sparkles", description: "Finish setup")
+            menu.addItem(setupItem)
+            menu.addItem(.separator())
+
+            let quitMenuItem = NSMenuItem(
+                title: "Quit",
+                action: #selector(quit(_:)),
+                keyEquivalent: "q"
+            )
+            quitMenuItem.target = self
+            quitMenuItem.image = menuIcon("xmark.rectangle", description: "Quit")
+            menu.addItem(quitMenuItem)
+
+            statusItem.menu = menu
+            serverActionMenuItem = nil
+            modelMenuItem = nil
+            return
+        }
 
         let sessionStatsAreLoading = model.metricsLoading || model.modelSwitchInProgress
         if model.sessionStatsDisplayMetrics != nil || model.isRunning || sessionStatsAreLoading {
@@ -645,6 +693,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         submenu.addItem(modelOptionMenuItem(title: "Load on demand", modelID: nil))
 
         let selectedModelID = model.settings.normalized().languageModelID
+        let pickerModels = localModels.filter { localModel in
+            localModel.repoID == selectedModelID
+                || localModel.isEligibleForLanguageModelPicker
+        }
         if let selectedModelID,
            !localModels.contains(where: { $0.repoID == selectedModelID }) {
             submenu.addItem(modelOptionMenuItem(
@@ -653,19 +705,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ))
         }
 
-        if !localModels.isEmpty {
+        if !pickerModels.isEmpty {
             submenu.addItem(.separator())
             submenu.addItem(installedModelsHeaderMenuItem())
         }
 
-        for localModel in localModels {
+        for localModel in pickerModels {
             submenu.addItem(modelRowMenuItem(localModel))
         }
 
-        if localModels.isEmpty, selectedModelID == nil {
+        if pickerModels.isEmpty, selectedModelID == nil {
             let message = modelScanInProgress
                 ? "Scanning for local models…"
-                : modelScanError ?? "No local models found"
+                : modelScanError ?? (localModels.isEmpty
+                    ? "No local models found"
+                    : "No language models found")
             submenu.addItem(disabledMenuItem(message))
         }
 

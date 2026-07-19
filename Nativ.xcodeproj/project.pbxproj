@@ -41,6 +41,7 @@
 		E64F3E5C624F0C949AE70C60 /* SoftwareUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 822185ADAAC5DA3F034179B0 /* SoftwareUpdater.swift */; };
 		E96652149FDCCF65899280A8 /* IntegrationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41417C210BF817681A8C6D87 /* IntegrationsView.swift */; };
 		ED1F61AA671F9F65A2F34ADB /* NativSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 594711E024396C78703CE05A /* NativSettings.swift */; };
+		F1A7C8E9D0B1425386A9BCDE /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2B8D9F0A1C2536497BADE01 /* WelcomeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -95,6 +96,7 @@
 		B7C7712D68B2782589312766 /* ControlPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelView.swift; sourceTree = "<group>"; };
 		BD0259C7C842DE5ADC12B367 /* MarkdownFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFormatting.swift; sourceTree = "<group>"; };
 		D1651E057CC5D05857CF1595 /* NativServerKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativServerKit.swift; sourceTree = "<group>"; };
+		E2B8D9F0A1C2536497BADE01 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		D97F637262DB138A253DEA6F /* ChatComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposer.swift; sourceTree = "<group>"; };
 		DB24BFEFF23914DA8BDB0E1C /* ModelProviderIcons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ModelProviderIcons; path = Sources/Nativ/ModelProviderIcons; sourceTree = SOURCE_ROOT; };
 		DE575DB2DCD07A1864311714 /* Nativ.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nativ.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -137,6 +139,7 @@
 				AAC852B29463217932AE0212 /* NativModel.swift */,
 				594711E024396C78703CE05A /* NativSettings.swift */,
 				822185ADAAC5DA3F034179B0 /* SoftwareUpdater.swift */,
+				E2B8D9F0A1C2536497BADE01 /* WelcomeView.swift */,
 				A42368BA82350C2FA4CC12DF /* Features */,
 				C40EB30EE457C36AAA9B2427 /* IntegrationLogos */,
 				10E8764499993A58BE194232 /* Utilities */,
@@ -429,6 +432,7 @@
 				ED1F61AA671F9F65A2F34ADB /* NativSettings.swift in Sources */,
 				E64F3E5C624F0C949AE70C60 /* SoftwareUpdater.swift in Sources */,
 				8B4DF732A8A6AA5FFBE11982 /* StatsView.swift in Sources */,
+				F1A7C8E9D0B1425386A9BCDE /* WelcomeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

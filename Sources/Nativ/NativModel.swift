@@ -325,9 +325,10 @@ final class NativModel: ObservableObject {
         }
 
         let client = metricsClient
+        let serverAPIKey = settingsAppliedAtServerStart?.serverAPIKey
         metricsFetchTask = Task { [weak self] in
             do {
-                let fetchedMetrics = try await client.fetchMetrics()
+                let fetchedMetrics = try await client.fetchMetrics(apiKey: serverAPIKey)
                 await MainActor.run {
                     self?.handleMetricsFetchSuccess(fetchedMetrics)
                 }

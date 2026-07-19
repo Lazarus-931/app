@@ -52,6 +52,11 @@ struct LocalModel: Identifiable, Equatable, Sendable {
     let contextSize: Int?
     let provider: LocalModelProvider?
     let capabilities: Set<LocalModelCapability>
+
+    var isEligibleForLanguageModelPicker: Bool {
+        !capabilities.contains(.speechToText)
+            && !capabilities.contains(.textToSpeech)
+    }
 }
 
 struct LocalModelConfigurationMetadata: Equatable, Sendable {

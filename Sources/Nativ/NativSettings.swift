@@ -13,6 +13,7 @@ struct NativSettings: Codable, Equatable {
     var imageGenerationModelID: String?
     var textToSpeechModelID: String?
     var speechToTextModelID: String?
+    var serverAPIKey: String?
     var maxTokens: Int
     var maxKVSize: Int
     var systemPrompt: String
@@ -51,6 +52,7 @@ struct NativSettings: Codable, Equatable {
         imageGenerationModelID: String? = nil,
         textToSpeechModelID: String? = nil,
         speechToTextModelID: String? = nil,
+        serverAPIKey: String? = nil,
         maxTokens: Int = 2048,
         maxKVSize: Int = 0,
         systemPrompt: String = "",
@@ -88,6 +90,7 @@ struct NativSettings: Codable, Equatable {
         self.imageGenerationModelID = imageGenerationModelID
         self.textToSpeechModelID = textToSpeechModelID
         self.speechToTextModelID = speechToTextModelID
+        self.serverAPIKey = serverAPIKey
         self.maxTokens = maxTokens
         self.maxKVSize = maxKVSize
         self.systemPrompt = systemPrompt
@@ -127,6 +130,7 @@ struct NativSettings: Codable, Equatable {
         case imageGenerationModelID
         case textToSpeechModelID
         case speechToTextModelID
+        case serverAPIKey
         case selectedModelID
         case maxTokens
         case maxKVSize
@@ -170,6 +174,7 @@ struct NativSettings: Codable, Equatable {
         imageGenerationModelID = try container.decodeIfPresent(String.self, forKey: .imageGenerationModelID) ?? defaults.imageGenerationModelID
         textToSpeechModelID = try container.decodeIfPresent(String.self, forKey: .textToSpeechModelID) ?? defaults.textToSpeechModelID
         speechToTextModelID = try container.decodeIfPresent(String.self, forKey: .speechToTextModelID) ?? defaults.speechToTextModelID
+        serverAPIKey = try container.decodeIfPresent(String.self, forKey: .serverAPIKey) ?? defaults.serverAPIKey
         maxTokens = try container.decodeIfPresent(Int.self, forKey: .maxTokens) ?? defaults.maxTokens
         maxKVSize = try container.decodeIfPresent(Int.self, forKey: .maxKVSize) ?? defaults.maxKVSize
         systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) ?? defaults.systemPrompt
@@ -210,6 +215,7 @@ struct NativSettings: Codable, Equatable {
         try container.encodeIfPresent(imageGenerationModelID, forKey: .imageGenerationModelID)
         try container.encodeIfPresent(textToSpeechModelID, forKey: .textToSpeechModelID)
         try container.encodeIfPresent(speechToTextModelID, forKey: .speechToTextModelID)
+        try container.encodeIfPresent(serverAPIKey, forKey: .serverAPIKey)
         try container.encode(maxTokens, forKey: .maxTokens)
         try container.encode(maxKVSize, forKey: .maxKVSize)
         try container.encode(systemPrompt, forKey: .systemPrompt)
@@ -271,6 +277,7 @@ struct NativSettings: Codable, Equatable {
         settings.imageGenerationModelID = Self.normalizedModelID(settings.imageGenerationModelID)
         settings.textToSpeechModelID = Self.normalizedModelID(settings.textToSpeechModelID)
         settings.speechToTextModelID = Self.normalizedModelID(settings.speechToTextModelID)
+        settings.serverAPIKey = Self.normalizedModelID(settings.serverAPIKey)
         settings.maxTokens = min(max(settings.maxTokens, 1), 262_144)
         settings.maxKVSize = min(max(settings.maxKVSize, 0), 1_048_576)
         settings.systemPrompt = settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -305,6 +312,7 @@ struct NativSettings: Codable, Equatable {
             && lhs.cpuInstanceEnabled == rhs.cpuInstanceEnabled
             && (!lhs.cpuInstanceEnabled || lhs.cpuLanguageModelID == rhs.cpuLanguageModelID)
             && lhs.languageModelID == rhs.languageModelID
+            && lhs.serverAPIKey == rhs.serverAPIKey
             && lhs.maxTokens == rhs.maxTokens
             && lhs.maxKVSize == rhs.maxKVSize
             && lhs.kvQuantizationEnabled == rhs.kvQuantizationEnabled
@@ -334,6 +342,9 @@ struct NativSettings: Codable, Equatable {
         ]
 
         environment["APC_ENABLED"] = settings.prefixCachingEnabled ? "1" : "0"
+        if let serverAPIKey = settings.serverAPIKey {
+            environment["MLX_VLM_SERVER_API_KEY"] = serverAPIKey
+        }
         if settings.prefixCachingEnabled {
             environment["APC_NUM_BLOCKS"] = "\(settings.prefixCacheBlocks)"
             environment["APC_BLOCK_SIZE"] = "\(settings.prefixCacheBlockSize)"
