@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - "dev/**"
+      - "cpu+gpu_inference"
 
 permissions:
   contents: read
