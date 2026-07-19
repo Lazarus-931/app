@@ -234,6 +234,8 @@ struct ChatView: View {
 
 @MainActor
 final class ChatViewModel: ObservableObject {
+    private static let liveDecodeRateRefreshInterval: TimeInterval = 0.25
+
     private struct QueuedChatRequest {
         let id: UUID
         let sessionID: UUID
@@ -264,6 +266,7 @@ final class ChatViewModel: ObservableObject {
     @Published private var requestQueue: [QueuedChatRequest] = []
     private var storedSessions: [ChatSession] = []
     private var currentSession: ChatSession?
+    private var liveDecodeRateRefreshDates: [UUID: Date] = [:]
     private weak var appModel: NativModel?
 
     init() {
@@ -727,6 +730,16 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func append(event: MLXChatStreamDelta, to id: UUID, in sessionID: UUID) {
+        let hasTextDelta = event.content?.isEmpty == false
+            || event.reasoningContent?.isEmpty == false
+        let shouldRefreshDecodeRate = shouldRefreshLiveDecodeRate(
+            event.decodeTokensPerSecond,
+            for: id
+        )
+        guard hasTextDelta || shouldRefreshDecodeRate else {
+            return
+        }
+
         updateMessage(id, in: sessionID) { message in
             if let reasoningContent = event.reasoningContent {
                 message.reasoningContent.append(reasoningContent)
@@ -739,10 +752,39 @@ final class ChatViewModel: ObservableObject {
                 }
                 message.content.append(content)
             }
+            if shouldRefreshDecodeRate,
+               let decodeTokensPerSecond = event.decodeTokensPerSecond {
+                message.responseMetrics = ChatResponseMetrics(
+                    totalTokens: message.responseMetrics?.totalTokens,
+                    decodeTokensPerSecond: decodeTokensPerSecond,
+                    peakMemoryGB: message.responseMetrics?.peakMemoryGB
+                )
+            }
         }
-        if currentSessionID == sessionID {
+        if hasTextDelta, currentSessionID == sessionID {
             bumpScroll()
         }
+    }
+
+    private func shouldRefreshLiveDecodeRate(
+        _ decodeTokensPerSecond: Double?,
+        for messageID: UUID
+    ) -> Bool {
+        guard let decodeTokensPerSecond,
+              decodeTokensPerSecond > 0,
+              decodeTokensPerSecond.isFinite
+        else {
+            return false
+        }
+
+        let now = Date()
+        if let lastRefresh = liveDecodeRateRefreshDates[messageID],
+           now.timeIntervalSince(lastRefresh) < Self.liveDecodeRateRefreshInterval {
+            return false
+        }
+
+        liveDecodeRateRefreshDates[messageID] = now
+        return true
     }
 
     private func finishAssistantMessage(
@@ -753,6 +795,7 @@ final class ChatViewModel: ObservableObject {
         responseMetrics: ChatResponseMetrics?,
         isCancelled: Bool
     ) {
+        liveDecodeRateRefreshDates.removeValue(forKey: id)
         updateMessage(id, in: sessionID) { message in
             message.isStreaming = false
             if message.content.isEmpty {
@@ -779,6 +822,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func failAssistantMessage(_ id: UUID, in sessionID: UUID, error: Error) {
+        liveDecodeRateRefreshDates.removeValue(forKey: id)
         guard updateMessage(id, in: sessionID, mutate: { message in
             message.role = .error
             message.content = error.localizedDescription
@@ -992,7 +1036,10 @@ private struct ChatMessageRow: View {
                 }
             }
 
-            if let responseMetrics {
+            if let liveDecodeTokensPerSecond {
+                ChatLiveDecodeRateBadge(tokensPerSecond: liveDecodeTokensPerSecond)
+                    .equatable()
+            } else if let responseMetrics {
                 ChatResponseMetricsRow(metrics: responseMetrics)
             }
 
@@ -1162,6 +1209,19 @@ private struct ChatMessageRow: View {
         return responseMetrics
     }
 
+    private var liveDecodeTokensPerSecond: Double? {
+        guard message.role == .assistant,
+              message.isStreaming,
+              let decodeTokensPerSecond = message.responseMetrics?.decodeTokensPerSecond,
+              decodeTokensPerSecond > 0,
+              decodeTokensPerSecond.isFinite
+        else {
+            return nil
+        }
+
+        return decodeTokensPerSecond
+    }
+
     private var showsCopyAction: Bool {
         message.role == .assistant
             && !message.isStreaming
@@ -1183,6 +1243,39 @@ private struct ChatMessageRow: View {
                 didCopyResponse = false
             }
         }
+    }
+}
+
+private struct ChatLiveDecodeRateBadge: View, Equatable {
+    let tokensPerSecond: Double
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 6, height: 6)
+
+            Text("Live decode")
+                .foregroundStyle(.secondary)
+
+            Text(NativFormatting.rate(tokensPerSecond))
+                .fontWeight(.medium)
+                .monospacedDigit()
+        }
+        .font(.caption)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.accentColor.opacity(0.1))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(Color.accentColor.opacity(0.25), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Live decode speed")
+        .accessibilityValue(NativFormatting.rate(tokensPerSecond))
     }
 }
 

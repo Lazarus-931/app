@@ -238,10 +238,16 @@ public struct MLXChatCompletion: Equatable, Sendable {
 public struct MLXChatStreamDelta: Equatable, Sendable {
     public let content: String?
     public let reasoningContent: String?
+    public let decodeTokensPerSecond: Double?
 
-    public init(content: String? = nil, reasoningContent: String? = nil) {
+    public init(
+        content: String? = nil,
+        reasoningContent: String? = nil,
+        decodeTokensPerSecond: Double? = nil
+    ) {
         self.content = content
         self.reasoningContent = reasoningContent
+        self.decodeTokensPerSecond = decodeTokensPerSecond
     }
 }
 
@@ -522,17 +528,21 @@ public final class NativChatClient {
                 finishReason = choice.finishReason ?? finishReason
                 let contentDelta = choice.delta.textContent
                 let reasoningDelta = choice.delta.reasoningContent
+                let decodeTokensPerSecond = chunk.timings?.resolvedDecodeTokensPerSecond
                 if let contentDelta, !contentDelta.isEmpty {
                     content += contentDelta
                 }
                 if let reasoningDelta, !reasoningDelta.isEmpty {
                     reasoningContent += reasoningDelta
                 }
-                if contentDelta?.isEmpty == false || reasoningDelta?.isEmpty == false {
+                if contentDelta?.isEmpty == false
+                    || reasoningDelta?.isEmpty == false
+                    || decodeTokensPerSecond != nil {
                     await onEvent(
                         MLXChatStreamDelta(
                             content: contentDelta,
-                            reasoningContent: reasoningDelta
+                            reasoningContent: reasoningDelta,
+                            decodeTokensPerSecond: decodeTokensPerSecond
                         )
                     )
                 }
