@@ -81,6 +81,7 @@ struct StatsView: View {
 
 private struct DashboardModelState: Equatable {
     let isRunning: Bool
+    let activeInferenceDevice: String?
     let modelSearchPath: String
     let analyticsDatabaseURL: URL
     let loadedModelID: String?
@@ -89,6 +90,7 @@ private struct DashboardModelState: Equatable {
     @MainActor
     init(model: NativModel) {
         isRunning = model.isRunning
+        activeInferenceDevice = model.activeInferenceDevice
         modelSearchPath = model.settings.modelSearchPath
         analyticsDatabaseURL = model.analyticsDatabaseURL
         loadedModelID = model.metrics?.server.loadedModel
@@ -168,6 +170,19 @@ private struct DashboardContentView: View, Equatable {
                     .frame(width: 7, height: 7)
                 Text(modelState.isRunning ? "Live" : "Offline")
                     .font(.caption.weight(.semibold))
+
+                if let device = modelState.activeInferenceDevice {
+                    Text(device.uppercased())
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(device == "cpu"
+                                ? Color.orange.opacity(0.2)
+                                : Color.blue.opacity(0.2))
+                        )
+                        .help("Inference device the server was started with")
+                }
 
                 Button {
                     dashboard.reloadHistorical()

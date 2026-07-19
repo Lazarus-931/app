@@ -335,6 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private weak var highlightedMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppAppearance.applyStored()
         applyApplicationIcon()
         runtime.start()
         model.onMenuStateChanged = { [weak self] in
@@ -1046,7 +1047,8 @@ private struct SessionStatsContainerView: View {
                     section: section,
                     displayModel: isLoading
                         ? model.selectedModelDisplay
-                        : metrics.server.displayLoadedModel
+                        : metrics.server.displayLoadedModel,
+                    inferenceDevice: model.activeInferenceDevice
                 )
             } else {
                 SessionStatsLoadingMenuView(
@@ -1081,6 +1083,7 @@ private struct SessionStatsMenuView: View {
     let isHighlighted: Bool
     let section: SessionStatsSection
     let displayModel: String
+    let inferenceDevice: String?
 
     private var primaryTextColor: Color {
         SessionStatsMenuPalette.primary(isHighlighted)
@@ -1104,6 +1107,13 @@ private struct SessionStatsMenuView: View {
 
     private var totalTokens: Int {
         metrics.summary.totalProcessedTokens
+    }
+
+    private var runningTitle: String {
+        guard let inferenceDevice else {
+            return "Running"
+        }
+        return "Running on \(inferenceDevice.uppercased())"
     }
 
     var body: some View {
@@ -1181,7 +1191,7 @@ private struct SessionStatsMenuView: View {
                             .controlSize(.small)
                             .tint(primaryTextColor)
                     }
-                    Text(isLoading ? "Loading model…" : "Running")
+                    Text(isLoading ? "Loading model…" : runningTitle)
                         .font(.headline)
                 }
                 Text(NativFormatting.truncateModelName(

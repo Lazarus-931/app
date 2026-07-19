@@ -78,20 +78,20 @@ struct ControlPanelView: View {
         NavigationSplitView(columnVisibility: $splitColumnVisibility) {
             sidebar
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        Button {
+                            applySidebarSelection(.tab(.settings))
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        .help("Settings")
+                    }
+                }
         } detail: {
             detail
         }
         .navigationSplitViewStyle(.balanced)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    applySidebarSelection(.tab(.settings))
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-                .help("Settings")
-            }
-        }
         .frame(minWidth: 1040, minHeight: 600)
         .background {
             ControlPanelWindowStateReader(isFullScreen: $isFullScreen)

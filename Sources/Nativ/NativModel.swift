@@ -96,6 +96,13 @@ final class NativModel: ObservableObject {
         return !settings.hasSameLaunchConfiguration(as: settingsAppliedAtServerStart)
     }
 
+    var activeInferenceDevice: String? {
+        guard isRunning, let settingsAppliedAtServerStart else {
+            return nil
+        }
+        return settingsAppliedAtServerStart.inferenceDevice
+    }
+
     func startServer() {
         var shouldStartMetrics = false
         do {

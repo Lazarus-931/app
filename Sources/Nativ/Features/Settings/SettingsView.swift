@@ -1,7 +1,11 @@
+import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var model: NativModel
+    @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var launchAtLoginError: String?
 
     var body: some View {
         Form {
@@ -13,6 +17,17 @@ struct SettingsView: View {
                     )
                     .foregroundStyle(.orange)
                 }
+            }
+
+            Section("Inference") {
+                Picker("Device", selection: $model.settings.inferenceDevice) {
+                    Text("GPU").tag("gpu")
+                    Text("CPU").tag("cpu")
+                }
+                .pickerStyle(.segmented)
+                Text("CPU runs models on the CPU fast path and leaves the GPU free for other work. Restart the server to apply.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Models") {
@@ -83,9 +98,46 @@ struct SettingsView: View {
                     numberField("Block size", value: $model.settings.prefixCacheBlockSize)
                 }
             }
+
+            Section("App") {
+                Picker("Appearance", selection: $appearanceRaw) {
+                    ForEach(AppAppearance.allCases) { appearance in
+                        Text(appearance.title).tag(appearance.rawValue)
+                    }
+                }
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                if let launchAtLoginError {
+                    Text(launchAtLoginError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
+        .onChange(of: appearanceRaw) { _, newValue in
+            (AppAppearance(rawValue: newValue) ?? .system).apply()
+        }
+        .onChange(of: launchAtLogin) { _, enabled in
+            updateLaunchAtLogin(enabled)
+        }
+    }
+
+    private func updateLaunchAtLogin(_ enabled: Bool) {
+        guard enabled != (SMAppService.mainApp.status == .enabled) else {
+            return
+        }
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            launchAtLoginError = nil
+        } catch {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            launchAtLoginError = error.localizedDescription
+        }
     }
 
     private func optionalString(_ source: Binding<String?>) -> Binding<String> {
