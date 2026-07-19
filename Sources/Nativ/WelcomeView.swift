@@ -3,7 +3,7 @@ import Security
 import SwiftUI
 
 enum WelcomePreferences {
-    static let completionKey = "hasCompletedWelcome"
+    static let completionKey = "hasCompletedWelcome1"
 
     static var hasCompleted: Bool {
         UserDefaults.standard.bool(forKey: completionKey)
@@ -101,20 +101,17 @@ private struct WelcomeView: View {
 
     private var welcomeHeader: some View {
         VStack(spacing: 16) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.accentColor.gradient)
-                    .frame(width: 64, height: 64)
-                    .shadow(color: Color.accentColor.opacity(0.28), radius: 16, y: 8)
-
-                Image(systemName: "bolt.horizontal.fill")
-                    .font(.system(size: 27, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 72, height: 72)
+                .shadow(color: .black.opacity(0.22), radius: 16, y: 8)
+                .accessibilityLabel("Nativ app icon")
 
             VStack(spacing: 6) {
                 Text("Welcome to Nativ")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: 32, weight: .semibold))
                 Text(step == .model
                     ? "Choose how your local server should start."
                     : "Optionally protect the server’s management endpoints.")
@@ -541,7 +538,7 @@ private struct WelcomeBackground: View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
             LinearGradient(
-                colors: [Color.accentColor.opacity(0.10), Color.clear, Color.purple.opacity(0.06)],
+                colors: [Color.accentColor.opacity(0.10), Color.clear, Color.gray.opacity(0.06)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
