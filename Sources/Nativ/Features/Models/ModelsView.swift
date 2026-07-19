@@ -212,6 +212,7 @@ struct ModelsView: View {
                                     onDownload: {
                                         downloadManager.download(
                                             repoID: hubModel.id,
+                                            sizeBytes: hubModel.sizeBytes,
                                             cachePath: model.settings.modelSearchPath
                                         ) {
                                             localLibrary.scan(path: model.settings.modelSearchPath)

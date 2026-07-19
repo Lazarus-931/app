@@ -414,8 +414,19 @@ final class HuggingFaceDownloadManager: ObservableObject {
         downloadTask?.cancel()
     }
 
-    func download(repoID: String, cachePath: String, onCompletion: @escaping () -> Void) {
+    func download(
+        repoID: String,
+        sizeBytes: Int64? = nil,
+        cachePath: String,
+        onCompletion: @escaping () -> Void
+    ) {
         guard downloadingModelID == nil else { return }
+        if let sizeBytes,
+            let blocker = Self.capacityBlocker(sizeBytes: sizeBytes, cachePath: cachePath)
+        {
+            errorByModelID[repoID] = blocker
+            return
+        }
         downloadingModelID = repoID
         downloadProgress = 0
         isDownloadPaused = false
@@ -424,6 +435,37 @@ final class HuggingFaceDownloadManager: ObservableObject {
         activeCompletion = onCompletion
 
         startActiveDownload()
+    }
+
+    /// Returns a user-facing message when the model cannot be downloaded or
+    /// run on this machine, or nil when capacity is fine. Weights must fit in
+    /// unified memory with working headroom, and on disk with download slack.
+    nonisolated static func capacityBlocker(sizeBytes: Int64, cachePath: String) -> String? {
+        let format = { (bytes: Int64) in
+            ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        }
+
+        let ram = Int64(ProcessInfo.processInfo.physicalMemory)
+        if sizeBytes > (ram / 4) * 3 {
+            return
+                "Can't download: this model is too big for this Mac. It needs \(format(sizeBytes)) of memory to run, but the machine has \(format(ram)) of RAM."
+        }
+
+        let expanded = LocalModelDiscovery.expandedPath(cachePath)
+        let probeURL = URL(
+            fileURLWithPath: FileManager.default.fileExists(atPath: expanded)
+                ? expanded : NSHomeDirectory()
+        )
+        if let values = try? probeURL.resourceValues(forKeys: [
+            .volumeAvailableCapacityForImportantUsageKey
+        ]),
+            let free = values.volumeAvailableCapacityForImportantUsage,
+            sizeBytes + (sizeBytes / 10) > free
+        {
+            return
+                "Can't download: not enough disk space. The model needs \(format(sizeBytes)) plus working room, but only \(format(free)) is free."
+        }
+        return nil
     }
 
     func pauseDownload() {
