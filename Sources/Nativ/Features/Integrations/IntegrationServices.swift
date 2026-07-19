@@ -318,7 +318,16 @@ struct IntegrationProfileManager {
             let process = Process()
             let output = Pipe()
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            process.arguments = ["-lc", "command -v \(command)"]
+            // Finder-launched apps do not inherit PATH entries configured in
+            // .zshrc. Use an interactive login shell so tool managers and
+            // user-installed Node bins are available, then resolve only an
+            // external executable rather than an alias or shell function.
+            process.arguments = [
+                "-lic",
+                "whence -p -- \"$1\"",
+                "nativ-integration-detection",
+                command
+            ]
             process.standardOutput = output
             process.standardError = Pipe()
             do {
@@ -329,8 +338,12 @@ struct IntegrationProfileManager {
             }
             guard process.terminationStatus == 0 else { return nil }
             let data = output.fileHandleForReading.readDataToEndOfFile()
-            let path = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !path.isEmpty, path.hasPrefix("/") else { return nil }
+            let paths = String(decoding: data, as: UTF8.self)
+                .split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            guard let path = paths.last(where: {
+                $0.hasPrefix("/") && FileManager.default.isExecutableFile(atPath: $0)
+            }) else { return nil }
             return URL(fileURLWithPath: path)
         }.value
     }
