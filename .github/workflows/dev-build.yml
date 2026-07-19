@@ -1,0 +1,40 @@
+name: Dev Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "dev/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build app (unsigned Debug)
+        run: make xcode-build
+
+      - name: Zip app bundle
+        run: |
+          set -euo pipefail
+          cd build/XcodeDerivedData/Build/Products/Debug
+          ditto -c -k --keepParent Nativ.app Nativ-dev.zip
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nativ-dev-${{ github.sha }}
+          path: build/XcodeDerivedData/Build/Products/Debug/Nativ-dev.zip
+          retention-days: 7
