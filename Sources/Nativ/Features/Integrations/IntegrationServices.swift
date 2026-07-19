@@ -165,7 +165,8 @@ struct IntegrationProfileManager {
     func configure(
         tool: IntegrationTool,
         selectedModelID: String,
-        models: [IntegrationModelDescriptor]
+        models: [IntegrationModelDescriptor],
+        maxOutputTokens: Int
     ) throws {
         switch tool {
         case .pi:
@@ -177,7 +178,14 @@ struct IntegrationProfileManager {
         case .hermes:
             try configureHermes(selectedModelID: selectedModelID, models: models)
         case .openCode:
-            try writeJSON(openCodeConfiguration(selectedModelID: selectedModelID, models: models), to: configurationURL(for: tool))
+            try writeJSON(
+                openCodeConfiguration(
+                    selectedModelID: selectedModelID,
+                    models: models,
+                    maxOutputTokens: maxOutputTokens
+                ),
+                to: configurationURL(for: tool)
+            )
         }
     }
 
@@ -460,14 +468,31 @@ struct IntegrationProfileManager {
 
     private func openCodeConfiguration(
         selectedModelID: String,
-        models: [IntegrationModelDescriptor]
+        models: [IntegrationModelDescriptor],
+        maxOutputTokens: Int
     ) -> [String: Any] {
         var modelCatalog: [String: Any] = [:]
         for model in models {
-            var entry: [String: Any] = ["name": model.displayName]
-            var limits: [String: Any] = [:]
-            if let contextWindow = model.contextWindow { limits["context"] = contextWindow }
-            if !limits.isEmpty { entry["limit"] = limits }
+            var entry: [String: Any] = [
+                "name": model.displayName,
+                "attachment": model.supportsVision,
+                "reasoning": model.supportsReasoning,
+                "temperature": true,
+                "tool_call": model.supportsTools,
+                "modalities": [
+                    "input": model.supportsVision ? ["text", "image"] : ["text"],
+                    "output": ["text"]
+                ]
+            ]
+            let contextWindow = model.contextWindow ?? 131_072
+            entry["limit"] = [
+                "context": contextWindow,
+                "output": min(max(maxOutputTokens, 1), contextWindow)
+            ]
+            if model.supportsReasoning {
+                entry["interleaved"] = ["field": "reasoning_content"]
+                entry["options"] = ["enable_thinking": true]
+            }
             modelCatalog[model.id] = entry
         }
         return [

@@ -96,7 +96,7 @@ final class IntegrationsViewModel: ObservableObject {
         }
         activeOperation = tool
         do {
-            try profiles.configure(tool: tool, selectedModelID: selectedModelID, models: eligibleModels)
+            try configureProfile(tool: tool, selectedModelID: selectedModelID)
             if tool == .codex {
                 try profiles.configureCodexDesktop(selectedModelID: selectedModelID)
             }
@@ -123,7 +123,7 @@ final class IntegrationsViewModel: ObservableObject {
         activeOperation = tool
         Task {
             do {
-                try profiles.configure(tool: tool, selectedModelID: selectedModelID, models: eligibleModels)
+                try configureProfile(tool: tool, selectedModelID: selectedModelID)
                 var status = statuses[tool] ?? .unavailable
                 status.isConfigured = true
                 statuses[tool] = status
@@ -157,7 +157,7 @@ final class IntegrationsViewModel: ObservableObject {
         activeOperation = tool
         Task {
             do {
-                try profiles.configure(tool: tool, selectedModelID: selectedModelID, models: eligibleModels)
+                try configureProfile(tool: tool, selectedModelID: selectedModelID)
                 try profiles.configureCodexDesktop(selectedModelID: selectedModelID)
                 var status = statuses[tool] ?? .unavailable
                 status.isConfigured = true
@@ -215,6 +215,15 @@ final class IntegrationsViewModel: ObservableObject {
         guard let command = launchCommand(for: tool, workingDirectory: workingDirectory) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
+    }
+
+    private func configureProfile(tool: IntegrationTool, selectedModelID: String) throws {
+        try profiles.configure(
+            tool: tool,
+            selectedModelID: selectedModelID,
+            models: eligibleModels,
+            maxOutputTokens: serverModel.settings.normalized().maxTokens
+        )
     }
 
     func codexDesktopLaunchCommand(workingDirectory: URL) -> String? {
