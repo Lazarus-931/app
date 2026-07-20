@@ -400,6 +400,8 @@ final class HuggingFaceModelLibrary: ObservableObject {
 
 @MainActor
 final class HuggingFaceDownloadManager: ObservableObject {
+    static let shared = HuggingFaceDownloadManager()
+
     @Published private(set) var downloadingModelID: String?
     @Published private(set) var downloadProgress = 0.0
     @Published private(set) var isDownloadPaused = false

@@ -20,7 +20,7 @@ struct ModelsView: View {
     @ObservedObject var model: NativModel
     @StateObject private var localLibrary = LocalModelLibrary()
     @StateObject private var hubLibrary = HuggingFaceModelLibrary()
-    @StateObject private var downloadManager = HuggingFaceDownloadManager()
+    @ObservedObject private var downloadManager = HuggingFaceDownloadManager.shared
     @State private var section: ModelsPageSection = .installed
     @State private var localQuery = ""
     @State private var hubQuery = ""
@@ -865,13 +865,13 @@ private struct ModelDownloadProgressControl: View {
                         )
                         .rotationEffect(.degrees(-90))
 
-                    if progress > 0 {
+                    if isPaused, progress == 0 {
+                        Image(systemName: "pause.fill")
+                            .font(.system(size: 9, weight: .bold))
+                    } else {
                         Text("\(Int((progress * 100).rounded()))%")
                             .font(.system(size: 10, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                    } else {
-                        Image(systemName: isPaused ? "pause.fill" : "arrow.down")
-                            .font(.system(size: 9, weight: .bold))
                     }
                 }
                 .frame(width: 34, height: 34)
