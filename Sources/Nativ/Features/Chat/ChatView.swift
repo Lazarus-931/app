@@ -97,18 +97,6 @@ struct ChatView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                if model.cpuIsRunning {
-                    Picker("Device", selection: $chat.targetDevice) {
-                        ForEach(ChatInferenceDevice.allCases) { device in
-                            Text(device.title).tag(device)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .help("Which server answers this chat")
-                }
-            }
-
-            ToolbarItem(placement: .primaryAction) {
                 if !isFullScreen {
                     configurationButton
                 }
