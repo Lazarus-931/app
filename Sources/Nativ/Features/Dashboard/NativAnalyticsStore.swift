@@ -53,6 +53,7 @@ struct NativHistoricalAnalyticsSummary: Sendable {
     var promptTokensTotal: Int = 0
     var completionTokensTotal: Int = 0
     var generatedTokensTotal: Int = 0
+    var decodeTokensTotal: Int = 0
     var requestTimeTotalMilliseconds: Int64 = 0
     var decodeTimeTotalMilliseconds: Int64 = 0
     var averageTTFTMilliseconds: Double?
@@ -65,10 +66,10 @@ struct NativHistoricalAnalyticsSummary: Sendable {
     }
 
     var averageDecodeTokensPerSecond: Double? {
-        guard generatedTokensTotal > 0, decodeTimeTotalMilliseconds > 0 else {
+        guard decodeTokensTotal > 0, decodeTimeTotalMilliseconds > 0 else {
             return nil
         }
-        return Double(generatedTokensTotal) / (Double(decodeTimeTotalMilliseconds) / 1_000)
+        return Double(decodeTokensTotal) / (Double(decodeTimeTotalMilliseconds) / 1_000)
     }
 
     var averageRequestTokensPerSecond: Double? {
@@ -85,6 +86,7 @@ struct NativHistoricalAnalyticsSummary: Sendable {
             promptTokensTotal: promptTokensTotal,
             completionTokensTotal: completionTokensTotal,
             generatedTokensTotal: generatedTokensTotal,
+            decodeTokensTotal: decodeTokensTotal,
             requestTimeTotalSeconds: Double(requestTimeTotalMilliseconds) / 1_000,
             decodeTimeTotalSeconds: Double(decodeTimeTotalMilliseconds) / 1_000,
             lastUpdated: lastUpdatedAt
@@ -103,6 +105,7 @@ struct NativAnalyticsBucketPoint: Identifiable, Sendable {
     let promptTokensTotal: Int
     let completionTokensTotal: Int
     let generatedTokensTotal: Int
+    let decodeTokensTotal: Int
     let requestTimeTotalMilliseconds: Int64
     let decodeTimeTotalMilliseconds: Int64
     let peakMemoryBytesMax: Int64?
@@ -274,6 +277,11 @@ final class NativAnalyticsStore {
             range: range,
             modelID: modelID
         )
+        let decodeSummary = fetchDecodeSummary(
+            connection: connection,
+            range: range,
+            modelID: modelID
+        )
 
         return NativHistoricalAnalyticsSummary(
             requestsCompleted: Int(statement.int64(at: 0)),
@@ -281,14 +289,52 @@ final class NativAnalyticsStore {
             promptTokensTotal: Int(statement.int64(at: 2)),
             completionTokensTotal: Int(statement.int64(at: 3)),
             generatedTokensTotal: Int(statement.int64(at: 4)),
+            decodeTokensTotal: decodeSummary.tokens,
             requestTimeTotalMilliseconds: statement.int64(at: 5),
-            decodeTimeTotalMilliseconds: statement.int64(at: 6),
+            decodeTimeTotalMilliseconds: decodeSummary.milliseconds,
             averageTTFTMilliseconds: ttftSummary.averageMilliseconds,
             ttftSampleCount: ttftSummary.sampleCount,
             peakMemoryBytesMax: statement.isNull(at: 7) ? nil : statement.int64(at: 7),
             lastUpdatedAt: statement.isNull(at: 8)
                 ? nil
                 : Date(timeIntervalSince1970: statement.double(at: 8))
+        )
+    }
+
+    private func fetchDecodeSummary(
+        connection: SQLiteConnection,
+        range: NativAnalyticsRange,
+        modelID: String?
+    ) -> (tokens: Int, milliseconds: Int64) {
+        let sql = """
+            SELECT
+                COALESCE(SUM(\(decodeSampleTokensSQL)), 0),
+                COALESCE(SUM(\(decodeSampleMillisecondsSQL)), 0)
+            FROM request_events
+            WHERE status = 'completed'
+            \(range.rangeStartUnix == nil ? "" : "AND completed_at >= ?")
+            \(normalizedModelID(modelID) == nil ? "" : "AND model_id = ?")
+            """
+
+        guard let statement = try? connection.prepare(sql) else {
+            return (0, 0)
+        }
+
+        var parameterIndex: Int32 = 1
+        if let rangeStartUnix = range.rangeStartUnix {
+            statement.bind(double: rangeStartUnix, at: parameterIndex)
+            parameterIndex += 1
+        }
+        if let modelID = normalizedModelID(modelID) {
+            statement.bind(text: modelID, at: parameterIndex)
+        }
+
+        guard (try? statement.step()) == true else {
+            return (0, 0)
+        }
+        return (
+            tokens: Int(statement.int64(at: 0)),
+            milliseconds: statement.int64(at: 1)
         )
     }
 
@@ -342,37 +388,88 @@ final class NativAnalyticsStore {
         let granularity = granularityOverride ?? range.granularity
 
         let sql = """
+            WITH decode_samples AS (
+                SELECT
+                    model_id,
+                    CASE
+                        WHEN ? = 'hour' THEN CAST(
+                            strftime(
+                                '%s',
+                                strftime('%Y-%m-%d %H:00:00', completed_at, 'unixepoch', 'localtime'),
+                                'utc'
+                            ) AS REAL
+                        )
+                        ELSE CAST(
+                            strftime(
+                                '%s',
+                                date(completed_at, 'unixepoch', 'localtime'),
+                                'utc'
+                            ) AS REAL
+                        )
+                    END AS bucket_start,
+                    \(decodeSampleTokensSQL) AS decode_tokens,
+                    \(decodeSampleMillisecondsSQL) AS decode_elapsed_ms
+                FROM request_events
+                WHERE status = 'completed'
+                \(range.rangeStartUnix == nil ? "" : "AND completed_at >= ?")
+                \(normalizedModelID(modelID) == nil ? "" : "AND model_id = ?")
+            ),
+            decode_buckets AS (
+                SELECT
+                    model_id,
+                    bucket_start,
+                    SUM(decode_tokens) AS decode_tokens_total,
+                    SUM(decode_elapsed_ms) AS decode_elapsed_ms_total
+                FROM decode_samples
+                WHERE decode_tokens > 0 AND decode_elapsed_ms > 0
+                GROUP BY model_id, bucket_start
+            )
             SELECT
-                granularity,
-                bucket_start,
-                model_id,
-                requests_started,
-                requests_completed,
-                requests_failed,
-                streaming_requests,
-                prompt_tokens_total,
-                completion_tokens_total,
-                generated_tokens_total,
-                request_elapsed_ms_total,
-                decode_elapsed_ms_total,
-                peak_memory_bytes_max,
-                updated_at
-            FROM analytics_buckets
-            WHERE granularity = ?
-            \(range.rangeStartUnix == nil ? "" : "AND bucket_start >= ?")
-            \(normalizedModelID(modelID) == nil ? "" : "AND model_id = ?")
-            ORDER BY bucket_start ASC
+                buckets.granularity,
+                buckets.bucket_start,
+                buckets.model_id,
+                buckets.requests_started,
+                buckets.requests_completed,
+                buckets.requests_failed,
+                buckets.streaming_requests,
+                buckets.prompt_tokens_total,
+                buckets.completion_tokens_total,
+                buckets.generated_tokens_total,
+                buckets.request_elapsed_ms_total,
+                COALESCE(decode_buckets.decode_tokens_total, 0),
+                COALESCE(decode_buckets.decode_elapsed_ms_total, 0),
+                buckets.peak_memory_bytes_max,
+                buckets.updated_at
+            FROM analytics_buckets AS buckets
+            LEFT JOIN decode_buckets
+                ON decode_buckets.model_id = buckets.model_id
+                AND decode_buckets.bucket_start = buckets.bucket_start
+            WHERE buckets.granularity = ?
+            \(range.rangeStartUnix == nil ? "" : "AND buckets.bucket_start >= ?")
+            \(normalizedModelID(modelID) == nil ? "" : "AND buckets.model_id = ?")
+            ORDER BY buckets.bucket_start ASC
             """
 
         guard let statement = try? connection.prepare(sql) else {
             return []
         }
 
+        statement.bind(text: granularity.rawValue, at: 1)
+        var bucketFilterStartIndex: Int32 = 2
+        if let rangeStartUnix = range.rangeStartUnix {
+            statement.bind(double: rangeStartUnix, at: bucketFilterStartIndex)
+            bucketFilterStartIndex += 1
+        }
+        if let modelID = normalizedModelID(modelID) {
+            statement.bind(text: modelID, at: bucketFilterStartIndex)
+            bucketFilterStartIndex += 1
+        }
         bindBucketFilters(
             statement: statement,
             granularity: granularity,
             rangeStartUnix: range.rangeStartUnix,
-            modelID: modelID
+            modelID: modelID,
+            startingAt: bucketFilterStartIndex
         )
 
         var rows: [NativAnalyticsBucketPoint] = []
@@ -393,12 +490,13 @@ final class NativAnalyticsStore {
                     promptTokensTotal: Int(statement.int64(at: 7)),
                     completionTokensTotal: Int(statement.int64(at: 8)),
                     generatedTokensTotal: Int(statement.int64(at: 9)),
+                    decodeTokensTotal: Int(statement.int64(at: 11)),
                     requestTimeTotalMilliseconds: statement.int64(at: 10),
-                    decodeTimeTotalMilliseconds: statement.int64(at: 11),
-                    peakMemoryBytesMax: statement.isNull(at: 12) ? nil : statement.int64(at: 12),
-                    updatedAt: statement.isNull(at: 13)
+                    decodeTimeTotalMilliseconds: statement.int64(at: 12),
+                    peakMemoryBytesMax: statement.isNull(at: 13) ? nil : statement.int64(at: 13),
+                    updatedAt: statement.isNull(at: 14)
                         ? nil
-                        : Date(timeIntervalSince1970: statement.double(at: 13))
+                        : Date(timeIntervalSince1970: statement.double(at: 14))
                 )
             )
         }
@@ -609,9 +707,10 @@ final class NativAnalyticsStore {
         statement: SQLiteStatement,
         granularity: NativAnalyticsGranularity,
         rangeStartUnix: Double?,
-        modelID: String?
+        modelID: String?,
+        startingAt firstParameterIndex: Int32 = 1
     ) {
-        var parameterIndex: Int32 = 1
+        var parameterIndex = firstParameterIndex
         statement.bind(text: granularity.rawValue, at: parameterIndex)
         parameterIndex += 1
 
@@ -623,6 +722,34 @@ final class NativAnalyticsStore {
         if let modelID = normalizedModelID(modelID) {
             statement.bind(text: modelID, at: parameterIndex)
         }
+    }
+
+    private var decodeSampleTokensSQL: String {
+        """
+        CASE
+            WHEN decode_tokens_per_second > 0 AND generated_tokens > 0
+                THEN generated_tokens
+            WHEN generated_tokens > 1
+                AND ttft_ms IS NOT NULL
+                AND request_elapsed_ms > ttft_ms
+                THEN generated_tokens - 1
+            ELSE 0
+        END
+        """
+    }
+
+    private var decodeSampleMillisecondsSQL: String {
+        """
+        CASE
+            WHEN decode_tokens_per_second > 0 AND generated_tokens > 0
+                THEN CAST(ROUND(generated_tokens / decode_tokens_per_second * 1000.0) AS INTEGER)
+            WHEN generated_tokens > 1
+                AND ttft_ms IS NOT NULL
+                AND request_elapsed_ms > ttft_ms
+                THEN request_elapsed_ms - ttft_ms
+            ELSE 0
+        END
+        """
     }
 
     private func normalizedModelID(_ modelID: String?) -> String? {

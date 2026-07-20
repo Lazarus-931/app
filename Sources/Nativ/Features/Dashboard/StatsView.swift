@@ -1742,42 +1742,45 @@ private struct TokenUsagePanel: View {
     @ChartContentBuilder
     private var decodeSpeedMarks: some ChartContent {
         ForEach(points) { point in
-            let decodeSpeed = decodeSpeed(for: point) ?? 0
-            AreaMark(
-                x: .value("Time", point.bucketStart),
-                yStart: .value("Baseline", 0.0),
-                yEnd: .value("Decode speed", decodeSpeed)
-            )
-            .foregroundStyle(
-                .linearGradient(
-                    colors: [DashboardPalette.orange.opacity(0.25), DashboardPalette.orange.opacity(0.02)],
-                    startPoint: .top,
-                    endPoint: .bottom
+            if let decodeSpeed = decodeSpeed(for: point) {
+                AreaMark(
+                    x: .value("Time", point.bucketStart),
+                    yStart: .value("Baseline", 0.0),
+                    yEnd: .value("Decode speed", decodeSpeed)
                 )
-            )
-            .interpolationMethod(.monotone)
+                .foregroundStyle(
+                    .linearGradient(
+                        colors: [DashboardPalette.orange.opacity(0.25), DashboardPalette.orange.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .interpolationMethod(.monotone)
 
-            LineMark(
-                x: .value("Time", point.bucketStart),
-                y: .value("Decode speed", decodeSpeed)
-            )
-            .foregroundStyle(DashboardPalette.orange)
-            .lineStyle(StrokeStyle(lineWidth: 2))
-            .interpolationMethod(.monotone)
+                LineMark(
+                    x: .value("Time", point.bucketStart),
+                    y: .value("Decode speed", decodeSpeed)
+                )
+                .foregroundStyle(DashboardPalette.orange)
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                .interpolationMethod(.monotone)
+            }
         }
     }
 
     @ChartContentBuilder
     private var allModelDecodeSpeedMarks: some ChartContent {
         ForEach(modelPoints) { point in
-            LineMark(
-                x: .value("Time", point.bucketStart),
-                y: .value("Decode speed", point.decodeSpeed ?? 0),
-                series: .value("Model", point.modelID)
-            )
-            .foregroundStyle(by: .value("Model", point.modelID))
-            .lineStyle(StrokeStyle(lineWidth: 2))
-            .interpolationMethod(.monotone)
+            if let decodeSpeed = point.decodeSpeed {
+                LineMark(
+                    x: .value("Time", point.bucketStart),
+                    y: .value("Decode speed", decodeSpeed),
+                    series: .value("Model", point.modelID)
+                )
+                .foregroundStyle(by: .value("Model", point.modelID))
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                .interpolationMethod(.monotone)
+            }
         }
     }
 
@@ -1875,17 +1878,19 @@ private struct TokenUsagePanel: View {
             case .decodeSpeed:
                 if showsAllModels {
                     ForEach(modelValues(at: hoveredPoint.bucketStart)) { modelPoint in
-                        PointMark(
-                            x: .value("Selected time", modelPoint.bucketStart),
-                            y: .value("Decode speed", modelPoint.decodeSpeed ?? 0)
-                        )
-                        .foregroundStyle(by: .value("Model", modelPoint.modelID))
-                        .symbolSize(48)
+                        if let decodeSpeed = modelPoint.decodeSpeed {
+                            PointMark(
+                                x: .value("Selected time", modelPoint.bucketStart),
+                                y: .value("Decode speed", decodeSpeed)
+                            )
+                            .foregroundStyle(by: .value("Model", modelPoint.modelID))
+                            .symbolSize(48)
+                        }
                     }
-                } else {
+                } else if let decodeSpeed = decodeSpeed(for: hoveredPoint) {
                     PointMark(
                         x: .value("Selected time", hoveredPoint.bucketStart),
-                        y: .value("Decode speed", decodeSpeed(for: hoveredPoint) ?? 0)
+                        y: .value("Decode speed", decodeSpeed)
                     )
                     .foregroundStyle(DashboardPalette.orange)
                     .symbolSize(48)
@@ -2021,10 +2026,10 @@ private struct TokenUsagePanel: View {
     }
 
     private func decodeSpeed(for point: DashboardViewModel.BucketPoint) -> Double? {
-        guard point.generatedTokensTotal > 0, point.decodeTimeTotalMilliseconds > 0 else {
+        guard point.decodeTokensTotal > 0, point.decodeTimeTotalMilliseconds > 0 else {
             return nil
         }
-        return Double(point.generatedTokensTotal) / (Double(point.decodeTimeTotalMilliseconds) / 1_000)
+        return Double(point.decodeTokensTotal) / (Double(point.decodeTimeTotalMilliseconds) / 1_000)
     }
 
     private func modelValues(at date: Date) -> [DashboardViewModel.ModelTokenPoint] {
@@ -3158,10 +3163,10 @@ private struct ModelOverviewTooltip: View {
             let completed = points.reduce(0) { $0 + $1.requestsCompleted }
             return NativFormatting.percent(Double(completed) / Double(totalRequests))
         case .decodeSpeed:
-            let generatedTokens = points.reduce(0) { $0 + $1.generatedTokensTotal }
+            let decodeTokens = points.reduce(0) { $0 + $1.decodeTokensTotal }
             let decodeMilliseconds = points.reduce(Int64.zero) { $0 + $1.decodeTimeTotalMilliseconds }
-            guard generatedTokens > 0, decodeMilliseconds > 0 else { return "--" }
-            let speed = Double(generatedTokens) / (Double(decodeMilliseconds) / 1_000)
+            guard decodeTokens > 0, decodeMilliseconds > 0 else { return "--" }
+            let speed = Double(decodeTokens) / (Double(decodeMilliseconds) / 1_000)
             return NativFormatting.rate(speed)
         }
     }
@@ -3326,10 +3331,10 @@ private struct DashboardMetricTooltip: View {
     }
 
     private var decodeSpeed: Double? {
-        guard point.generatedTokensTotal > 0, point.decodeTimeTotalMilliseconds > 0 else {
+        guard point.decodeTokensTotal > 0, point.decodeTimeTotalMilliseconds > 0 else {
             return nil
         }
-        return Double(point.generatedTokensTotal) / (Double(point.decodeTimeTotalMilliseconds) / 1_000)
+        return Double(point.decodeTokensTotal) / (Double(point.decodeTimeTotalMilliseconds) / 1_000)
     }
 
     private var dateLabel: String {

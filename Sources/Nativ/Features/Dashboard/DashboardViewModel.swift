@@ -80,6 +80,7 @@ final class DashboardViewModel: ObservableObject {
         let promptTokensTotal: Int
         let completionTokensTotal: Int
         let generatedTokensTotal: Int
+        let decodeTokensTotal: Int
         let requestsStarted: Int
         let requestsCompleted: Int
         let requestsFailed: Int
@@ -131,6 +132,7 @@ final class DashboardViewModel: ObservableObject {
         let requestsCompleted: Int
         let requestsFailed: Int
         let generatedTokensTotal: Int
+        let decodeTokensTotal: Int
         let decodeTimeTotalMilliseconds: Int64
 
         var id: String {
@@ -147,10 +149,10 @@ final class DashboardViewModel: ObservableObject {
         }
 
         var decodeSpeed: Double? {
-            guard generatedTokensTotal > 0, decodeTimeTotalMilliseconds > 0 else {
+            guard decodeTokensTotal > 0, decodeTimeTotalMilliseconds > 0 else {
                 return nil
             }
-            return Double(generatedTokensTotal) / (Double(decodeTimeTotalMilliseconds) / 1_000)
+            return Double(decodeTokensTotal) / (Double(decodeTimeTotalMilliseconds) / 1_000)
         }
     }
 
@@ -432,10 +434,10 @@ private extension DashboardViewModel {
     ) -> [ModelPerformance] {
         Dictionary(grouping: buckets, by: \.modelID)
             .map { modelID, rows in
-                let generatedTokens = rows.reduce(0) { $0 + $1.generatedTokensTotal }
+                let decodeTokens = rows.reduce(0) { $0 + $1.decodeTokensTotal }
                 let decodeMilliseconds = rows.reduce(Int64.zero) { $0 + $1.decodeTimeTotalMilliseconds }
-                let decodeRate: Double? = generatedTokens > 0 && decodeMilliseconds > 0
-                    ? Double(generatedTokens) / (Double(decodeMilliseconds) / 1_000)
+                let decodeRate: Double? = decodeTokens > 0 && decodeMilliseconds > 0
+                    ? Double(decodeTokens) / (Double(decodeMilliseconds) / 1_000)
                     : nil
 
                 return ModelPerformance(
@@ -479,6 +481,7 @@ private extension DashboardViewModel {
                     requestsCompleted: bucketRows.reduce(0) { $0 + $1.requestsCompleted },
                     requestsFailed: bucketRows.reduce(0) { $0 + $1.requestsFailed },
                     generatedTokensTotal: bucketRows.reduce(0) { $0 + $1.generatedTokensTotal },
+                    decodeTokensTotal: bucketRows.reduce(0) { $0 + $1.decodeTokensTotal },
                     decodeTimeTotalMilliseconds: bucketRows.reduce(0) { $0 + $1.decodeTimeTotalMilliseconds }
                 )
             }
@@ -530,6 +533,7 @@ private extension DashboardViewModel {
                 promptTokensTotal: rows.reduce(0) { $0 + $1.promptTokensTotal },
                 completionTokensTotal: rows.reduce(0) { $0 + $1.completionTokensTotal },
                 generatedTokensTotal: rows.reduce(0) { $0 + $1.generatedTokensTotal },
+                decodeTokensTotal: rows.reduce(0) { $0 + $1.decodeTokensTotal },
                 requestsStarted: rows.reduce(0) { $0 + $1.requestsStarted },
                 requestsCompleted: rows.reduce(0) { $0 + $1.requestsCompleted },
                 requestsFailed: rows.reduce(0) { $0 + $1.requestsFailed },

@@ -397,6 +397,7 @@ struct NativAllTimeStats: Codable {
     var promptTokensTotal: Int = 0
     var completionTokensTotal: Int = 0
     var generatedTokensTotal: Int = 0
+    var decodeTokensTotal: Int?
     var requestTimeTotalSeconds: Double = 0
     var decodeTimeTotalSeconds: Double = 0
     var lastUpdated: Date?
@@ -416,10 +417,11 @@ struct NativAllTimeStats: Codable {
     }
 
     var averageDecodeTokensPerSecond: Double? {
-        guard generatedTokensTotal > 0, decodeTimeTotalSeconds > 0 else {
+        let measuredTokens = decodeTokensTotal ?? generatedTokensTotal
+        guard measuredTokens > 0, decodeTimeTotalSeconds > 0 else {
             return nil
         }
-        return Double(generatedTokensTotal) / decodeTimeTotalSeconds
+        return Double(measuredTokens) / decodeTimeTotalSeconds
     }
 
     var averageRequestTokensPerSecond: Double? {

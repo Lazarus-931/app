@@ -503,7 +503,7 @@ class MetricsTracker:
         decode_time = reported_decode_time
         if decode_time <= 0 and generated_tokens > 0 and decode_tps > 0:
             decode_time = generated_tokens / decode_tps
-        if decode_time <= 0:
+        if decode_time <= 0 and generated_tokens > 0:
             decode_time = elapsed
         request_tok_s = completion.get("request_tok_s")
         if request_tok_s is None and elapsed > 0 and completion_tokens > 0:
