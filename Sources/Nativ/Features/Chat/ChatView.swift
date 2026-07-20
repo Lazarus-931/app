@@ -96,8 +96,8 @@ struct ChatView: View {
                 ToolbarSpacer(.flexible)
             }
 
-            if model.cpuIsRunning {
-                ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .primaryAction) {
+                if model.cpuIsRunning {
                     Picker("Device", selection: $chat.targetDevice) {
                         ForEach(ChatInferenceDevice.allCases) { device in
                             Text(device.title).tag(device)
