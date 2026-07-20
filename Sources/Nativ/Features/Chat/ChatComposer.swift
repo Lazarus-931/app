@@ -221,30 +221,46 @@ struct ChatComposer: View {
 
     private var modelPicker: some View {
         StableChatModelPicker(
-            models: localLibrary.models,
+            models: pickerModels,
             selectedModelID: selectedModelID,
             selectedModelLabel: selectedModelLabel,
             selectedModelProvider: selectedModelProvider,
-            supportsReasoning: selectedModelSupportsThinking,
+            supportsReasoning: selectedModelSupportsThinking && targetDevice == .gpu,
             reasoningLevel: reasoningLevel,
             modelSwitchInProgress: model.modelSwitchInProgress,
             isDisabled: model.modelSwitchInProgress || viewModel.hasPendingRequests,
             statusLabel: localModelStatusLabel,
             helpText: modelPickerHelp,
             accessibilityValue: modelPickerAccessibilityValue,
+            deviceTag: targetDevice == .cpu ? "CPU" : nil,
             onSelectModel: select,
-            onSwitchModel: { model.switchLanguageModel(to: $0) },
+            onSwitchModel: switchModel,
             onSelectReasoning: applyReasoningLevel
         )
     }
 
+    private var targetDevice: ChatInferenceDevice {
+        model.cpuIsRunning ? viewModel.targetDevice : .gpu
+    }
+
+    private var pickerModels: [LocalModel] {
+        guard targetDevice == .cpu else {
+            return localLibrary.models
+        }
+        return localLibrary.models.filter { localModel in
+            localModel.sizeBytes.map { ModelCapacity.cpuCapable(weightBytes: $0) } ?? false
+        }
+    }
+
     private var selectedModelID: String? {
-        model.settings.normalized().languageModelID
+        targetDevice == .cpu
+            ? model.cpuChatModelID
+            : model.settings.normalized().languageModelID
     }
 
     private var selectedModelLabel: String {
         guard let selectedModelID else {
-            return "Choose model"
+            return targetDevice == .cpu ? "Choose CPU model" : "Choose model"
         }
         return modelMenuLabel(selectedModelID)
     }
@@ -314,12 +330,24 @@ struct ChatComposer: View {
     }
 
     private func select(_ localModel: LocalModel) {
+        if targetDevice == .cpu {
+            model.switchCPUModel(to: localModel.repoID)
+            return
+        }
         if localModel.capabilities.contains(.reasoning) {
             applyReasoningLevel(.max)
         } else {
             model.settings.thinkingEnabled = false
         }
         model.switchLanguageModel(to: localModel.repoID)
+    }
+
+    private func switchModel(_ repoID: String) {
+        if targetDevice == .cpu {
+            model.switchCPUModel(to: repoID)
+        } else {
+            model.switchLanguageModel(to: repoID)
+        }
     }
 
     private func applyReasoningLevel(_ level: ChatReasoningLevel) {
@@ -424,6 +452,7 @@ private struct StableChatModelPicker: View {
     let statusLabel: String
     let helpText: String
     let accessibilityValue: String
+    let deviceTag: String?
     let onSelectModel: (LocalModel) -> Void
     let onSwitchModel: (String) -> Void
     let onSelectReasoning: (ChatReasoningLevel) -> Void
@@ -493,7 +522,8 @@ private struct StableChatModelPicker: View {
             selectedModelProvider: selectedModelProvider,
             supportsReasoning: supportsReasoning,
             reasoningLevel: reasoningLevel,
-            modelSwitchInProgress: modelSwitchInProgress
+            modelSwitchInProgress: modelSwitchInProgress,
+            deviceTag: deviceTag
         )
     }
 
@@ -622,6 +652,7 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
                     title: modelMenuLabel(selectedModelID),
                     repoID: selectedModelID,
                     provider: parent.selectedModelProvider,
+                    sizeBytes: nil,
                     action: #selector(switchModel(_:))
                 )
                 item.state = .on
@@ -637,6 +668,7 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
                     title: modelMenuLabel(model.repoID),
                     repoID: model.repoID,
                     provider: model.provider,
+                    sizeBytes: model.sizeBytes,
                     action: #selector(selectModel(_:))
                 )
                 item.state = model.repoID == parent.selectedModelID ? .on : .off
@@ -676,13 +708,47 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
             title: String,
             repoID: String,
             provider: LocalModelProvider?,
+            sizeBytes: Int64?,
             action: Selector
         ) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
             item.representedObject = repoID
             item.image = providerImage(provider)
+            if let annotation = deviceAnnotation(sizeBytes: sizeBytes) {
+                let attributedTitle = NSMutableAttributedString(
+                    string: title,
+                    attributes: [.font: Self.menuFont]
+                )
+                attributedTitle.append(
+                    NSAttributedString(
+                        string: String(repeating: "\u{2007}", count: 3) + annotation.text,
+                        attributes: [
+                            .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
+                            .foregroundColor: annotation.color
+                        ]
+                    )
+                )
+                item.attributedTitle = attributedTitle
+                item.isEnabled = annotation.selectable
+            }
             return item
+        }
+
+        private func deviceAnnotation(
+            sizeBytes: Int64?
+        ) -> (text: String, color: NSColor, selectable: Bool)? {
+            guard let sizeBytes else {
+                return nil
+            }
+            switch ModelCapacity.tier(weightBytes: sizeBytes) {
+            case .tooBig:
+                return ("too big", .systemRed, false)
+            case .recommended, .fits:
+                return ModelCapacity.cpuCapable(weightBytes: sizeBytes)
+                    ? ("GPU \u{00b7} CPU", .tertiaryLabelColor, true)
+                    : ("GPU", .tertiaryLabelColor, true)
+            }
         }
 
         @objc private func selectModel(_ sender: NSMenuItem) {
@@ -766,9 +832,19 @@ private struct ChatModelPickerLabel: View {
     let supportsReasoning: Bool
     let reasoningLevel: ChatReasoningLevel
     let modelSwitchInProgress: Bool
+    var deviceTag: String?
 
     var body: some View {
         HStack(spacing: 5) {
+            if let deviceTag {
+                Text(deviceTag)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.orange.opacity(0.14)))
+            }
+
             Label {
                 pickerTitle
                     .lineLimit(1)

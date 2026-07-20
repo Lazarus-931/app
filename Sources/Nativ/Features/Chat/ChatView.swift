@@ -73,17 +73,6 @@ struct ChatView: View {
             }
             .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
 
-            if showsConfiguration {
-                Divider()
-
-                ChatConfigurationView(
-                    settings: $model.settings,
-                    settingsRequireRestart: model.settingsRequireRestart,
-                    onReset: model.resetSettings
-                )
-                .frame(width: 320)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: model.cpuIsRunning) { _, running in
@@ -110,20 +99,26 @@ struct ChatView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        showsConfiguration.toggle()
-                    }
+                    showsConfiguration.toggle()
                 } label: {
-                    Image(systemName: "sidebar.right")
+                    Image(systemName: "slider.horizontal.3")
                 }
                 .help(configurationVisibilityHelp)
                 .accessibilityLabel(configurationVisibilityHelp)
+                .popover(isPresented: $showsConfiguration, arrowEdge: .bottom) {
+                    ChatConfigurationView(
+                        settings: $model.settings,
+                        settingsRequireRestart: model.settingsRequireRestart,
+                        onReset: model.resetSettings
+                    )
+                    .frame(width: 340, height: 540)
+                }
             }
         }
     }
 
     private var configurationVisibilityHelp: String {
-        showsConfiguration ? "Hide model configuration" : "Show model configuration"
+        showsConfiguration ? "Hide model configuration" : "Model configuration"
     }
 
     private var chatTargetsCPU: Bool {

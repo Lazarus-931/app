@@ -103,19 +103,18 @@ final class NativModel: ObservableObject {
         return !settings.hasSameLaunchConfiguration(as: settingsAppliedAtServerStart)
     }
 
-    var runningDevicesDisplay: String? {
-        guard isRunning else {
-            return nil
-        }
-        return cpuIsRunning ? "GPU + CPU" : "GPU"
-    }
-
     var cpuLoadedModelID: String? {
         cpuMetrics?.server.loadedModel
     }
 
     var cpuChatModelID: String? {
         cpuLoadedModelID ?? settings.normalized().cpuLanguageModelID
+    }
+
+    var cpuMenuModelDisplay: String {
+        cpuMetrics?.server.displayLoadedModel
+            ?? settings.normalized().cpuLanguageModelID
+            ?? "Loading model\u{2026}"
     }
 
     var cpuAnalyticsDatabaseURL: URL? {
@@ -263,6 +262,22 @@ final class NativModel: ObservableObject {
                 self.notifyMenuStateChanged()
             }
         }
+    }
+
+    func switchCPUModel(to modelID: String?) {
+        settings.cpuLanguageModelID = modelID
+        guard cpuServer.isRunning else {
+            return
+        }
+        do {
+            try cpuServer.stop()
+        } catch {
+            appendLog("\nFailed to stop CPU mlx-vlm-server: \(error)\n")
+            return
+        }
+        cpuMetrics = nil
+        startCPUInstanceIfEnabled()
+        notifyMenuStateChanged()
     }
 
     func applicationWillTerminate() {

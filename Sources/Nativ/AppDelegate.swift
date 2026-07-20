@@ -1062,7 +1062,8 @@ private struct SessionStatsContainerView: View {
                     displayModel: isLoading
                         ? model.selectedModelDisplay
                         : metrics.server.displayLoadedModel,
-                    inferenceDevice: model.runningDevicesDisplay
+                    cpuMetrics: model.cpuIsRunning ? model.cpuMetrics : nil,
+                    cpuModelDisplay: model.cpuIsRunning ? model.cpuMenuModelDisplay : nil
                 )
             } else {
                 SessionStatsLoadingMenuView(
@@ -1097,7 +1098,8 @@ private struct SessionStatsMenuView: View {
     let isHighlighted: Bool
     let section: SessionStatsSection
     let displayModel: String
-    let inferenceDevice: String?
+    let cpuMetrics: NativMetrics?
+    let cpuModelDisplay: String?
 
     private var primaryTextColor: Color {
         SessionStatsMenuPalette.primary(isHighlighted)
@@ -1123,12 +1125,6 @@ private struct SessionStatsMenuView: View {
         metrics.summary.totalProcessedTokens
     }
 
-    private var runningTitle: String {
-        guard let inferenceDevice else {
-            return "Running"
-        }
-        return "Running on \(inferenceDevice.uppercased())"
-    }
 
     var body: some View {
         Group {
@@ -1205,7 +1201,7 @@ private struct SessionStatsMenuView: View {
                             .controlSize(.small)
                             .tint(primaryTextColor)
                     }
-                    Text(isLoading ? "Loading model…" : runningTitle)
+                    Text(isLoading ? "Loading model…" : "Running")
                         .font(.headline)
                 }
                 Text(NativFormatting.truncateModelName(
@@ -1215,6 +1211,21 @@ private struct SessionStatsMenuView: View {
                 .font(.subheadline)
                 .foregroundStyle(secondaryTextColor)
                 .lineLimit(1)
+
+                if let cpuModelDisplay {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color.orange)
+                            .frame(width: 5, height: 5)
+                        Text(NativFormatting.truncateModelName(
+                            cpuModelDisplay,
+                            maxLength: 20
+                        ))
+                        .font(.caption)
+                        .foregroundStyle(secondaryTextColor)
+                        .lineLimit(1)
+                    }
+                }
             }
 
         }
@@ -1255,6 +1266,20 @@ private struct SessionStatsMenuView: View {
                     value: metrics.summary.generatedTokensTotal,
                     color: generatedAccent
                 )
+            }
+
+            if let cpuMetrics {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 5, height: 5)
+                    Text("CPU")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(secondaryTextColor)
+                    Text("\(formatted(cpuMetrics.summary.totalProcessedTokens)) tokens \u{00b7} \(NativFormatting.rate(cpuMetrics.summary.averageDecodeTokensPerSecond))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(secondaryTextColor)
+                }
             }
         }
     }

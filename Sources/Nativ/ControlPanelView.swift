@@ -69,7 +69,7 @@ struct ControlPanelView: View {
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var splitColumnVisibility: NavigationSplitViewVisibility = .all
-    @State private var isChatConfigurationVisible = true
+    @State private var isChatConfigurationVisible = false
     @State private var isFullScreen = false
     @State private var isNewChatHovering = false
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
