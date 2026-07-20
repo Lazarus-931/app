@@ -922,6 +922,35 @@ final class ChatViewModel: ObservableObject {
     }
 }
 
+private struct ChatMessageModelIcon: View {
+    let provider: LocalModelProvider
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ZStack {
+            if provider.needsLightIconBackgroundInDarkMode, colorScheme == .dark {
+                Circle()
+                    .fill(Color.white.opacity(0.94))
+                    .frame(width: 14, height: 14)
+            }
+
+            if let image = LocalModelProviderIcon.image(for: provider) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(Color(nsColor: provider.iconTintColor))
+                    .frame(width: 11, height: 11)
+            } else {
+                Text(provider.monogram)
+                    .font(.system(size: provider.monogram.count > 2 ? 5 : 7, weight: .bold))
+                    .foregroundStyle(Color(nsColor: provider.iconTintColor))
+            }
+        }
+        .frame(width: 14, height: 14)
+        .accessibilityHidden(true)
+    }
+}
+
 private struct ChatMessageRow: View {
     private static let maximumUserBubbleWidth: CGFloat = 560
 
@@ -932,9 +961,14 @@ private struct ChatMessageRow: View {
     var body: some View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
             if !title.isEmpty {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    if message.role == .assistant, let provider = messageProvider {
+                        ChatMessageModelIcon(provider: provider)
+                    }
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             VStack(alignment: contentStackAlignment, spacing: 6) {
@@ -1019,6 +1053,17 @@ private struct ChatMessageRow: View {
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(borderColor, lineWidth: message.role == .error ? 1 : 0.5)
+        )
+    }
+
+    private var messageProvider: LocalModelProvider? {
+        guard message.role == .assistant, let modelID = message.modelID else {
+            return nil
+        }
+        return LocalModelProviderResolver.resolve(
+            repoID: modelID,
+            modelType: nil,
+            architectures: []
         )
     }
 
@@ -1488,12 +1533,21 @@ private struct ChatEmptyTranscriptView: View {
     let selectedModelID: String?
 
     var body: some View {
-        VStack(spacing: 7) {
-            Text(title)
-                .font(.headline)
-            Text(detail)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+        VStack(spacing: 16) {
+            Image("NativMark")
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .frame(width: 64)
+                .foregroundStyle(.quaternary)
+
+            VStack(spacing: 7) {
+                Text(title)
+                    .font(.headline)
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

@@ -686,7 +686,7 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
 
             if parent.showsDeviceSections {
                 let gpuItem = NSMenuItem(
-                    title: "GPU   \(deviceModelLabel(parent.gpuSelectedModelID))",
+                    title: deviceSectionTitle("GPU", modelID: parent.gpuSelectedModelID),
                     action: nil,
                     keyEquivalent: ""
                 )
@@ -699,7 +699,7 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
                 menu.addItem(gpuItem)
 
                 let cpuItem = NSMenuItem(
-                    title: "CPU   \(deviceModelLabel(parent.cpuSelectedModelID))",
+                    title: deviceSectionTitle("CPU", modelID: parent.cpuSelectedModelID),
                     action: nil,
                     keyEquivalent: ""
                 )
@@ -737,8 +737,11 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
             return menu
         }
 
-        private func deviceModelLabel(_ modelID: String?) -> String {
-            modelID.map(modelMenuLabel) ?? "Choose model"
+        private func deviceSectionTitle(_ name: String, modelID: String?) -> String {
+            guard let modelID else {
+                return name
+            }
+            return "\(name)   \(modelMenuLabel(modelID))"
         }
 
         private func makeModelMenu(

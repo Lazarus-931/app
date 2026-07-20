@@ -52,6 +52,13 @@ final class NativModel: ObservableObject {
     private var isStoppingForModelSwitch = false
 
     private let maxLogCharacters = 250_000
+    private var logAtLineStart = true
+    private static let logTimestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
     private let maxSessionActivitySamples = 120
 
     init() {
@@ -493,7 +500,26 @@ final class NativModel: ObservableObject {
     }
 
     private func appendLog(_ text: String) {
-        logText.append(text)
+        guard !text.isEmpty else {
+            return
+        }
+        let stamp = "[\(Self.logTimestampFormatter.string(from: Date()))] "
+        var stamped = ""
+        let lines = text.components(separatedBy: "\n")
+        for (index, line) in lines.enumerated() {
+            if index > 0 {
+                stamped.append("\n")
+                logAtLineStart = true
+            }
+            if !line.isEmpty {
+                if logAtLineStart {
+                    stamped.append(stamp)
+                }
+                stamped.append(line)
+                logAtLineStart = false
+            }
+        }
+        logText.append(stamped)
         if logText.count > maxLogCharacters {
             logText.removeFirst(logText.count - maxLogCharacters)
         }
