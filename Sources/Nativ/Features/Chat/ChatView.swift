@@ -102,15 +102,16 @@ struct ChatView: View {
                 chat.targetDevice = .gpu
             }
         }
+        .onChange(of: isFullScreen) { _, _ in
+            showsConfiguration = false
+        }
         .toolbar {
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
 
             ToolbarItem(placement: .primaryAction) {
-                if !isFullScreen {
-                    configurationButton
-                }
+                configurationButton
             }
         }
     }
@@ -123,7 +124,13 @@ struct ChatView: View {
         }
         .help(configurationVisibilityHelp)
         .accessibilityLabel(configurationVisibilityHelp)
-        .popover(isPresented: $showsConfiguration, arrowEdge: .bottom) {
+        .popover(
+            isPresented: Binding(
+                get: { showsConfiguration && !isFullScreen },
+                set: { showsConfiguration = $0 }
+            ),
+            arrowEdge: .bottom
+        ) {
             configurationPopoverContent
         }
     }
