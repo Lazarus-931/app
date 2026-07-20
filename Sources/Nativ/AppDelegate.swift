@@ -504,9 +504,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 button.image = image
                 button.imagePosition = .imageOnly
             } else {
-                button.title = "MLX"
+                button.title = "Nativ"
             }
-            button.toolTip = "MLX VLM Server"
+            button.toolTip = "Nativ Server"
         }
 
         let menu = NSMenu()
@@ -559,7 +559,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         } else {
             let statusMenuItem = NSMenuItem(
-                title: model.isRunning ? model.unavailableMetricsText : "MLX Server is Not Running",
+                title: model.isRunning ? model.unavailableMetricsText : "Nativ Server is Not Running",
                 action: nil,
                 keyEquivalent: ""
             )
@@ -1204,8 +1204,8 @@ private struct SessionStatsMenuView: View {
         .foregroundStyle(primaryTextColor)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(section == .header
-            ? "MLX Server status"
-            : "MLX Server session statistics")
+            ? "Nativ Server status"
+            : "Nativ Server session statistics")
     }
 
     private var statsBody: some View {
@@ -1238,7 +1238,7 @@ private struct SessionStatsMenuView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("MLX Server")
+                Text("Nativ Server")
                     .font(.headline)
                 SessionMemoryUsageLabel(
                     runtime: runtime,
@@ -1458,14 +1458,14 @@ private struct SessionStatsLoadingMenuView: View {
         .foregroundStyle(primaryTextColor)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(section == .header
-            ? "MLX Server is loading \(modelName)"
+            ? "Nativ Server is loading \(modelName)"
             : "Waiting for session statistics")
     }
 
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("MLX Server")
+                Text("Nativ Server")
                     .font(.headline)
                 SessionMemoryUsageLabel(
                     runtime: runtime,

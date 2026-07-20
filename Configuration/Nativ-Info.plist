@@ -35,7 +35,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SUFeedURL</key>
-	<string>https://marvis-labs.github.io/mlx-platform/appcast.xml</string>
+	<string>https://marvis-labs.github.io/nativ/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>$(NATIV_SPARKLE_PUBLIC_KEY)</string>
 </dict>

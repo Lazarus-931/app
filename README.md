@@ -1,6 +1,6 @@
-# mlx-platform
+# nativ
 
-`mlx-platform` is a small macOS/Xcode project for embedding and controlling an
+`nativ` is a small macOS/Xcode project for embedding and controlling an
 `mlx-vlm` HTTP server from an app.
 
 The primary targets are:
@@ -194,7 +194,7 @@ increasing `CFBundleVersion` is required.
 
 The app uses Sparkle 2.9.4. GitHub Releases are the source of truth for release
 versions and assets, while GitHub Pages hosts the stable feed at
-`https://marvis-labs.github.io/mlx-platform/appcast.xml`. The feed is published
+`https://marvis-labs.github.io/nativ/appcast.xml`. The feed is published
 only after the notarized DMG has been uploaded to its GitHub Release, so clients
 never see an update whose asset is not yet available. The same DMG supports the
 normal drag-to-Applications installation experience and direct Sparkle updates.

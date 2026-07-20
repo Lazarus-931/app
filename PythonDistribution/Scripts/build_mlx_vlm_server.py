@@ -58,7 +58,7 @@ def log(message: str) -> None:
 
 
 def fetch_json(url: str) -> dict:
-    request = urllib.request.Request(url, headers={"User-Agent": "mlx-platform-builder"})
+    request = urllib.request.Request(url, headers={"User-Agent": "nativ-builder"})
     with urllib.request.urlopen(request) as response:
         return json.load(response)
 
@@ -158,7 +158,7 @@ def download(url: str, destination: Path) -> None:
 
     log(f"Downloading {url}")
     tmp = destination.with_suffix(destination.suffix + ".tmp")
-    request = urllib.request.Request(url, headers={"User-Agent": "mlx-platform-builder"})
+    request = urllib.request.Request(url, headers={"User-Agent": "nativ-builder"})
     with urllib.request.urlopen(request) as response, tmp.open("wb") as handle:
         shutil.copyfileobj(response, handle)
     tmp.replace(destination)

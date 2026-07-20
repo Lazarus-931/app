@@ -112,7 +112,7 @@ enum IntegrationServiceError: LocalizedError {
 }
 
 struct IntegrationProfileManager {
-    static let providerID = "mlx-platform"
+    static let providerID = "nativ"
     static let openAIBaseURL = "http://127.0.0.1:8080/v1"
     static let anthropicBaseURL = "http://127.0.0.1:8080"
 
@@ -283,11 +283,11 @@ struct IntegrationProfileManager {
         case .pi:
             return home.appendingPathComponent(".pi/agent/models.json")
         case .codex:
-            return home.appendingPathComponent(".codex/mlx-platform.config.toml")
+            return home.appendingPathComponent(".codex/nativ.config.toml")
         case .claudeCode:
             return integrationsSupportURL.appendingPathComponent("claude-settings.json")
         case .hermes:
-            return home.appendingPathComponent(".hermes/profiles/mlx-platform/config.yaml")
+            return home.appendingPathComponent(".hermes/profiles/nativ/config.yaml")
         case .openCode:
             return integrationsSupportURL.appendingPathComponent("opencode.json")
         }
@@ -389,7 +389,7 @@ struct IntegrationProfileManager {
         providers[Self.providerID] = [
             "baseUrl": Self.openAIBaseURL,
             "api": "openai-completions",
-            "apiKey": "mlx-platform",
+            "apiKey": "nativ",
             "compat": [
                 "supportsDeveloperRole": false,
                 "supportsReasoningEffort": false,
@@ -431,7 +431,7 @@ struct IntegrationProfileManager {
     private func claudeSettings(selectedModelID: String) -> [String: Any] {
         [
             "env": [
-                "ANTHROPIC_AUTH_TOKEN": "mlx-platform",
+                "ANTHROPIC_AUTH_TOKEN": "nativ",
                 "ANTHROPIC_API_KEY": "",
                 "ANTHROPIC_BASE_URL": Self.anthropicBaseURL,
                 "ANTHROPIC_MODEL": selectedModelID,
@@ -461,13 +461,13 @@ struct IntegrationProfileManager {
           default: \(yamlString(selectedModelID))
           provider: custom
           base_url: \(yamlString(Self.openAIBaseURL))
-          api_key: mlx-platform
+          api_key: nativ
         display:
           streaming: true
         custom_providers:
-          - name: mlx-platform
+          - name: nativ
             base_url: \(yamlString(Self.openAIBaseURL))
-            api_key: mlx-platform
+            api_key: nativ
             api_mode: chat_completions
             models:
         \(modelLines)
@@ -475,7 +475,7 @@ struct IntegrationProfileManager {
         try writeText(yaml, to: url)
         let profileURL = url.deletingLastPathComponent().appendingPathComponent("profile.yaml")
         if !fileManager.fileExists(atPath: profileURL.path) {
-            try writeText("name: mlx-platform\ndescription: Local models from Nativ\n", to: profileURL)
+            try writeText("name: nativ\ndescription: Local models from Nativ\n", to: profileURL)
         }
     }
 
@@ -517,7 +517,7 @@ struct IntegrationProfileManager {
                     "name": "Nativ",
                     "options": [
                         "baseURL": Self.openAIBaseURL,
-                        "apiKey": "mlx-platform"
+                        "apiKey": "nativ"
                     ],
                     "models": modelCatalog
                 ]
@@ -538,7 +538,7 @@ struct IntegrationProfileManager {
             return (
                 ["--settings", configurationURL(for: tool).path, "--model", selectedModelID],
                 [
-                    "ANTHROPIC_AUTH_TOKEN": "mlx-platform",
+                    "ANTHROPIC_AUTH_TOKEN": "nativ",
                     "ANTHROPIC_API_KEY": "",
                     "ANTHROPIC_BASE_URL": Self.anthropicBaseURL
                 ]

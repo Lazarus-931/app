@@ -155,8 +155,8 @@ if [[ -n "$release_notes" ]]; then
     cp "$release_notes" "${staged_archive%.*}.$notes_extension"
 fi
 
-download_prefix="https://github.com/Marvis-Labs/mlx-platform/releases/download/v${version}/"
-release_link="https://github.com/Marvis-Labs/mlx-platform/releases/tag/v${version}"
+download_prefix="https://github.com/Marvis-Labs/nativ/releases/download/v${version}/"
+release_link="https://github.com/Marvis-Labs/nativ/releases/tag/v${version}"
 appcast_arguments=(
     --download-url-prefix "$download_prefix"
     --embed-release-notes
