@@ -84,6 +84,7 @@ struct ChatComposer: View {
     @ObservedObject var model: NativModel
     @ObservedObject var viewModel: ChatViewModel
     @StateObject private var localLibrary = LocalModelLibrary()
+    @StateObject private var dictation = ChatDictationController()
     let unavailableReason: String?
     let canCompose: Bool
     let canSend: Bool
@@ -172,6 +173,24 @@ struct ChatComposer: View {
                     modelPicker
 
                     Button {
+                        dictation.toggle(baseText: viewModel.draft) { [weak viewModel] transcript in
+                            viewModel?.draft = transcript
+                        }
+                    } label: {
+                        Image(systemName: dictation.isRecording ? "mic.fill" : "mic")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(dictation.isRecording ? Color.red : Color.secondary)
+                            .frame(width: 30, height: 30)
+                            .background(
+                                dictation.isRecording ? Color.red.opacity(0.12) : Color.clear,
+                                in: Circle()
+                            )
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .help(dictation.isRecording ? "Stop dictation" : "Dictate")
+
+                    Button {
                         if showsStopButton {
                             viewModel.cancel()
                         } else {
@@ -202,6 +221,20 @@ struct ChatComposer: View {
             .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
         }
         .padding(.vertical, 18)
+        .alert(
+            "Dictation",
+            isPresented: Binding(
+                get: { dictation.errorMessage != nil },
+                set: { if !$0 { dictation.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(dictation.errorMessage ?? "")
+        }
+        .onDisappear {
+            dictation.stop()
+        }
         .task(id: model.settings.modelSearchPath) {
             localLibrary.scan(path: model.settings.modelSearchPath)
         }

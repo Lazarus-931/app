@@ -68,20 +68,45 @@ struct ControlPanelView: View {
     @StateObject private var dashboard = DashboardViewModel()
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
-    @State private var splitColumnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showsNavigationPanel = false
     @State private var isChatConfigurationVisible = false
     @State private var isFullScreen = false
     @State private var isNewChatHovering = false
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $splitColumnVisibility) {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
-        } detail: {
-            detail
-        }
-        .navigationSplitViewStyle(.balanced)
+        detail
+            .overlay {
+                if showsNavigationPanel {
+                    ZStack(alignment: .topLeading) {
+                        Color.black.opacity(0.001)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                closeNavigationPanel()
+                            }
+
+                        sidebar
+                            .padding(.top, isFullScreen ? 34 : 8)
+                            .padding(.leading, 12)
+                            .transition(
+                                .move(edge: .top)
+                                    .combined(with: .opacity)
+                            )
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        withAnimation(.snappy(duration: 0.22)) {
+                            showsNavigationPanel.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "line.3.horizontal")
+                    }
+                    .help(showsNavigationPanel ? "Hide menu" : "Menu")
+                }
+            }
         .frame(minWidth: 1040, minHeight: 600)
         .background {
             ControlPanelWindowStateReader(isFullScreen: $isFullScreen)
@@ -103,6 +128,12 @@ struct ControlPanelView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
             isFullScreen = false
+        }
+    }
+
+    private func closeNavigationPanel() {
+        withAnimation(.snappy(duration: 0.22)) {
+            showsNavigationPanel = false
         }
     }
 
@@ -169,13 +200,15 @@ struct ControlPanelView: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if isFullScreen {
-                Color.clear.frame(height: 28)
-            }
+        .scrollContentBackground(.hidden)
+        .frame(width: 268, height: 500)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         }
-        .navigationTitle("Nativ")
-        .background(ControlPanelSidebarSurfaceReader())
+        .shadow(color: .black.opacity(0.28), radius: 26, y: 10)
     }
 
     private var recentSessions: [ControlPanelRecentSession] {
@@ -214,6 +247,7 @@ struct ControlPanelView: View {
     }
 
     private func applySidebarSelection(_ selection: ControlPanelSidebarSelection) {
+        closeNavigationPanel()
         switch selection {
         case .tab(let tab):
             sidebarSelection = selection
@@ -308,55 +342,6 @@ struct ControlPanelView: View {
         "Create a new chat"
     }
 
-}
-
-private struct ControlPanelSidebarSurfaceReader: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        expandSidebarSurface(from: view)
-        return view
-    }
-
-    func updateNSView(_ view: NSView, context: Context) {
-        expandSidebarSurface(from: view)
-    }
-
-    private func expandSidebarSurface(from view: NSView) {
-        guard #available(macOS 26.0, *) else { return }
-        expandGlassSidebarSurface(from: view)
-    }
-
-    @available(macOS 26.0, *)
-    private func expandGlassSidebarSurface(from view: NSView) {
-        DispatchQueue.main.async {
-            var ancestor = view.superview
-            var glassSurface: NSGlassEffectView?
-
-            while let current = ancestor {
-                if let glass = current as? NSGlassEffectView {
-                    glassSurface = glass
-                    break
-                }
-                ancestor = current.superview
-            }
-
-            guard let glassSurface, let container = glassSurface.superview else { return }
-
-            for constraint in container.constraints {
-                let firstView = constraint.firstItem as? NSView
-                let secondView = constraint.secondItem as? NSView
-                let directlyPositionsSurface =
-                    (firstView === glassSurface && secondView === container)
-                    || (firstView === container && secondView === glassSurface)
-
-                guard directlyPositionsSurface else { continue }
-                constraint.constant = 0
-            }
-
-            container.needsUpdateConstraints = true
-            container.needsLayout = true
-        }
-    }
 }
 
 private struct ControlPanelWindowStateReader: NSViewRepresentable {

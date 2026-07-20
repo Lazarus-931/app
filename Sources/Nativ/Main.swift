@@ -110,8 +110,6 @@ private struct NativApplication: App {
                 .keyboardShortcut("n")
             }
 
-            SidebarCommands()
-
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {
                     appDelegate.openSettings()
