@@ -23,7 +23,7 @@ from typing import Iterable
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYTHON_DISTRIBUTION_ROOT = REPO_ROOT / "PythonDistribution"
 LAUNCHER_SOURCE = PYTHON_DISTRIBUTION_ROOT / "Launcher" / "mlx_vlm_server_launcher.c"
-OVERLAY_SERVER = PYTHON_DISTRIBUTION_ROOT / "Overlay" / "mlx_platform_server.py"
+OVERLAY_SERVER = PYTHON_DISTRIBUTION_ROOT / "Overlay" / "nativ_server.py"
 DEFAULT_PYTHON_VERSION = "3.12.13"
 DEFAULT_PBS_RELEASE = "20260508"
 DEFAULT_PBS_ASSET = (
@@ -343,7 +343,7 @@ export PYTHONNOUSERSITE=1
 
 PARENT_PID="$PPID"
 LAUNCHER_PID="$$"
-"$ROOT_DIR/python/bin/python3" -m mlx_platform_server "$@" &
+"$ROOT_DIR/python/bin/python3" -m nativ_server "$@" &
 CHILD_PID="$!"
 
 request_child_shutdown() {
@@ -559,7 +559,7 @@ def verify_distribution(output: Path, *, expect_mlx_vlm: bool) -> None:
                 str(python),
                 "-c",
                 "import importlib.util; "
-                "raise SystemExit(0 if importlib.util.find_spec('mlx_platform_server') else 1)",
+                "raise SystemExit(0 if importlib.util.find_spec('nativ_server') else 1)",
             ]
         )
     if not launcher.exists():

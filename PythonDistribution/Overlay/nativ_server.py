@@ -6,6 +6,7 @@ import os
 import sqlite3
 import time
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Lock
@@ -17,6 +18,7 @@ from fastapi.responses import Response
 
 import mlx_vlm.server as base
 import mlx_vlm.server.cli as base_cli
+import mlx_vlm.server.openai as base_openai
 
 
 BACKEND_NAME = f"mlx_vlm/{base.__version__}"
@@ -26,6 +28,11 @@ TRACKED_PATHS = {
     "/responses",
     "/v1/responses",
 }
+
+_BASE_METRICS_CAPTURE: ContextVar[dict[str, Any] | None] = ContextVar(
+    "nativ_base_metrics_capture",
+    default=None,
+)
 
 
 @dataclass
@@ -492,9 +499,12 @@ class MetricsTracker:
         generated_tokens = int(completion.get("generated_tokens") or completion_tokens)
         elapsed = float(completion.get("request_elapsed_s") or 0.0)
         decode_tps = float(completion.get("decode_tok_s") or 0.0)
-        decode_time = (
-            generated_tokens / decode_tps if generated_tokens > 0 and decode_tps > 0 else elapsed
-        )
+        reported_decode_time = float(completion.get("decode_elapsed_s") or 0.0)
+        decode_time = reported_decode_time
+        if decode_time <= 0 and generated_tokens > 0 and decode_tps > 0:
+            decode_time = generated_tokens / decode_tps
+        if decode_time <= 0:
+            decode_time = elapsed
         request_tok_s = completion.get("request_tok_s")
         if request_tok_s is None and elapsed > 0 and completion_tokens > 0:
             request_tok_s = completion_tokens / elapsed
@@ -784,8 +794,11 @@ class StreamAccumulator:
         self.generated_tokens = int(usage.get("completion_tokens") or self.generated_tokens)
         if usage.get("prompt_tps") is not None:
             self.prefill_tok_s = float(usage["prompt_tps"])
-        if usage.get("generation_tps") is not None:
-            self.decode_tok_s = float(usage["generation_tps"])
+        generation_tps = usage.get("generation_tps")
+        if generation_tps is None:
+            generation_tps = timings.get("predicted_per_second")
+        if generation_tps is not None and float(generation_tps) > 0:
+            self.decode_tok_s = float(generation_tps)
         peak_memory = timings.get("peak_memory")
         if peak_memory is None:
             peak_memory = usage.get("peak_memory")
@@ -809,9 +822,19 @@ class StreamAccumulator:
                 self.observation.first_token_at = time.perf_counter()
 
     def _consume_responses_event(self, event_name: str | None, payload: dict[str, Any]) -> None:
-        if event_name == "response.output_text.delta" and payload.get("delta"):
+        if (
+            event_name
+            in {"response.output_text.delta", "response.reasoning_text.delta"}
+            and payload.get("delta")
+        ):
             if self.observation.first_token_at is None:
                 self.observation.first_token_at = time.perf_counter()
+            return
+
+        if event_name == "response.output_text.done":
+            generation_tps = (payload.get("timings") or {}).get("predicted_per_second")
+            if generation_tps is not None and float(generation_tps) > 0:
+                self.decode_tok_s = float(generation_tps)
             return
 
         if event_name != "response.completed":
@@ -912,9 +935,7 @@ def parse_responses_body(body: bytes, observation: RequestObservation) -> dict[s
         "request_tok_s": (
             completion_tokens / elapsed if elapsed > 0 and completion_tokens > 0 else None
         ),
-        "decode_tok_s": (
-            completion_tokens / elapsed if elapsed > 0 and completion_tokens > 0 else None
-        ),
+        "decode_tok_s": None,
         "prompt_eval_time_s": None,
         "prefill_tok_s": None,
         "ttft_s": None,
@@ -922,6 +943,59 @@ def parse_responses_body(body: bytes, observation: RequestObservation) -> dict[s
         "finish_reason": "stop",
         "tool_calls": False,
     }
+
+
+def merge_base_metrics(
+    completion: dict[str, Any],
+    envelope: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not envelope:
+        return completion
+
+    merged = dict(completion)
+    for key in (
+        "model",
+        "prompt_tokens",
+        "completion_tokens",
+        "generated_tokens",
+        "request_elapsed_s",
+        "request_tok_s",
+        "decode_elapsed_s",
+        "decode_tok_s",
+        "prompt_eval_time_s",
+        "prefill_tok_s",
+        "ttft_s",
+        "peak_memory_gb",
+        "finish_reason",
+        "tool_calls",
+    ):
+        value = envelope.get(key)
+        if value is not None:
+            merged[key] = value
+    return merged
+
+
+def install_base_metrics_capture() -> None:
+    if getattr(base_openai, "_nativ_metrics_capture_installed", False):
+        return
+
+    original_build_metrics_envelope = getattr(
+        base_openai,
+        "_build_metrics_envelope",
+        None,
+    )
+    if original_build_metrics_envelope is None:
+        return
+
+    def capturing_build_metrics_envelope(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        envelope = original_build_metrics_envelope(*args, **kwargs)
+        capture = _BASE_METRICS_CAPTURE.get()
+        if capture is not None:
+            capture["envelope"] = dict(envelope)
+        return envelope
+
+    base_openai._build_metrics_envelope = capturing_build_metrics_envelope
+    base_openai._nativ_metrics_capture_installed = True
 
 
 async def materialize_response(response: Any) -> tuple[Any, bytes]:
@@ -953,6 +1027,7 @@ def install_metrics_overlay() -> None:
     if getattr(base.app.state, "mlx_platform_metrics_installed", False):
         return
     base.app.state.mlx_platform_metrics_installed = True
+    install_base_metrics_capture()
 
     @base.app.middleware("http")
     async def metrics_middleware(request: Request, call_next):
@@ -966,12 +1041,16 @@ def install_metrics_overlay() -> None:
             payload = {}
         observation = parse_request_observation(request, payload)
         TRACKER.record_started(observation)
+        metrics_capture: dict[str, Any] = {}
+        capture_token = _BASE_METRICS_CAPTURE.set(metrics_capture)
 
         try:
             response = await call_next(request)
         except Exception:
             TRACKER.record_failed(observation)
             raise
+        finally:
+            _BASE_METRICS_CAPTURE.reset(capture_token)
 
         if response.status_code >= 400:
             TRACKER.record_failed(observation)
@@ -1008,7 +1087,11 @@ def install_metrics_overlay() -> None:
                         except Exception as error:
                             base.logger.warning("metrics stream instrumentation failed: %s", error)
                     try:
-                        TRACKER.record_completed(observation, accumulator.finalize())
+                        completion = merge_base_metrics(
+                            accumulator.finalize(),
+                            metrics_capture.get("envelope"),
+                        )
+                        TRACKER.record_completed(observation, completion)
                     except Exception as error:
                         base.logger.warning("metrics completion instrumentation failed: %s", error)
                 except Exception:
@@ -1024,6 +1107,10 @@ def install_metrics_overlay() -> None:
                 completion = parse_chat_response(response_body, observation)
             else:
                 completion = parse_responses_body(response_body, observation)
+            completion = merge_base_metrics(
+                completion,
+                metrics_capture.get("envelope"),
+            )
             TRACKER.record_completed(observation, completion)
         except Exception as error:
             base.logger.warning("metrics instrumentation failed for %s: %s", request.url.path, error)
