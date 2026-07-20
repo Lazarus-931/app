@@ -161,7 +161,8 @@ struct ChatComposer: View {
                 HStack(spacing: 8) {
                     ChatComposerActionMenu(
                         isEnabled: canCompose,
-                        onAttachImages: viewModel.chooseImageAttachments
+                        onAttachImages: viewModel.chooseImageAttachments,
+                        onCaptureScreenshot: viewModel.captureScreenshotAttachment
                     )
                     .frame(width: 30, height: 30)
                     .help("Add attachment")
@@ -221,8 +222,13 @@ struct ChatComposer: View {
 
     private var modelPicker: some View {
         StableChatModelPicker(
-            models: pickerModels,
+            models: localLibrary.models,
+            cpuModels: cpuCapableModels,
+            showsDeviceSections: model.cpuIsRunning,
+            activeDevice: targetDevice,
             selectedModelID: selectedModelID,
+            gpuSelectedModelID: model.settings.normalized().languageModelID,
+            cpuSelectedModelID: model.cpuChatModelID,
             selectedModelLabel: selectedModelLabel,
             selectedModelProvider: selectedModelProvider,
             supportsReasoning: selectedModelSupportsThinking && targetDevice == .gpu,
@@ -243,11 +249,8 @@ struct ChatComposer: View {
         model.cpuIsRunning ? viewModel.targetDevice : .gpu
     }
 
-    private var pickerModels: [LocalModel] {
-        guard targetDevice == .cpu else {
-            return localLibrary.models
-        }
-        return localLibrary.models.filter { localModel in
+    private var cpuCapableModels: [LocalModel] {
+        localLibrary.models.filter { localModel in
             localModel.sizeBytes.map { ModelCapacity.cpuCapable(weightBytes: $0) } ?? false
         }
     }
@@ -329,8 +332,9 @@ struct ChatComposer: View {
         return NativFormatting.truncateModelName(shortName, maxLength: 28)
     }
 
-    private func select(_ localModel: LocalModel) {
-        if targetDevice == .cpu {
+    private func select(_ device: ChatInferenceDevice, _ localModel: LocalModel) {
+        viewModel.targetDevice = device
+        if device == .cpu {
             model.switchCPUModel(to: localModel.repoID)
             return
         }
@@ -342,8 +346,9 @@ struct ChatComposer: View {
         model.switchLanguageModel(to: localModel.repoID)
     }
 
-    private func switchModel(_ repoID: String) {
-        if targetDevice == .cpu {
+    private func switchModel(_ device: ChatInferenceDevice, _ repoID: String) {
+        viewModel.targetDevice = device
+        if device == .cpu {
             model.switchCPUModel(to: repoID)
         } else {
             model.switchLanguageModel(to: repoID)
@@ -442,7 +447,12 @@ private struct StableChatModelPicker: View {
     @State private var isMenuOpen = false
 
     let models: [LocalModel]
+    let cpuModels: [LocalModel]
+    let showsDeviceSections: Bool
+    let activeDevice: ChatInferenceDevice
     let selectedModelID: String?
+    let gpuSelectedModelID: String?
+    let cpuSelectedModelID: String?
     let selectedModelLabel: String
     let selectedModelProvider: LocalModelProvider?
     let supportsReasoning: Bool
@@ -453,8 +463,8 @@ private struct StableChatModelPicker: View {
     let helpText: String
     let accessibilityValue: String
     let deviceTag: String?
-    let onSelectModel: (LocalModel) -> Void
-    let onSwitchModel: (String) -> Void
+    let onSelectModel: (ChatInferenceDevice, LocalModel) -> Void
+    let onSwitchModel: (ChatInferenceDevice, String) -> Void
     let onSelectReasoning: (ChatReasoningLevel) -> Void
 
     var body: some View {
@@ -464,7 +474,12 @@ private struct StableChatModelPicker: View {
 
             ChatModelPickerMenuControl(
                 models: models,
+                cpuModels: cpuModels,
+                showsDeviceSections: showsDeviceSections,
+                activeDevice: activeDevice,
                 selectedModelID: selectedModelID,
+                gpuSelectedModelID: gpuSelectedModelID,
+                cpuSelectedModelID: cpuSelectedModelID,
                 selectedModelLabel: selectedModelLabel,
                 selectedModelProvider: selectedModelProvider,
                 supportsReasoning: supportsReasoning,
@@ -549,17 +564,32 @@ private struct StableChatModelPicker: View {
 
 }
 
+private final class ChatModelMenuSelection: NSObject {
+    let device: ChatInferenceDevice
+    let repoID: String
+
+    init(device: ChatInferenceDevice, repoID: String) {
+        self.device = device
+        self.repoID = repoID
+    }
+}
+
 private struct ChatModelPickerMenuControl: NSViewRepresentable {
     let models: [LocalModel]
+    let cpuModels: [LocalModel]
+    let showsDeviceSections: Bool
+    let activeDevice: ChatInferenceDevice
     let selectedModelID: String?
+    let gpuSelectedModelID: String?
+    let cpuSelectedModelID: String?
     let selectedModelLabel: String
     let selectedModelProvider: LocalModelProvider?
     let supportsReasoning: Bool
     let reasoningLevel: ChatReasoningLevel
     let isEnabled: Bool
     let statusLabel: String
-    let onSelectModel: (LocalModel) -> Void
-    let onSwitchModel: (String) -> Void
+    let onSelectModel: (ChatInferenceDevice, LocalModel) -> Void
+    let onSwitchModel: (ChatInferenceDevice, String) -> Void
     let onSelectReasoning: (ChatReasoningLevel) -> Void
     let onTrackingChanged: (Bool) -> Void
 
@@ -621,13 +651,45 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
             let menu = NSMenu()
             menu.autoenablesItems = false
 
-            let modelItem = NSMenuItem(
-                title: "Model   \(parent.selectedModelLabel)",
-                action: nil,
-                keyEquivalent: ""
-            )
-            modelItem.submenu = makeModelMenu()
-            menu.addItem(modelItem)
+            if parent.showsDeviceSections {
+                let gpuItem = NSMenuItem(
+                    title: "GPU   \(deviceModelLabel(parent.gpuSelectedModelID))",
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                gpuItem.state = parent.activeDevice == .gpu ? .on : .off
+                gpuItem.submenu = makeModelMenu(
+                    device: .gpu,
+                    models: parent.models,
+                    selectedModelID: parent.gpuSelectedModelID
+                )
+                menu.addItem(gpuItem)
+
+                let cpuItem = NSMenuItem(
+                    title: "CPU   \(deviceModelLabel(parent.cpuSelectedModelID))",
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                cpuItem.state = parent.activeDevice == .cpu ? .on : .off
+                cpuItem.submenu = makeModelMenu(
+                    device: .cpu,
+                    models: parent.cpuModels,
+                    selectedModelID: parent.cpuSelectedModelID
+                )
+                menu.addItem(cpuItem)
+            } else {
+                let modelItem = NSMenuItem(
+                    title: "Model   \(parent.selectedModelLabel)",
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                modelItem.submenu = makeModelMenu(
+                    device: .gpu,
+                    models: parent.models,
+                    selectedModelID: parent.selectedModelID
+                )
+                menu.addItem(modelItem)
+            }
 
             if parent.supportsReasoning {
                 let reasoningItem = NSMenuItem(
@@ -642,15 +704,25 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
             return menu
         }
 
-        private func makeModelMenu() -> NSMenu {
+        private func deviceModelLabel(_ modelID: String?) -> String {
+            modelID.map(modelMenuLabel) ?? "Choose model"
+        }
+
+        private func makeModelMenu(
+            device: ChatInferenceDevice,
+            models: [LocalModel],
+            selectedModelID: String?
+        ) -> NSMenu {
             let menu = NSMenu()
             menu.autoenablesItems = false
 
-            if let selectedModelID = parent.selectedModelID,
-               !parent.models.contains(where: { $0.repoID == selectedModelID }) {
+            if device == .gpu,
+               let selectedModelID,
+               !models.contains(where: { $0.repoID == selectedModelID }) {
                 let item = modelItem(
                     title: modelMenuLabel(selectedModelID),
                     repoID: selectedModelID,
+                    device: device,
                     provider: parent.selectedModelProvider,
                     sizeBytes: nil,
                     action: #selector(switchModel(_:))
@@ -658,25 +730,29 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
                 item.state = .on
                 menu.addItem(item)
 
-                if !parent.models.isEmpty {
+                if !models.isEmpty {
                     menu.addItem(.separator())
                 }
             }
 
-            for model in parent.models {
+            for model in models {
                 let item = modelItem(
                     title: modelMenuLabel(model.repoID),
                     repoID: model.repoID,
+                    device: device,
                     provider: model.provider,
-                    sizeBytes: model.sizeBytes,
+                    sizeBytes: parent.showsDeviceSections ? nil : model.sizeBytes,
                     action: #selector(selectModel(_:))
                 )
-                item.state = model.repoID == parent.selectedModelID ? .on : .off
+                item.state = model.repoID == selectedModelID ? .on : .off
                 menu.addItem(item)
             }
 
-            if parent.models.isEmpty && parent.selectedModelID == nil {
-                let item = NSMenuItem(title: parent.statusLabel, action: nil, keyEquivalent: "")
+            if models.isEmpty && selectedModelID == nil {
+                let statusTitle = device == .cpu
+                    ? "No CPU-capable models installed"
+                    : parent.statusLabel
+                let item = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
                 item.isEnabled = false
                 menu.addItem(item)
             }
@@ -707,13 +783,14 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
         private func modelItem(
             title: String,
             repoID: String,
+            device: ChatInferenceDevice,
             provider: LocalModelProvider?,
             sizeBytes: Int64?,
             action: Selector
         ) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
-            item.representedObject = repoID
+            item.representedObject = ChatModelMenuSelection(device: device, repoID: repoID)
             item.image = providerImage(provider)
             if let annotation = deviceAnnotation(sizeBytes: sizeBytes) {
                 let attributedTitle = NSMutableAttributedString(
@@ -752,15 +829,15 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
         }
 
         @objc private func selectModel(_ sender: NSMenuItem) {
-            guard let repoID = sender.representedObject as? String,
-                  let model = parent.models.first(where: { $0.repoID == repoID })
+            guard let selection = sender.representedObject as? ChatModelMenuSelection,
+                  let model = parent.models.first(where: { $0.repoID == selection.repoID })
             else { return }
-            parent.onSelectModel(model)
+            parent.onSelectModel(selection.device, model)
         }
 
         @objc private func switchModel(_ sender: NSMenuItem) {
-            guard let repoID = sender.representedObject as? String else { return }
-            parent.onSwitchModel(repoID)
+            guard let selection = sender.representedObject as? ChatModelMenuSelection else { return }
+            parent.onSwitchModel(selection.device, selection.repoID)
         }
 
         @objc private func selectReasoning(_ sender: NSMenuItem) {
@@ -949,6 +1026,7 @@ private struct ChatComposerModelIcon: View {
 private struct ChatComposerActionMenu: NSViewRepresentable {
     let isEnabled: Bool
     let onAttachImages: () -> Void
+    let onCaptureScreenshot: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -1012,11 +1090,25 @@ private struct ChatComposerActionMenu: NSViewRepresentable {
             imageItem.isEnabled = true
             menu.addItem(imageItem)
 
+            let screenshotItem = NSMenuItem(
+                title: "Capture Screenshot",
+                action: #selector(captureScreenshot(_:)),
+                keyEquivalent: ""
+            )
+            screenshotItem.target = self
+            screenshotItem.image = menuImage("camera.viewfinder", description: "Capture Screenshot")
+            screenshotItem.isEnabled = true
+            menu.addItem(screenshotItem)
+
             return menu
         }
 
         @objc private func attachImages(_ sender: NSMenuItem) {
             parent.onAttachImages()
+        }
+
+        @objc private func captureScreenshot(_ sender: NSMenuItem) {
+            parent.onCaptureScreenshot()
         }
 
         private func menuImage(_ systemName: String, description: String) -> NSImage? {

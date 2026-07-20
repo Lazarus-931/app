@@ -451,6 +451,26 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    func captureScreenshotAttachment() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nativ-screenshot-\(UUID().uuidString).png")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-i", url.path]
+        process.terminationHandler = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let attachment = try? ChatImageAttachment(contentsOf: url)
+                else {
+                    return
+                }
+                self.pendingImageAttachments.append(attachment)
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        try? process.run()
+    }
+
     func chooseImageAttachments() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
