@@ -182,11 +182,15 @@ struct ControlPanelView: View {
                         isCurrent: isCurrentRecent(recent),
                         isSelectionDisabled: isRecentSelectionDisabled(recent),
                         isDeleteDisabled: isRecentDeleteDisabled(recent),
+                        canRename: canRenameRecent(recent),
                         onSelect: {
                             applySidebarSelection(recent.selection)
                         },
                         onDelete: {
                             deleteRecentSession(recent)
+                        },
+                        onRename: { newTitle in
+                            renameRecentSession(recent, to: newTitle)
                         }
                     )
                     .listRowInsets(sidebarItemInsets)
@@ -293,6 +297,20 @@ struct ControlPanelView: View {
     private func createRecentSession() {
         chat.createSession()
         applySidebarSelection(chat.currentSessionID.map(ControlPanelSidebarSelection.chat) ?? .tab(.chat))
+    }
+
+    private func canRenameRecent(_ recent: ControlPanelRecentSession) -> Bool {
+        if case .chat = recent.selection {
+            return true
+        }
+        return false
+    }
+
+    private func renameRecentSession(_ recent: ControlPanelRecentSession, to newTitle: String) {
+        guard case .chat(let sessionID) = recent.selection else {
+            return
+        }
+        chat.renameSession(sessionID, to: newTitle)
     }
 
     private func handleNewChatRequest() {
@@ -483,10 +501,14 @@ private struct ControlPanelRecentSessionRow: View {
     let isCurrent: Bool
     let isSelectionDisabled: Bool
     let isDeleteDisabled: Bool
+    let canRename: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
+    let onRename: (String) -> Void
     @State private var isHovering = false
     @State private var isDeleteHovering = false
+    @State private var isRenaming = false
+    @State private var renameDraft = ""
 
     var body: some View {
         HStack(spacing: 2) {
@@ -541,12 +563,28 @@ private struct ControlPanelRecentSessionRow: View {
             }
             .disabled(isSelectionDisabled)
 
+            if canRename {
+                Button {
+                    renameDraft = recent.title
+                    isRenaming = true
+                } label: {
+                    Label("Rename\u{2026}", systemImage: "pencil")
+                }
+            }
+
             Button(role: .destructive) {
                 onDelete()
             } label: {
                 Label("Delete", systemImage: "trash")
             }
             .disabled(isDeleteDisabled)
+        }
+        .alert("Rename Chat", isPresented: $isRenaming) {
+            TextField("Name", text: $renameDraft)
+            Button("Rename") {
+                onRename(renameDraft)
+            }
+            Button("Cancel", role: .cancel) {}
         }
     }
 }

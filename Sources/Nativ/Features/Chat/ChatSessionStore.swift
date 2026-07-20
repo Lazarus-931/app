@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ChatSession: Identifiable, Equatable, Codable {
     var id: UUID
     var title: String
+    var customTitle: String?
     var createdAt: Date
     var updatedAt: Date
     var messages: [ChatTranscriptMessage]
@@ -20,7 +21,10 @@ struct ChatSession: Identifiable, Equatable, Codable {
     }
 
     var displayTitle: String {
-        Self.defaultTitle(for: messages, createdAt: createdAt, fallback: title)
+        if let customTitle, !customTitle.isEmpty {
+            return customTitle
+        }
+        return Self.defaultTitle(for: messages, createdAt: createdAt, fallback: title)
     }
 
     static func recencySort(_ lhs: ChatSession, _ rhs: ChatSession) -> Bool {
