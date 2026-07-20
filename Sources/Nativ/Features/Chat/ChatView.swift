@@ -78,12 +78,9 @@ struct ChatView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .topTrailing) {
             if isFullScreen {
-                configurationButton
-                    .buttonStyle(.borderless)
-                    .frame(width: 32, height: 32)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .padding(.top, 10)
-                    .padding(.trailing, 14)
+                fullscreenConfigurationButton
+                    .padding(.top, 12)
+                    .padding(.trailing, 22)
             }
         }
         .onChange(of: model.cpuIsRunning) { _, running in
@@ -113,13 +110,34 @@ struct ChatView: View {
         .help(configurationVisibilityHelp)
         .accessibilityLabel(configurationVisibilityHelp)
         .popover(isPresented: $showsConfiguration, arrowEdge: .bottom) {
-            ChatConfigurationView(
-                settings: $model.settings,
-                settingsRequireRestart: model.settingsRequireRestart,
-                onReset: model.resetSettings
-            )
-            .frame(width: 340, height: 540)
+            configurationPopoverContent
         }
+    }
+
+    private var fullscreenConfigurationButton: some View {
+        Button {
+            showsConfiguration.toggle()
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .frame(width: 32, height: 32)
+                .background(.ultraThinMaterial, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.borderless)
+        .help(configurationVisibilityHelp)
+        .accessibilityLabel(configurationVisibilityHelp)
+        .popover(isPresented: $showsConfiguration, arrowEdge: .bottom) {
+            configurationPopoverContent
+        }
+    }
+
+    private var configurationPopoverContent: some View {
+        ChatConfigurationView(
+            settings: $model.settings,
+            settingsRequireRestart: model.settingsRequireRestart,
+            onReset: model.resetSettings
+        )
+        .frame(width: 340, height: 540)
     }
 
     private var configurationVisibilityHelp: String {

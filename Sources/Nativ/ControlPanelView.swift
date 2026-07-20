@@ -137,7 +137,7 @@ struct ControlPanelView: View {
             guard !showsNavigationPanel else {
                 return
             }
-            withAnimation(.snappy(duration: 0.2)) {
+            withAnimation(.smooth(duration: 0.38)) {
                 showsNavigationPanel = true
             }
         } else {
@@ -149,7 +149,7 @@ struct ControlPanelView: View {
                 else {
                     return
                 }
-                withAnimation(.snappy(duration: 0.2)) {
+                withAnimation(.smooth(duration: 0.3)) {
                     showsNavigationPanel = false
                 }
             }
@@ -225,7 +225,7 @@ struct ControlPanelView: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .frame(width: 268, height: 500)
-        .background(.ultraThinMaterial)
+        .background(.ultraThinMaterial.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -553,6 +553,15 @@ private struct ControlPanelRecentSessionRow: View {
         }
         .sidebarRowSelectionStyle(isSelected: isSelected)
         .opacity(isSelectionDisabled && !isCurrent ? 0.55 : 1)
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                guard canRename else {
+                    return
+                }
+                renameDraft = recent.title
+                isRenaming = true
+            }
+        )
         .onHover { isHovering = $0 }
         .animation(.easeInOut, value: isHovering)
         .contextMenu {
