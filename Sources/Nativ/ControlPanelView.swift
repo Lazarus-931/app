@@ -69,6 +69,9 @@ struct ControlPanelView: View {
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var showsNavigationPanel = false
+    @State private var navigationEdgeHovered = false
+    @State private var navigationPanelHovered = false
+    @State private var navigationPanelHideTask: Task<Void, Never>?
     @State private var isChatConfigurationVisible = false
     @State private var isFullScreen = false
     @State private var isNewChatHovering = false
@@ -76,35 +79,30 @@ struct ControlPanelView: View {
 
     var body: some View {
         detail
-            .overlay {
-                if showsNavigationPanel {
-                    ZStack(alignment: .topLeading) {
-                        Color.black.opacity(0.001)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                closeNavigationPanel()
-                            }
+            .overlay(alignment: .topLeading) {
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .frame(width: 12)
+                        .frame(maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .onHover { hovering in
+                            navigationEdgeHovered = hovering
+                            updateNavigationPanelVisibility()
+                        }
 
+                    if showsNavigationPanel {
                         sidebar
                             .padding(.top, isFullScreen ? 34 : 8)
-                            .padding(.leading, 12)
+                            .padding(.leading, 10)
+                            .onHover { hovering in
+                                navigationPanelHovered = hovering
+                                updateNavigationPanelVisibility()
+                            }
                             .transition(
-                                .move(edge: .top)
+                                .move(edge: .leading)
                                     .combined(with: .opacity)
                             )
                     }
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button {
-                        withAnimation(.snappy(duration: 0.22)) {
-                            showsNavigationPanel.toggle()
-                        }
-                    } label: {
-                        Image(systemName: "line.3.horizontal")
-                    }
-                    .help(showsNavigationPanel ? "Hide menu" : "Menu")
                 }
             }
         .frame(minWidth: 1040, minHeight: 600)
@@ -131,9 +129,30 @@ struct ControlPanelView: View {
         }
     }
 
-    private func closeNavigationPanel() {
-        withAnimation(.snappy(duration: 0.22)) {
-            showsNavigationPanel = false
+    private func updateNavigationPanelVisibility() {
+        navigationPanelHideTask?.cancel()
+        navigationPanelHideTask = nil
+
+        if navigationEdgeHovered || navigationPanelHovered {
+            guard !showsNavigationPanel else {
+                return
+            }
+            withAnimation(.snappy(duration: 0.2)) {
+                showsNavigationPanel = true
+            }
+        } else {
+            navigationPanelHideTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                guard !Task.isCancelled,
+                      !navigationEdgeHovered,
+                      !navigationPanelHovered
+                else {
+                    return
+                }
+                withAnimation(.snappy(duration: 0.2)) {
+                    showsNavigationPanel = false
+                }
+            }
         }
     }
 
@@ -202,7 +221,7 @@ struct ControlPanelView: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .frame(width: 268, height: 500)
-        .background(.regularMaterial)
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -225,7 +244,8 @@ struct ControlPanelView: View {
                     ChatView(
                         model: model,
                         chat: chat,
-                        showsConfiguration: $isChatConfigurationVisible
+                        showsConfiguration: $isChatConfigurationVisible,
+                        isFullScreen: isFullScreen
                     )
                 case .imageGeneration:
                     ImageGenerationView(model: model, viewModel: imageGeneration)
@@ -247,7 +267,6 @@ struct ControlPanelView: View {
     }
 
     private func applySidebarSelection(_ selection: ControlPanelSidebarSelection) {
-        closeNavigationPanel()
         switch selection {
         case .tab(let tab):
             sidebarSelection = selection

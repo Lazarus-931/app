@@ -35,6 +35,7 @@ struct ChatView: View {
     @ObservedObject var model: NativModel
     @ObservedObject var chat: ChatViewModel
     @Binding var showsConfiguration: Bool
+    var isFullScreen = false
     @State private var transcriptScrollPosition = ScrollPosition(edge: .bottom)
     @State private var composerHeight: CGFloat = 0
     @State private var followsLatestMessage = true
@@ -75,6 +76,16 @@ struct ChatView: View {
 
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .topTrailing) {
+            if isFullScreen {
+                configurationButton
+                    .buttonStyle(.borderless)
+                    .frame(width: 32, height: 32)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .padding(.top, 10)
+                    .padding(.trailing, 14)
+            }
+        }
         .onChange(of: model.cpuIsRunning) { _, running in
             if !running {
                 chat.targetDevice = .gpu
@@ -98,22 +109,28 @@ struct ChatView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showsConfiguration.toggle()
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                }
-                .help(configurationVisibilityHelp)
-                .accessibilityLabel(configurationVisibilityHelp)
-                .popover(isPresented: $showsConfiguration, arrowEdge: .bottom) {
-                    ChatConfigurationView(
-                        settings: $model.settings,
-                        settingsRequireRestart: model.settingsRequireRestart,
-                        onReset: model.resetSettings
-                    )
-                    .frame(width: 340, height: 540)
+                if !isFullScreen {
+                    configurationButton
                 }
             }
+        }
+    }
+
+    private var configurationButton: some View {
+        Button {
+            showsConfiguration.toggle()
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+        }
+        .help(configurationVisibilityHelp)
+        .accessibilityLabel(configurationVisibilityHelp)
+        .popover(isPresented: $showsConfiguration, arrowEdge: .bottom) {
+            ChatConfigurationView(
+                settings: $model.settings,
+                settingsRequireRestart: model.settingsRequireRestart,
+                onReset: model.resetSettings
+            )
+            .frame(width: 340, height: 540)
         }
     }
 
