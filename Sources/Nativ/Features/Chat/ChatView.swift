@@ -460,7 +460,7 @@ final class ChatViewModel: ObservableObject {
             imageAttachments: imageAttachments
         )
         messages.append(userMessage)
-        currentSession?.lastInferenceDevice = device.rawValue
+        self.currentSession?.lastInferenceDevice = device.rawValue
         persistCurrentSession(updateTimestamp: true)
         self.appModel = appModel
         let requestPort = device == .cpu ? settings.cpuServerPort : settings.serverPort
