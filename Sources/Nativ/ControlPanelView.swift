@@ -492,13 +492,8 @@ private final class ControlPanelWindowStateReaderView: NSView {
 private struct ControlPanelDetailSafeArea: ViewModifier {
     let isFullScreen: Bool
 
-    @ViewBuilder
     func body(content: Content) -> some View {
-        if isFullScreen {
-            content
-        } else {
-            content.ignoresSafeArea(.container, edges: .top)
-        }
+        content.ignoresSafeArea(.container, edges: isFullScreen ? [] : .top)
     }
 }
 
