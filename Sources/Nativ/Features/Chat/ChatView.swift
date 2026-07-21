@@ -1606,7 +1606,7 @@ private struct ChatEmptyTranscriptView: View {
                 .renderingMode(.template)
                 .scaledToFit()
                 .frame(width: 64)
-                .foregroundStyle(.quaternary)
+                .foregroundStyle(Color.nativMark)
 
             VStack(spacing: 7) {
                 Text(title)

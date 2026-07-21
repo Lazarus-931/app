@@ -292,6 +292,16 @@ struct ControlPanelView: View {
 
     private var detail: some View {
         VStack(spacing: 0) {
+            detailContent
+                .id(selectedTab)
+                .transition(.opacity)
+        }
+        .modifier(ControlPanelDetailSafeArea(isFullScreen: isFullScreen))
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        VStack(spacing: 0) {
             Group {
                 switch selectedTab {
                 case .chat:
@@ -317,10 +327,15 @@ struct ControlPanelView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .modifier(ControlPanelDetailSafeArea(isFullScreen: isFullScreen))
     }
 
     private func applySidebarSelection(_ selection: ControlPanelSidebarSelection) {
+        withAnimation(.easeOut(duration: 0.22)) {
+            applySidebarSelectionNow(selection)
+        }
+    }
+
+    private func applySidebarSelectionNow(_ selection: ControlPanelSidebarSelection) {
         switch selection {
         case .tab(let tab):
             sidebarSelection = selection
@@ -557,6 +572,7 @@ private struct ControlPanelRecentSessionRow: View {
     @State private var isDeleteHovering = false
     @State private var isRenaming = false
     @State private var renameDraft = ""
+    @FocusState private var renameFieldFocused: Bool
 
     private var recentDotColor: Color {
         switch recent.inferenceDevice {
@@ -571,25 +587,45 @@ private struct ControlPanelRecentSessionRow: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            Button(action: onSelect) {
+            if isRenaming {
                 HStack(spacing: 7) {
                     Circle()
                         .fill(recentDotColor)
                         .frame(width: 5, height: 5)
                         .accessibilityHidden(true)
 
-                    Text(recent.title)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    Spacer(minLength: 0)
+                    TextField("Name", text: $renameDraft)
+                        .textFieldStyle(.plain)
+                        .focused($renameFieldFocused)
+                        .onSubmit {
+                            commitRename()
+                        }
+                        .onExitCommand {
+                            isRenaming = false
+                        }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(.rect)
+            } else {
+                Button(action: onSelect) {
+                    HStack(spacing: 7) {
+                        Circle()
+                            .fill(recentDotColor)
+                            .frame(width: 5, height: 5)
+                            .accessibilityHidden(true)
+
+                        Text(recent.title)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .disabled(isSelectionDisabled)
+                .help(recent.title)
             }
-            .buttonStyle(.plain)
-            .disabled(isSelectionDisabled)
-            .help(recent.title)
 
             if isHovering {
                 Button(role: .destructive, action: onDelete) {
@@ -614,11 +650,7 @@ private struct ControlPanelRecentSessionRow: View {
         .opacity(isSelectionDisabled && !isCurrent ? 0.55 : 1)
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
-                guard canRename else {
-                    return
-                }
-                renameDraft = recent.title
-                isRenaming = true
+                beginRename()
             }
         )
         .onHover { isHovering = $0 }
@@ -633,8 +665,7 @@ private struct ControlPanelRecentSessionRow: View {
 
             if canRename {
                 Button {
-                    renameDraft = recent.title
-                    isRenaming = true
+                    beginRename()
                 } label: {
                     Label("Rename\u{2026}", systemImage: "pencil")
                 }
@@ -647,13 +678,20 @@ private struct ControlPanelRecentSessionRow: View {
             }
             .disabled(isDeleteDisabled)
         }
-        .alert("Rename Chat", isPresented: $isRenaming) {
-            TextField("Name", text: $renameDraft)
-            Button("Rename") {
-                onRename(renameDraft)
-            }
-            Button("Cancel", role: .cancel) {}
+    }
+
+    private func beginRename() {
+        guard canRename else {
+            return
         }
+        renameDraft = recent.title
+        isRenaming = true
+        renameFieldFocused = true
+    }
+
+    private func commitRename() {
+        onRename(renameDraft)
+        isRenaming = false
     }
 }
 
