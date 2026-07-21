@@ -31,7 +31,7 @@ struct ChatConfigurationView: View {
                 .padding(.vertical, 18)
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+        .background(Color.nativPanel.opacity(0.45))
         .task(id: modelConfigurationLookupID) {
             await loadModelConfiguration(for: modelConfigurationLookupID)
         }

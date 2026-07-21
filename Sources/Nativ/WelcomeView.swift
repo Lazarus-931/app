@@ -498,13 +498,13 @@ private struct WelcomeModelPickerRow: View {
                 .scaledToFit()
                 .frame(width: 22, height: 22)
                 .frame(width: 36, height: 36)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
+                .background(Color.nativPanel, in: RoundedRectangle(cornerRadius: 9))
         } else {
             Image(systemName: systemImage ?? "cube.transparent.fill")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 36, height: 36)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
+                .background(Color.nativPanel, in: RoundedRectangle(cornerRadius: 9))
         }
     }
 
@@ -536,7 +536,7 @@ private struct WelcomeModelPickerRow: View {
 private struct WelcomeBackground: View {
     var body: some View {
         ZStack {
-            Color(nsColor: .windowBackgroundColor)
+            Color.nativWindow
             LinearGradient(
                 colors: [Color.accentColor.opacity(0.10), Color.clear, Color.gray.opacity(0.06)],
                 startPoint: .topLeading,

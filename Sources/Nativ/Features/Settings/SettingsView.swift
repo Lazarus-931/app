@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var model: NativModel
     @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
+    @AppStorage("pinNavigationPanel") private var pinNavigationPanel = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchAtLoginError: String?
 
@@ -105,6 +106,7 @@ struct SettingsView: View {
                         Text(appearance.title).tag(appearance.rawValue)
                     }
                 }
+                Toggle("Pin navigation panel", isOn: $pinNavigationPanel)
                 Toggle("Launch at login", isOn: $launchAtLogin)
                 if let launchAtLoginError {
                     Text(launchAtLoginError)

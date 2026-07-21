@@ -161,7 +161,7 @@ struct ChatComposer: View {
 
                 HStack(spacing: 8) {
                     ChatComposerActionMenu(
-                        isEnabled: canCompose,
+                        isEnabled: true,
                         onAttachImages: viewModel.chooseImageAttachments,
                         onCaptureScreenshot: viewModel.captureScreenshotAttachment
                     )
@@ -1129,12 +1129,12 @@ private struct ChatComposerActionMenu: NSViewRepresentable {
             menu.addItem(imageItem)
 
             let screenshotItem = NSMenuItem(
-                title: "Capture Screenshot",
+                title: "Screenshot",
                 action: #selector(captureScreenshot(_:)),
                 keyEquivalent: ""
             )
             screenshotItem.target = self
-            screenshotItem.image = menuImage("camera.viewfinder", description: "Capture Screenshot")
+            screenshotItem.image = menuImage("camera.viewfinder", description: "Screenshot")
             screenshotItem.isEnabled = true
             menu.addItem(screenshotItem)
 
@@ -1496,7 +1496,7 @@ private struct ChatPendingImageAttachmentView: View {
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 7)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(Color.nativPanel)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 7)

@@ -40,7 +40,7 @@ struct ModelsView: View {
                 discoverPage
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.nativWindow)
         .task(id: modelScanPath) {
             localLibrary.scan(path: model.settings.modelSearchPath)
         }
@@ -598,7 +598,7 @@ private struct ModelsSearchField: View {
         .frame(height: 32)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(Color.nativPanel)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -943,7 +943,7 @@ private struct ModelProviderBadge: View {
             return Color.white.opacity(0.92)
         }
         if isHighlighted {
-            return Color(nsColor: .controlBackgroundColor)
+            return Color.nativPanel
         }
         if provider?.preservesIconColors == true {
             return Color.secondary.opacity(0.10)
@@ -1135,7 +1135,7 @@ private struct ModelRowBackground: ViewModifier {
         if isHovered {
             return Color.accentColor.opacity(0.08)
         }
-        return Color(nsColor: .controlBackgroundColor)
+        return Color.nativPanel
     }
 
     private var borderColor: Color {

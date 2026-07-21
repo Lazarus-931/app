@@ -75,7 +75,7 @@ struct ChatView: View {
             .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
 
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.nativWindow)
         .overlay(alignment: .topTrailing) {
             if isFullScreen {
                 VStack(alignment: .trailing, spacing: 8) {
@@ -460,6 +460,7 @@ final class ChatViewModel: ObservableObject {
             imageAttachments: imageAttachments
         )
         messages.append(userMessage)
+        currentSession?.lastInferenceDevice = device.rawValue
         persistCurrentSession(updateTimestamp: true)
         self.appModel = appModel
         let requestPort = device == .cpu ? settings.cpuServerPort : settings.serverPort
@@ -1511,7 +1512,7 @@ private struct ChatResponseMetricPill: View {
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(Color.nativPanel)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -1559,7 +1560,7 @@ private struct ChatImageAttachmentView: View {
                 }
                 .foregroundStyle(.secondary)
                 .frame(width: 180, height: 120)
-                .background(Color(nsColor: .controlBackgroundColor))
+                .background(Color.nativPanel)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))

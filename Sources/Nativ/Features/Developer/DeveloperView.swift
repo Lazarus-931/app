@@ -35,7 +35,7 @@ struct DeveloperView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 22)
             }
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(Color.nativWindow)
         }
     }
 
@@ -50,15 +50,6 @@ struct DeveloperView: View {
             }
 
             Spacer()
-
-            Button {
-                IssueReport.open(model: model, runtime: runtime)
-            } label: {
-                Label("Report Issue", systemImage: "ladybug")
-                    .font(.caption.weight(.semibold))
-            }
-            .buttonStyle(.bordered)
-            .help("Open a GitHub issue prefilled with diagnostics")
 
             Label(model.isRunning ? "Live" : "Offline", systemImage: "circle.fill")
                 .font(.caption.weight(.semibold))
@@ -138,7 +129,7 @@ struct DeveloperView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.nativPanel)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
@@ -318,7 +309,7 @@ private struct ServerEndpointsPanel: View {
             }
             .frame(height: listHeight)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.nativPanel)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
@@ -682,7 +673,7 @@ private struct RuntimeInfoCard: View {
         .frame(height: 56, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 11)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(Color.nativPanel)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 11)

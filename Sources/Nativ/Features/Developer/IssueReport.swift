@@ -21,12 +21,18 @@ enum IssueReport {
         return components?.url
     }
 
+    private static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.1"
+    }
+
     private static func body(model: NativModel, runtime: SystemRuntimeMonitor) -> String {
         let settings = model.settings.normalized()
         let ram = ByteCountFormatter.string(
             fromByteCount: Int64(clamping: runtime.totalMemoryBytes),
             countStyle: .memory
         )
+        let gpuModel = model.isRunning ? model.loadedModelDisplay : "none"
+        let cpuModel = model.cpuIsRunning ? model.cpuMenuModelDisplay : "none"
 
         var sections = [
             """
@@ -35,13 +41,15 @@ enum IssueReport {
             _Describe the issue._
 
             ### Environment
+            - App: Nativ v\(appVersion)
             - macOS: \(runtime.macOSVersion) (\(runtime.macOSBuild))
             - Chip: \(runtime.chipName), \(ram) RAM
             - mlx-vlm: \(runtime.mlxVLMVersion)
 
             ### Server state
             - Running: \(model.isRunning), CPU instance: \(model.cpuIsRunning)
-            - Model: \(model.loadedModelDisplay)
+            - GPU model: \(gpuModel)
+            - CPU model: \(cpuModel)
             - Port: \(settings.serverPort)
             """
         ]

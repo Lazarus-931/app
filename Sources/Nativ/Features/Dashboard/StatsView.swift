@@ -140,7 +140,7 @@ private struct DashboardContentView: View, Equatable {
             .frame(maxWidth: 1500, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.nativWindow)
         .contentShape(Rectangle())
         .onTapGesture {
             isModelSearchFocused = false
@@ -4934,7 +4934,7 @@ private enum DashboardPalette {
     static let primaryBar = Color(red: 73 / 255, green: 163 / 255, blue: 176 / 255)
     static let successBar = Color(red: 68 / 255, green: 157 / 255, blue: 187 / 255)
     static let failureBar = Color(red: 181 / 255, green: 51 / 255, blue: 63 / 255)
-    static let panelFill = Color(nsColor: .controlBackgroundColor)
+    static let panelFill = Color.nativPanel
     static let panelStroke = Color(nsColor: .separatorColor).opacity(0.6)
     static let axisLabel = Color(nsColor: .tertiaryLabelColor)
     static let axisText = Color(nsColor: .secondaryLabelColor)

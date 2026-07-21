@@ -367,7 +367,7 @@ struct IntegrationsView: View {
                 IntegrationCatalogView(viewModel: viewModel)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.nativWindow)
         .onAppear(perform: viewModel.appear)
         .onReceive(NotificationCenter.default.publisher(for: .localModelLibraryDidChange)) { _ in
             viewModel.modelsDidChange()
@@ -488,7 +488,7 @@ private struct IntegrationCard: View {
             .padding(18)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(isHovering ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
+                    .fill(isHovering ? Color.accentColor.opacity(0.08) : Color.nativPanel)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 16)
@@ -838,7 +838,7 @@ private struct IntegrationPanel<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.nativPanel, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)

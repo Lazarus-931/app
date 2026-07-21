@@ -49,7 +49,7 @@ struct ImageGenerationView: View {
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.nativWindow)
         .task(id: modelSearchScanPath) {
             modelLibrary.scan(path: model.settings.modelSearchPath)
         }
@@ -512,7 +512,7 @@ private struct GeneratedImageCard: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(Color.nativPanel)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
@@ -564,7 +564,7 @@ private struct ImageGenerationSection<Content: View>: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .fill(Color.nativPanel)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6)

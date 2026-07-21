@@ -69,6 +69,7 @@ struct ControlPanelView: View {
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var showsNavigationPanel = false
+    @AppStorage("pinNavigationPanel") private var pinNavigationPanel = false
     @State private var navigationEdgeHovered = false
     @State private var navigationPanelHovered = false
     @State private var navigationPanelHideTask: Task<Void, Never>?
@@ -79,6 +80,11 @@ struct ControlPanelView: View {
 
     var body: some View {
         detail
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if !isFullScreen && selectedTab != .chat {
+                    Color.clear.frame(height: 34)
+                }
+            }
             .overlay(alignment: .topLeading) {
                 ZStack(alignment: .topLeading) {
                     Color.clear
@@ -90,7 +96,7 @@ struct ControlPanelView: View {
                             updateNavigationPanelVisibility()
                         }
 
-                    if showsNavigationPanel {
+                    if showsNavigationPanel || pinNavigationPanel {
                         sidebar
                             .padding(.top, isFullScreen ? 34 : 8)
                             .padding(.leading, 10)
@@ -133,6 +139,10 @@ struct ControlPanelView: View {
         navigationPanelHideTask?.cancel()
         navigationPanelHideTask = nil
 
+        guard !pinNavigationPanel else {
+            return
+        }
+
         if navigationEdgeHovered || navigationPanelHovered {
             guard !showsNavigationPanel else {
                 return
@@ -157,6 +167,52 @@ struct ControlPanelView: View {
     }
 
     private var sidebar: some View {
+        VStack(spacing: 0) {
+            sidebarList
+
+            Divider()
+
+            HStack {
+                Button {
+                    applySidebarSelection(.tab(.settings))
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 28, height: 28)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Settings")
+
+                Spacer(minLength: 0)
+
+                Button {
+                    IssueReport.open(model: model, runtime: runtime)
+                } label: {
+                    Image(systemName: "ladybug")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 28, height: 28)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Report an issue")
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+        .frame(width: 268, height: 500)
+        .background(.ultraThinMaterial.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.28), radius: 26, y: 10)
+    }
+
+    private var sidebarList: some View {
         List {
             Section {
                 ForEach(ControlPanelTab.allCases) { tab in
@@ -224,14 +280,6 @@ struct ControlPanelView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .frame(width: 268, height: 500)
-        .background(.ultraThinMaterial.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.28), radius: 26, y: 10)
     }
 
     private var recentSessions: [ControlPanelRecentSession] {
@@ -461,12 +509,14 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
 
     let id: ID
     let title: String
+    let inferenceDevice: String?
     let createdAt: Date
     let updatedAt: Date
 
     init(chat session: ChatSessionSummary) {
         id = .chat(session.id)
         title = session.title
+        inferenceDevice = session.lastInferenceDevice
         createdAt = session.createdAt
         updatedAt = session.updatedAt
     }
@@ -474,6 +524,7 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
     init(imageGeneration session: ImageGenerationSessionSummary) {
         id = .imageGeneration(session.id)
         title = session.title
+        inferenceDevice = nil
         createdAt = session.createdAt
         updatedAt = session.updatedAt
     }
@@ -510,12 +561,23 @@ private struct ControlPanelRecentSessionRow: View {
     @State private var isRenaming = false
     @State private var renameDraft = ""
 
+    private var recentDotColor: Color {
+        switch recent.inferenceDevice {
+        case "cpu":
+            return .orange
+        case "gpu":
+            return .blue
+        default:
+            return isCurrent ? Color.accentColor : Color.clear
+        }
+    }
+
     var body: some View {
         HStack(spacing: 2) {
             Button(action: onSelect) {
                 HStack(spacing: 7) {
                     Circle()
-                        .fill(isCurrent ? Color.accentColor : Color.clear)
+                        .fill(recentDotColor)
                         .frame(width: 5, height: 5)
                         .accessibilityHidden(true)
 

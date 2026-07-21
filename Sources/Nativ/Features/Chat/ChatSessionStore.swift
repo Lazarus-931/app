@@ -6,6 +6,7 @@ struct ChatSession: Identifiable, Equatable, Codable {
     var id: UUID
     var title: String
     var customTitle: String?
+    var lastInferenceDevice: String?
     var createdAt: Date
     var updatedAt: Date
     var messages: [ChatTranscriptMessage]
@@ -14,6 +15,7 @@ struct ChatSession: Identifiable, Equatable, Codable {
         ChatSessionSummary(
             id: id,
             title: displayTitle,
+            lastInferenceDevice: lastInferenceDevice,
             createdAt: createdAt,
             updatedAt: updatedAt,
             messageCount: messages.count
@@ -93,6 +95,7 @@ struct ChatSession: Identifiable, Equatable, Codable {
 struct ChatSessionSummary: Identifiable, Equatable {
     let id: UUID
     let title: String
+    let lastInferenceDevice: String?
     let createdAt: Date
     let updatedAt: Date
     let messageCount: Int
