@@ -222,6 +222,11 @@ final class NativModel: ObservableObject {
         notifyMenuStateChanged()
     }
 
+    func restartServer() {
+        stopServer()
+        startServer()
+    }
+
     func toggleServer() {
         if isRunning {
             stopServer()

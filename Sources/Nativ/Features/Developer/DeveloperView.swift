@@ -15,6 +15,7 @@ struct DeveloperView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     pageHeader
                     runtimeGrid
+                    serverControlPanel
                     ServerEndpointsPanel(
                         title: "GPU server",
                         port: model.settings.normalized().serverPort,
@@ -95,6 +96,76 @@ struct DeveloperView: View {
                 systemImage: "shippingbox",
                 tint: .orange
             )
+        }
+    }
+
+    private var serverControlPanel: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "power")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(model.isRunning ? Color.green : Color.secondary)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill((model.isRunning ? Color.green : Color.secondary).opacity(0.12))
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Server")
+                    .font(.callout.weight(.semibold))
+                Text(serverControlStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 16)
+
+            portField("GPU port", value: $model.settings.serverPort)
+
+            if model.settings.cpuInstanceEnabled {
+                portField("CPU port", value: $model.settings.cpuServerPort)
+            }
+
+            if model.isRunning && model.settingsRequireRestart {
+                Button("Restart") {
+                    model.restartServer()
+                }
+            }
+
+            Button(model.isRunning ? "Stop" : "Start") {
+                model.toggleServer()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(model.isRunning ? .red : .accentColor)
+        }
+        .padding(12)
+        .background(Color.nativPanel)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
+    }
+
+    private var serverControlStatus: String {
+        if !model.isRunning {
+            return "Stopped"
+        }
+        if model.settingsRequireRestart {
+            return "Running \u{00b7} restart to apply changes"
+        }
+        return model.cpuIsRunning ? "Running \u{00b7} GPU + CPU" : "Running"
+    }
+
+    private func portField(_ title: String, value: Binding<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+            TextField(title, value: value, format: .number.grouping(.never))
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+                .frame(width: 74)
         }
     }
 
