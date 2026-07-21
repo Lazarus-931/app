@@ -77,25 +77,25 @@ struct ChatView: View {
         }
         .background(Color.nativWindow)
         .overlay(alignment: .topTrailing) {
-            if isFullScreen {
-                VStack(alignment: .trailing, spacing: 8) {
-                    fullscreenConfigurationButton
+            VStack(alignment: .trailing, spacing: 8) {
+                fullscreenConfigurationButton
 
-                    if showsConfiguration {
-                        configurationPopoverContent
+                if isFullScreen && showsConfiguration {
+                    configurationPopoverContent
                             .background(.regularMaterial)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                             }
-                            .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
+                        .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                .padding(.top, 12)
-                .padding(.trailing, 22)
             }
+            .padding(.top, 12)
+            .padding(.trailing, 22)
+            .opacity(isFullScreen ? 1 : 0)
+            .allowsHitTesting(isFullScreen)
         }
         .onChange(of: model.cpuIsRunning) { _, running in
             if !running {

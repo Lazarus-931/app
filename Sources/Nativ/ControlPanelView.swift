@@ -81,14 +81,12 @@ struct ControlPanelView: View {
     var body: some View {
         detail
             .safeAreaInset(edge: .top, spacing: 0) {
-                if !isFullScreen && selectedTab != .chat {
-                    Rectangle()
-                        .fill(.bar)
-                        .frame(height: 34)
-                        .overlay(alignment: .bottom) {
-                            Divider()
-                        }
-                }
+                Rectangle()
+                    .fill(.bar)
+                    .frame(height: titlebarInsetHeight)
+                    .overlay(alignment: .bottom) {
+                        Divider().opacity(titlebarInsetHeight > 0 ? 1 : 0)
+                    }
             }
             .overlay(alignment: .topLeading) {
                 ZStack(alignment: .topLeading) {
@@ -138,6 +136,10 @@ struct ControlPanelView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
             isFullScreen = false
         }
+    }
+
+    private var titlebarInsetHeight: CGFloat {
+        isFullScreen || selectedTab == .chat ? 0 : 34
     }
 
     private func updateNavigationPanelVisibility() {
