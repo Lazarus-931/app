@@ -20,11 +20,11 @@ struct SettingsView: View {
             }
 
             Section("Inference") {
-                LabeledContent("GPU server", value: "Default \u{00b7} port \(NativSettings.serverPort)")
+                numberField("Server port", value: $model.settings.serverPort)
                 Toggle("CPU instance", isOn: $model.settings.cpuInstanceEnabled)
                 if model.settings.cpuInstanceEnabled {
                     TextField("CPU model", text: optionalString($model.settings.cpuLanguageModelID))
-                    Text("Runs a second server on port \(NativSettings.cpuServerPort) on the CPU fast path, alongside the GPU server. Restart the server to apply.")
+                    Text("Runs a second server on port \(model.settings.normalized().cpuServerPort) on the CPU fast path, alongside the GPU server. Restart the server to apply.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

@@ -251,6 +251,7 @@ final class ChatViewModel: ObservableObject {
         let settings: NativSettings
         let modelID: String
         let device: ChatInferenceDevice
+        let baseURL: URL
     }
 
     @Published private(set) var sessions: [ChatSessionSummary] = []
@@ -263,10 +264,6 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var scrollToken = 0
     @Published var targetDevice: ChatInferenceDevice = .gpu
 
-    private let client = NativChatClient()
-    private let cpuClient = NativChatClient(
-        baseURL: URL(string: "http://127.0.0.1:\(NativSettings.cpuServerPort)")!
-    )
     private let sessionStore = ChatSessionStore()
     private var activeTask: Task<Void, Never>?
     private var activeRequestID: UUID?
@@ -465,6 +462,7 @@ final class ChatViewModel: ObservableObject {
         messages.append(userMessage)
         persistCurrentSession(updateTimestamp: true)
         self.appModel = appModel
+        let requestPort = device == .cpu ? settings.cpuServerPort : settings.serverPort
         requestQueue.append(QueuedChatRequest(
             id: UUID(),
             sessionID: currentSession.id,
@@ -472,7 +470,8 @@ final class ChatViewModel: ObservableObject {
             assistantMessageID: UUID(),
             settings: settings,
             modelID: modelID,
-            device: device
+            device: device,
+            baseURL: URL(string: "http://127.0.0.1:\(requestPort)")!
         ))
         bumpScroll()
         startNextRequestIfNeeded()
@@ -594,7 +593,7 @@ final class ChatViewModel: ObservableObject {
                     return
                 }
 
-                let requestClient = queuedRequest.device == .cpu ? cpuClient : client
+                let requestClient = NativChatClient(baseURL: queuedRequest.baseURL)
                 do {
                     let completion = try await requestClient.streamChat(request, onEvent: { [weak self] event in
                         await MainActor.run {

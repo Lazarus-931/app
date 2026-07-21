@@ -472,6 +472,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showMainWindow()
     }
 
+    func reportIssue() {
+        IssueReport.open(model: model, runtime: runtime)
+    }
+
     func createNewChat() {
         controlPanelNavigation.createChat()
         showMainWindow()

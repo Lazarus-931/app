@@ -2,11 +2,10 @@ import Foundation
 import NativServerKit
 
 struct NativSettings: Codable, Equatable {
-    static let defaultModelSearchPath = "~/.cache/huggingface/hub"
-    static let serverPort = 8080
-    static let cpuServerPort = 8081
+    static let defaultModelSearchPath = HuggingFaceCachePath.resolvedDefault
 
     var modelSearchPath: String
+    var serverPort: Int
     var cpuInstanceEnabled: Bool
     var cpuLanguageModelID: String?
     var languageModelID: String?
@@ -46,6 +45,7 @@ struct NativSettings: Codable, Equatable {
 
     init(
         modelSearchPath: String = Self.defaultModelSearchPath,
+        serverPort: Int = 8080,
         cpuInstanceEnabled: Bool = false,
         cpuLanguageModelID: String? = nil,
         languageModelID: String? = nil,
@@ -84,6 +84,7 @@ struct NativSettings: Codable, Equatable {
         prefixCacheBlockSize: Int = 16
     ) {
         self.modelSearchPath = modelSearchPath
+        self.serverPort = serverPort
         self.cpuInstanceEnabled = cpuInstanceEnabled
         self.cpuLanguageModelID = cpuLanguageModelID
         self.languageModelID = languageModelID
@@ -124,6 +125,7 @@ struct NativSettings: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case modelSearchPath
+        case serverPort
         case cpuInstanceEnabled
         case cpuLanguageModelID
         case languageModelID
@@ -168,6 +170,7 @@ struct NativSettings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let legacySelectedModelID = try container.decodeIfPresent(String.self, forKey: .selectedModelID)
         modelSearchPath = try container.decodeIfPresent(String.self, forKey: .modelSearchPath) ?? defaults.modelSearchPath
+        serverPort = try container.decodeIfPresent(Int.self, forKey: .serverPort) ?? defaults.serverPort
         cpuInstanceEnabled = try container.decodeIfPresent(Bool.self, forKey: .cpuInstanceEnabled) ?? defaults.cpuInstanceEnabled
         cpuLanguageModelID = try container.decodeIfPresent(String.self, forKey: .cpuLanguageModelID) ?? defaults.cpuLanguageModelID
         languageModelID = try container.decodeIfPresent(String.self, forKey: .languageModelID) ?? legacySelectedModelID ?? defaults.languageModelID
@@ -209,6 +212,7 @@ struct NativSettings: Codable, Equatable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(modelSearchPath, forKey: .modelSearchPath)
+        try container.encode(serverPort, forKey: .serverPort)
         try container.encode(cpuInstanceEnabled, forKey: .cpuInstanceEnabled)
         try container.encodeIfPresent(cpuLanguageModelID, forKey: .cpuLanguageModelID)
         try container.encodeIfPresent(languageModelID, forKey: .languageModelID)
@@ -271,7 +275,10 @@ struct NativSettings: Codable, Equatable {
     func normalized() -> Self {
         var settings = self
         let trimmedPath = settings.modelSearchPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.modelSearchPath = trimmedPath.isEmpty ? Self.defaultModelSearchPath : trimmedPath
+        settings.modelSearchPath = trimmedPath.isEmpty || trimmedPath == HuggingFaceCachePath.legacyDefault
+            ? Self.defaultModelSearchPath
+            : trimmedPath
+        settings.serverPort = min(max(settings.serverPort, 1024), 65_534)
         settings.languageModelID = Self.normalizedModelID(settings.languageModelID)
         settings.cpuLanguageModelID = Self.normalizedModelID(settings.cpuLanguageModelID)
         settings.imageGenerationModelID = Self.normalizedModelID(settings.imageGenerationModelID)
@@ -309,6 +316,7 @@ struct NativSettings: Codable, Equatable {
         let lhsSpeculativeDecodingActive = lhs.speculativeDecodingEnabled && !lhs.draftModelID.isEmpty
         let rhsSpeculativeDecodingActive = rhs.speculativeDecodingEnabled && !rhs.draftModelID.isEmpty
         return lhs.modelSearchPath == rhs.modelSearchPath
+            && lhs.serverPort == rhs.serverPort
             && lhs.cpuInstanceEnabled == rhs.cpuInstanceEnabled
             && (!lhs.cpuInstanceEnabled || lhs.cpuLanguageModelID == rhs.cpuLanguageModelID)
             && lhs.languageModelID == rhs.languageModelID
@@ -355,6 +363,7 @@ struct NativSettings: Codable, Equatable {
     var launchArguments: [String] {
         let settings = normalized()
         var arguments = [
+            "--port", "\(settings.serverPort)",
             "--max-tokens", "\(settings.maxTokens)"
         ]
 
@@ -388,11 +397,15 @@ struct NativSettings: Codable, Equatable {
         return arguments
     }
 
+    var cpuServerPort: Int {
+        min(serverPort + 1, 65_535)
+    }
+
     var cpuLaunchArguments: [String] {
         let settings = normalized()
         var arguments = [
             "--device", "cpu",
-            "--port", "\(Self.cpuServerPort)",
+            "--port", "\(settings.cpuServerPort)",
             "--max-tokens", "\(settings.maxTokens)"
         ]
         if let cpuLanguageModelID = settings.cpuLanguageModelID {

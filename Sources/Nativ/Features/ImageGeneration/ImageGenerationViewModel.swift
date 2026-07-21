@@ -40,7 +40,7 @@ final class ImageGenerationViewModel: ObservableObject {
     @Published private(set) var statusText: String?
     @Published private(set) var errorText: String?
 
-    private let client = NativImageClient()
+    private var client = NativImageClient()
     private let sessionStore = ImageGenerationSessionStore()
     private var activeTask: Task<Void, Never>?
     private var storedSessions: [ImageGenerationSession] = []
@@ -179,6 +179,9 @@ final class ImageGenerationViewModel: ObservableObject {
     }
 
     func run(using appModel: NativModel) {
+        client = NativImageClient(
+            baseURL: URL(string: "http://127.0.0.1:\(appModel.settings.normalized().serverPort)")!
+        )
         guard !isGenerating,
               appModel.isRunning,
               let requestModelID = normalizedModelID,

@@ -17,13 +17,13 @@ struct DeveloperView: View {
                     runtimeGrid
                     ServerEndpointsPanel(
                         title: "GPU server",
-                        port: NativSettings.serverPort,
+                        port: model.settings.normalized().serverPort,
                         isLive: model.isRunning
                     )
                     if model.settings.cpuInstanceEnabled || model.cpuIsRunning {
                         ServerEndpointsPanel(
                             title: "CPU server",
-                            port: NativSettings.cpuServerPort,
+                            port: model.settings.normalized().cpuServerPort,
                             isLive: model.cpuIsRunning
                         )
                     }
@@ -50,6 +50,15 @@ struct DeveloperView: View {
             }
 
             Spacer()
+
+            Button {
+                IssueReport.open(model: model, runtime: runtime)
+            } label: {
+                Label("Report Issue", systemImage: "ladybug")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .help("Open a GitHub issue prefilled with diagnostics")
 
             Label(model.isRunning ? "Live" : "Offline", systemImage: "circle.fill")
                 .font(.caption.weight(.semibold))

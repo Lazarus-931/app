@@ -42,6 +42,15 @@ enum LocalModelCapability: String, CaseIterable, Hashable, Sendable {
     }
 }
 
+enum LocalModelSource: Equatable, Sendable {
+    case huggingFaceCache
+    case lmStudio
+
+    var badgeLabel: String? {
+        self == .lmStudio ? "LM Studio" : nil
+    }
+}
+
 struct LocalModel: Identifiable, Equatable, Sendable {
     var id: String { repoID }
 
@@ -52,10 +61,22 @@ struct LocalModel: Identifiable, Equatable, Sendable {
     let contextSize: Int?
     let provider: LocalModelProvider?
     let capabilities: Set<LocalModelCapability>
+    var source: LocalModelSource = .huggingFaceCache
 
     var isEligibleForLanguageModelPicker: Bool {
         !capabilities.contains(.speechToText)
             && !capabilities.contains(.textToSpeech)
+    }
+
+    var isDeletableFromCache: Bool {
+        source == .huggingFaceCache
+    }
+
+    var serverModelIdentifier: String {
+        if source == .huggingFaceCache {
+            return repoID
+        }
+        return snapshotURL?.path ?? repoID
     }
 }
 
@@ -111,6 +132,91 @@ enum LocalModelDiscovery {
         return (effectivePath as NSString).expandingTildeInPath
     }
 
+    private static func isIncompleteDownload(
+        repoURL: URL,
+        snapshotURL: URL,
+        fileManager: FileManager
+    ) -> Bool {
+        let blobsURL = repoURL.appendingPathComponent("blobs", isDirectory: true)
+        if let blobs = try? fileManager.contentsOfDirectory(
+            at: blobsURL,
+            includingPropertiesForKeys: nil
+        ), blobs.contains(where: { $0.lastPathComponent.hasSuffix(".incomplete") }) {
+            return true
+        }
+
+        let indexURL = snapshotURL.appendingPathComponent("model.safetensors.index.json")
+        guard fileManager.fileExists(atPath: indexURL.path),
+              let data = try? Data(contentsOf: indexURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let weightMap = json["weight_map"] as? [String: String]
+        else {
+            return false
+        }
+        for shard in Set(weightMap.values) {
+            let shardURL = snapshotURL.appendingPathComponent(shard)
+            if !fileManager.fileExists(atPath: shardURL.path) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static let lmStudioModelRoots = [
+        "~/.lmstudio/models",
+        "~/.cache/lm-studio/models"
+    ]
+
+    private static func scanLMStudioSynchronously(fileManager: FileManager) -> [LocalModel] {
+        var models: [LocalModel] = []
+        for root in lmStudioModelRoots {
+            let rootURL = URL(fileURLWithPath: (root as NSString).expandingTildeInPath, isDirectory: true)
+            guard let publisherURLs = try? fileManager.contentsOfDirectory(
+                at: rootURL,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                continue
+            }
+            for publisherURL in publisherURLs where isDirectoryURL(publisherURL, fileManager: fileManager) {
+                guard let modelURLs = try? fileManager.contentsOfDirectory(
+                    at: publisherURL,
+                    includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+                    options: [.skipsHiddenFiles]
+                ) else {
+                    continue
+                }
+                for modelURL in modelURLs where isDirectoryURL(modelURL, fileManager: fileManager) {
+                    guard isLikelyMLXModelSnapshot(modelURL, fileManager: fileManager) else {
+                        continue
+                    }
+                    let repoID = "\(publisherURL.lastPathComponent)/\(modelURL.lastPathComponent)"
+                    guard !models.contains(where: { $0.repoID == repoID }) else {
+                        continue
+                    }
+                    let modifiedAt = (try? modelURL.resourceValues(
+                        forKeys: [.contentModificationDateKey]
+                    ))?.contentModificationDate
+                    models.append(LocalModel(
+                        repoID: repoID,
+                        snapshotURL: modelURL,
+                        modifiedAt: modifiedAt,
+                        sizeBytes: snapshotSize(at: modelURL, fileManager: fileManager),
+                        contextSize: contextSize(at: modelURL, fileManager: fileManager),
+                        provider: modelProvider(
+                            repoID: repoID,
+                            snapshotURL: modelURL,
+                            fileManager: fileManager
+                        ),
+                        capabilities: modelCapabilities(at: modelURL, fileManager: fileManager),
+                        source: .lmStudio
+                    ))
+                }
+            }
+        }
+        return models
+    }
+
     private static func scanSynchronously(path: String) throws -> [LocalModel] {
         let fileManager = FileManager.default
         let rootURL = URL(fileURLWithPath: path, isDirectory: true)
@@ -138,7 +244,12 @@ enum LocalModelDiscovery {
             }
 
             guard let snapshotURL = preferredSnapshotURL(for: repoURL, fileManager: fileManager),
-                  isLikelyMLXModelSnapshot(snapshotURL, fileManager: fileManager)
+                  isLikelyMLXModelSnapshot(snapshotURL, fileManager: fileManager),
+                  !isIncompleteDownload(
+                    repoURL: repoURL,
+                    snapshotURL: snapshotURL,
+                    fileManager: fileManager
+                  )
             else {
                 return nil
             }
@@ -159,7 +270,10 @@ enum LocalModelDiscovery {
             )
         }
 
-        return models.sorted { lhs, rhs in
+        let lmStudioModels = scanLMStudioSynchronously(fileManager: fileManager)
+            .filter { external in !models.contains(where: { $0.repoID == external.repoID }) }
+
+        return (models + lmStudioModels).sorted { lhs, rhs in
             switch lhs.repoID.localizedCaseInsensitiveCompare(rhs.repoID) {
             case .orderedAscending:
                 return true

@@ -135,8 +135,10 @@ struct ModelsView: View {
                                 selectedLanguageModelID: model.settings.normalized().languageModelID,
                                 isModelSwitchInProgress: model.modelSwitchInProgress,
                                 isDeleting: localLibrary.deletingModelIDs.contains(localModel.repoID),
-                                canDelete: !model.modelSwitchInProgress && !isModelInUse(localModel.repoID),
-                                onLoadModel: { model.switchLanguageModel(to: localModel.repoID) },
+                                canDelete: localModel.isDeletableFromCache
+                                    && !model.modelSwitchInProgress
+                                    && !isModelInUse(localModel.serverModelIdentifier),
+                                onLoadModel: { model.switchLanguageModel(to: localModel.serverModelIdentifier) },
                                 onDelete: { deleteInstalledModel(localModel) }
                             )
                         }
@@ -619,6 +621,7 @@ private struct InstalledModelRow: View {
 
     private var isSelected: Bool {
         selectedLanguageModelID == localModel.repoID
+            || selectedLanguageModelID == localModel.serverModelIdentifier
     }
 
     private var isLoading: Bool {
@@ -667,6 +670,9 @@ private struct InstalledModelRow: View {
                                     systemImage: "internaldrive"
                                 )
                                 ModelCapacityPills(weightBytes: sizeBytes)
+                            }
+                            if let badge = localModel.source.badgeLabel {
+                                ModelPill(title: badge, systemImage: "shippingbox", color: .purple)
                             }
                         }
 

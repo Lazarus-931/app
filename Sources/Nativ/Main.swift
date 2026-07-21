@@ -116,6 +116,12 @@ private struct NativApplication: App {
                 }
                 .keyboardShortcut(",")
             }
+
+            CommandGroup(after: .help) {
+                Button("Report an Issue…") {
+                    appDelegate.reportIssue()
+                }
+            }
         }
     }
 }

@@ -36,10 +36,8 @@ final class NativModel: ObservableObject {
 
     private let server = NativProcessController()
     private let cpuServer = NativProcessController()
-    private let metricsClient = NativMetricsClient()
-    private let cpuMetricsClient = NativMetricsClient(
-        baseURL: URL(string: "http://127.0.0.1:\(NativSettings.cpuServerPort)")!
-    )
+    private var metricsClient = NativMetricsClient()
+    private var cpuMetricsClient = NativMetricsClient()
     private var cpuMetricsFetchTask: Task<Void, Never>?
     private var metricsFetchTask: Task<Void, Never>?
     private var metricsTimer: Timer?
@@ -138,6 +136,14 @@ final class NativModel: ObservableObject {
 
     func startServer() {
         var shouldStartMetrics = false
+        let applied = settings.normalized()
+        metricsClient = NativMetricsClient(
+            baseURL: URL(string: "http://127.0.0.1:\(applied.serverPort)")!
+        )
+        cpuMetricsClient = NativMetricsClient(
+            baseURL: URL(string: "http://127.0.0.1:\(applied.cpuServerPort)")!
+        )
+        IntegrationProfileManager.serverPort = applied.serverPort
         do {
             var launchEnvironment = settings.launchEnvironment
             launchEnvironment["MLX_PLATFORM_ANALYTICS_DB_PATH"] = currentAnalyticsDatabaseURL().path
@@ -177,7 +183,7 @@ final class NativModel: ObservableObject {
                 environment: launchEnvironment
             )
             cpuIsRunning = true
-            appendLog("\nStarted CPU mlx-vlm-server on port \(NativSettings.cpuServerPort).\n")
+            appendLog("\nStarted CPU mlx-vlm-server on port \(settings.normalized().cpuServerPort).\n")
         } catch {
             appendLog("\nFailed to start CPU mlx-vlm-server: \(error)\n")
         }

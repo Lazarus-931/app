@@ -309,7 +309,9 @@ struct ChatComposer: View {
 
     private var selectedLocalModel: LocalModel? {
         guard let selectedModelID else { return nil }
-        return localLibrary.models.first { $0.repoID == selectedModelID }
+        return localLibrary.models.first {
+            $0.repoID == selectedModelID || $0.serverModelIdentifier == selectedModelID
+        }
     }
 
     private var selectedModelProvider: LocalModelProvider? {
@@ -368,7 +370,7 @@ struct ChatComposer: View {
     private func select(_ device: ChatInferenceDevice, _ localModel: LocalModel) {
         viewModel.targetDevice = device
         if device == .cpu {
-            model.switchCPUModel(to: localModel.repoID)
+            model.switchCPUModel(to: localModel.serverModelIdentifier)
             return
         }
         if localModel.capabilities.contains(.reasoning) {
@@ -376,7 +378,7 @@ struct ChatComposer: View {
         } else {
             model.settings.thinkingEnabled = false
         }
-        model.switchLanguageModel(to: localModel.repoID)
+        model.switchLanguageModel(to: localModel.serverModelIdentifier)
     }
 
     private func switchModel(_ device: ChatInferenceDevice, _ repoID: String) {
