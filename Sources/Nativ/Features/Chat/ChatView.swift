@@ -78,9 +78,9 @@ struct ChatView: View {
         .background(Color.nativWindow)
         .overlay(alignment: .topTrailing) {
             VStack(alignment: .trailing, spacing: 8) {
-                fullscreenConfigurationButton
+                configurationButton
 
-                if isFullScreen && showsConfiguration {
+                if showsConfiguration {
                     configurationPopoverContent
                             .background(.regularMaterial)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -94,48 +94,15 @@ struct ChatView: View {
             }
             .padding(.top, 12)
             .padding(.trailing, 22)
-            .opacity(isFullScreen ? 1 : 0)
-            .allowsHitTesting(isFullScreen)
         }
         .onChange(of: model.cpuIsRunning) { _, running in
             if !running {
                 chat.targetDevice = .gpu
             }
         }
-        .onChange(of: isFullScreen) { _, _ in
-            showsConfiguration = false
-        }
-        .toolbar {
-            if #available(macOS 26.0, *) {
-                ToolbarSpacer(.flexible)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                configurationButton
-            }
-        }
     }
 
     private var configurationButton: some View {
-        Button {
-            showsConfiguration.toggle()
-        } label: {
-            Image(systemName: "slider.horizontal.3")
-        }
-        .help(configurationVisibilityHelp)
-        .accessibilityLabel(configurationVisibilityHelp)
-        .popover(
-            isPresented: Binding(
-                get: { showsConfiguration && !isFullScreen },
-                set: { showsConfiguration = $0 }
-            ),
-            arrowEdge: .bottom
-        ) {
-            configurationPopoverContent
-        }
-    }
-
-    private var fullscreenConfigurationButton: some View {
         Button {
             withAnimation(.smooth(duration: 0.28)) {
                 showsConfiguration.toggle()

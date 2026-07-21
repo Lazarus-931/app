@@ -81,12 +81,7 @@ struct ControlPanelView: View {
     var body: some View {
         detail
             .safeAreaInset(edge: .top, spacing: 0) {
-                Rectangle()
-                    .fill(.bar)
-                    .frame(height: titlebarInsetHeight)
-                    .overlay(alignment: .bottom) {
-                        Divider().opacity(titlebarInsetHeight > 0 ? 1 : 0)
-                    }
+                Color.clear.frame(height: titlebarInsetHeight)
             }
             .overlay(alignment: .topLeading) {
                 ZStack(alignment: .topLeading) {
