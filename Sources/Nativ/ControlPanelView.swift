@@ -82,7 +82,12 @@ struct ControlPanelView: View {
         detail
             .safeAreaInset(edge: .top, spacing: 0) {
                 if !isFullScreen && selectedTab != .chat {
-                    Color.clear.frame(height: 34)
+                    Rectangle()
+                        .fill(.bar)
+                        .frame(height: 34)
+                        .overlay(alignment: .bottom) {
+                            Divider()
+                        }
                 }
             }
             .overlay(alignment: .topLeading) {

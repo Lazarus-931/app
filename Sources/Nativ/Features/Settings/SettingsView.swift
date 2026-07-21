@@ -21,7 +21,11 @@ struct SettingsView: View {
             }
 
             Section("Inference") {
-                numberField("Server port", value: $model.settings.serverPort)
+                TextField(
+                    "Server port",
+                    value: $model.settings.serverPort,
+                    format: .number.grouping(.never)
+                )
                 Toggle("CPU instance", isOn: $model.settings.cpuInstanceEnabled)
                 if model.settings.cpuInstanceEnabled {
                     TextField("CPU model", text: optionalString($model.settings.cpuLanguageModelID))
