@@ -86,6 +86,7 @@ private struct DashboardModelState: Equatable {
     let cpuTotalTokens: Int?
     let cpuRequestsCompleted: Int?
     let cpuRequestsFailed: Int?
+    let cpuDecodeTokensPerSecond: Double?
     let modelSearchPath: String
     let analyticsDatabaseURL: URL
     let loadedModelID: String?
@@ -99,6 +100,7 @@ private struct DashboardModelState: Equatable {
         cpuTotalTokens = model.cpuMetrics?.summary.totalProcessedTokens
         cpuRequestsCompleted = model.cpuMetrics?.summary.requestsCompleted
         cpuRequestsFailed = model.cpuMetrics?.summary.requestsFailed
+        cpuDecodeTokensPerSecond = model.cpuMetrics?.summary.averageDecodeTokensPerSecond
         modelSearchPath = model.settings.modelSearchPath
         analyticsDatabaseURL = model.analyticsDatabaseURL
         loadedModelID = model.metrics?.server.loadedModel
@@ -221,21 +223,44 @@ private struct DashboardContentView: View, Equatable {
             Spacer(minLength: 16)
 
             cpuStat("Tokens", modelState.cpuTotalTokens)
-            cpuStat("Completed", modelState.cpuRequestsCompleted)
-            cpuStat("Failed", modelState.cpuRequestsFailed)
+            cpuStat("Requests", modelState.cpuRequestsCompleted)
+            cpuTextStat("Success", cpuSuccessRateLabel)
+            cpuTextStat("Decode", cpuDecodeRateLabel)
         }
         .padding(12)
         .dashboardPanelStyle(cornerRadius: 12)
     }
 
     private func cpuStat(_ title: String, _ value: Int?) -> some View {
+        cpuTextStat(title, value.map { compact($0) } ?? "\u{2014}")
+    }
+
+    private func cpuTextStat(_ title: String, _ value: String) -> some View {
         VStack(alignment: .trailing, spacing: 1) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(value.map { compact($0) } ?? "\u{2014}")
+            Text(value)
                 .font(.callout.weight(.semibold).monospacedDigit())
         }
+    }
+
+    private var cpuSuccessRateLabel: String {
+        guard let completed = modelState.cpuRequestsCompleted else {
+            return "\u{2014}"
+        }
+        let total = completed + (modelState.cpuRequestsFailed ?? 0)
+        guard total > 0 else {
+            return "\u{2014}"
+        }
+        return "\(Int((Double(completed) / Double(total) * 100).rounded()))%"
+    }
+
+    private var cpuDecodeRateLabel: String {
+        guard let rate = modelState.cpuDecodeTokensPerSecond, rate > 0, rate.isFinite else {
+            return "\u{2014}"
+        }
+        return NativFormatting.rate(rate)
     }
 
     private var filterBar: some View {
