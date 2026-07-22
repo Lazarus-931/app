@@ -70,7 +70,7 @@ struct ControlPanelView: View {
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var showsNavigationPanel = false
-    @AppStorage("pinNavigationPanel") private var pinNavigationPanel = false
+    @AppStorage("sidebarPinned") private var pinNavigationPanel = true
     @State private var navigationEdgeHovered = false
     @State private var navigationPanelHovered = false
     @State private var navigationPanelHideTask: Task<Void, Never>?
@@ -188,6 +188,18 @@ struct ControlPanelView: View {
                 .foregroundStyle(.secondary)
                 .help("Settings")
 
+                Button {
+                    pinNavigationPanel.toggle()
+                } label: {
+                    Image(systemName: pinNavigationPanel ? "pin.fill" : "pin")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 28, height: 28)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(pinNavigationPanel ? Color.accentColor : .secondary)
+                .help(pinNavigationPanel ? "Auto-hide the sidebar" : "Keep the sidebar visible")
+
                 Spacer(minLength: 0)
 
                 Button {
@@ -206,7 +218,15 @@ struct ControlPanelView: View {
             .padding(.vertical, 6)
         }
         .frame(width: 268, height: 500)
-        .background(.ultraThinMaterial.opacity(0.6))
+        .background {
+            if pinNavigationPanel {
+                Color.nativPanel
+            } else {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .opacity(0.6)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
