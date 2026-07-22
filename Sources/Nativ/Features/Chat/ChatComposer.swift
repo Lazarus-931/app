@@ -130,7 +130,8 @@ struct ChatComposer: View {
                         onSubmit: onSend,
                         onContentHeightChange: { height in
                             editorContentHeight = height
-                        }
+                        },
+                        onPaste: { viewModel.pasteImagesFromClipboard() }
                     )
 
                     if viewModel.draft.isEmpty {
@@ -163,7 +164,8 @@ struct ChatComposer: View {
                     ChatComposerActionMenu(
                         isEnabled: true,
                         onAttachImages: viewModel.chooseImageAttachments,
-                        onCaptureScreenshot: viewModel.captureScreenshotAttachment
+                        onCaptureScreenshot: viewModel.captureScreenshotAttachment,
+                        onCaptureScreenRecording: viewModel.captureScreenRecordingAttachment
                     )
                     .frame(width: 30, height: 30)
                     .help("Add attachment")
@@ -1066,6 +1068,7 @@ private struct ChatComposerActionMenu: NSViewRepresentable {
     let isEnabled: Bool
     let onAttachImages: () -> Void
     let onCaptureScreenshot: () -> Void
+    let onCaptureScreenRecording: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -1139,6 +1142,16 @@ private struct ChatComposerActionMenu: NSViewRepresentable {
             screenshotItem.isEnabled = true
             menu.addItem(screenshotItem)
 
+            let recordingItem = NSMenuItem(
+                title: "Screen Recording",
+                action: #selector(captureScreenRecording(_:)),
+                keyEquivalent: ""
+            )
+            recordingItem.target = self
+            recordingItem.image = menuImage("record.circle", description: "Screen Recording")
+            recordingItem.isEnabled = true
+            menu.addItem(recordingItem)
+
             return menu
         }
 
@@ -1148,6 +1161,10 @@ private struct ChatComposerActionMenu: NSViewRepresentable {
 
         @objc private func captureScreenshot(_ sender: NSMenuItem) {
             parent.onCaptureScreenshot()
+        }
+
+        @objc private func captureScreenRecording(_ sender: NSMenuItem) {
+            parent.onCaptureScreenRecording()
         }
 
         private func menuImage(_ systemName: String, description: String) -> NSImage? {
@@ -1291,6 +1308,7 @@ private struct ChatComposerTextEditor: NSViewRepresentable {
     let isEnabled: Bool
     let onSubmit: () -> Void
     let onContentHeightChange: (CGFloat) -> Void
+    let onPaste: () -> Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -1304,6 +1322,7 @@ private struct ChatComposerTextEditor: NSViewRepresentable {
         let textView = ChatComposerNSTextView()
         textView.delegate = context.coordinator
         textView.onSubmit = context.coordinator.handleSubmit
+        textView.onPaste = onPaste
         textView.isEditable = isEnabled
         textView.isSelectable = isEnabled
         textView.font = NSFont.preferredFont(forTextStyle: .body)
@@ -1344,6 +1363,7 @@ private struct ChatComposerTextEditor: NSViewRepresentable {
 
         textView.isEditable = isEnabled
         textView.isSelectable = isEnabled
+        (textView as? ChatComposerNSTextView)?.onPaste = onPaste
 
         guard textView.string != text else {
             context.coordinator.reportContentHeight()
@@ -1423,6 +1443,14 @@ private final class ChatComposerNSScrollView: NSScrollView {
 
 private final class ChatComposerNSTextView: NSTextView {
     var onSubmit: (() -> Void)?
+    var onPaste: (() -> Bool)?
+
+    override func paste(_ sender: Any?) {
+        if onPaste?() == true {
+            return
+        }
+        super.paste(sender)
+    }
 
     override func keyDown(with event: NSEvent) {
         switch ComposerReturnBehavior.resolve(for: event) {

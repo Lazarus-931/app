@@ -518,6 +518,97 @@ final class ChatViewModel: ObservableObject {
         pendingImageAttachments.append(contentsOf: attachments)
     }
 
+    func captureScreenRecordingAttachment() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nativ-recording-\(UUID().uuidString).mov")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-v", url.path]
+        process.terminationHandler = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      FileManager.default.fileExists(atPath: url.path),
+                      let attachment = try? ChatImageAttachment(contentsOf: url)
+                else {
+                    return
+                }
+                self.pendingImageAttachments.append(attachment)
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        try? process.run()
+    }
+
+    @discardableResult
+    func pasteImagesFromClipboard() -> Bool {
+        let pasteboard = NSPasteboard.general
+        var attachments: [ChatImageAttachment] = []
+
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingContentsConformToTypes: [UTType.image.identifier]
+        ]
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL] {
+            attachments = urls.compactMap { try? ChatImageAttachment(contentsOf: $0) }
+        }
+
+        if attachments.isEmpty,
+           let images = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage] {
+            for image in images {
+                guard let tiff = image.tiffRepresentation,
+                      let rep = NSBitmapImageRep(data: tiff),
+                      let png = rep.representation(using: .png, properties: [:])
+                else {
+                    continue
+                }
+                attachments.append(
+                    ChatImageAttachment(
+                        filename: "pasted-\(UUID().uuidString.prefix(8)).png",
+                        mimeType: "image/png",
+                        base64Data: png.base64EncodedString()
+                    )
+                )
+            }
+        }
+
+        guard !attachments.isEmpty else {
+            return false
+        }
+        pendingImageAttachments.append(contentsOf: attachments)
+        return true
+    }
+
+    func conversationText(for sessionID: UUID) -> String? {
+        guard let session = storedSessions.first(where: { $0.id == sessionID }) else {
+            return nil
+        }
+        var lines = [session.displayTitle, ""]
+        for message in session.messages {
+            let speaker: String
+            switch message.role {
+            case .user:
+                speaker = "You"
+            case .assistant:
+                speaker = message.modelID.map { NativFormatting.truncateModelName($0, maxLength: 60) } ?? "Assistant"
+            case .error:
+                speaker = "Error"
+            }
+            let content = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if content.isEmpty && message.imageAttachments.isEmpty {
+                continue
+            }
+            lines.append("\(speaker):")
+            if !message.imageAttachments.isEmpty {
+                let count = message.imageAttachments.count
+                lines.append("[\(count) attachment\(count == 1 ? "" : "s")]")
+            }
+            if !content.isEmpty {
+                lines.append(content)
+            }
+            lines.append("")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     func removePendingImageAttachment(_ id: UUID) {
         pendingImageAttachments.removeAll { $0.id == id }
     }
