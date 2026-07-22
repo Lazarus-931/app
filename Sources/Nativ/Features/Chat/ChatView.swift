@@ -209,6 +209,7 @@ struct ChatView: View {
 @MainActor
 final class ChatViewModel: ObservableObject {
     private static let liveDecodeRateRefreshInterval: TimeInterval = 0.25
+    private static let streamFlushInterval: TimeInterval = 1.0 / 30.0
 
     private struct QueuedChatRequest {
         let id: UUID
@@ -238,6 +239,11 @@ final class ChatViewModel: ObservableObject {
     private var storedSessions: [ChatSession] = []
     private var currentSession: ChatSession?
     private var liveDecodeRateRefreshDates: [UUID: Date] = [:]
+    private var pendingStreamContent: [UUID: String] = [:]
+    private var pendingStreamReasoning: [UUID: String] = [:]
+    private var pendingStreamDecodeRate: [UUID: Double] = [:]
+    private var streamFlushDates: [UUID: Date] = [:]
+    private var streamFlushTasks: [UUID: Task<Void, Never>] = [:]
     private weak var appModel: NativModel?
 
     init() {
@@ -795,40 +801,96 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func append(event: MLXChatStreamDelta, to id: UUID, in sessionID: UUID) {
-        let hasTextDelta = event.content?.isEmpty == false
-            || event.reasoningContent?.isEmpty == false
-        let shouldRefreshDecodeRate = shouldRefreshLiveDecodeRate(
-            event.decodeTokensPerSecond,
-            for: id
-        )
-        guard hasTextDelta || shouldRefreshDecodeRate else {
+        // Accumulate deltas and flush to the published message at a capped
+        // cadence. Applying every token synchronously saturates the main run
+        // loop, freezing the transcript, thinking bubble, and "Working"
+        // animation until an input event (issue #11 / upstream #48).
+        if let reasoningContent = event.reasoningContent, !reasoningContent.isEmpty {
+            pendingStreamReasoning[id, default: ""] += reasoningContent
+        }
+        if let content = event.content, !content.isEmpty {
+            pendingStreamContent[id, default: ""] += content
+        }
+        if shouldRefreshLiveDecodeRate(event.decodeTokensPerSecond, for: id),
+           let decodeTokensPerSecond = event.decodeTokensPerSecond {
+            pendingStreamDecodeRate[id] = decodeTokensPerSecond
+        }
+
+        guard hasPendingStreamUpdate(id) else {
+            return
+        }
+
+        let now = Date()
+        if let lastFlush = streamFlushDates[id],
+           now.timeIntervalSince(lastFlush) < Self.streamFlushInterval {
+            scheduleStreamFlush(id, in: sessionID)
+            return
+        }
+        flushStream(id, in: sessionID)
+    }
+
+    private func hasPendingStreamUpdate(_ id: UUID) -> Bool {
+        pendingStreamContent[id]?.isEmpty == false
+            || pendingStreamReasoning[id]?.isEmpty == false
+            || pendingStreamDecodeRate[id] != nil
+    }
+
+    private func scheduleStreamFlush(_ id: UUID, in sessionID: UUID) {
+        guard streamFlushTasks[id] == nil else {
+            return
+        }
+        streamFlushTasks[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.streamFlushInterval * 1_000_000_000))
+            guard let self, !Task.isCancelled else {
+                return
+            }
+            self.streamFlushTasks[id] = nil
+            self.flushStream(id, in: sessionID)
+        }
+    }
+
+    private func flushStream(_ id: UUID, in sessionID: UUID) {
+        streamFlushTasks[id]?.cancel()
+        streamFlushTasks[id] = nil
+
+        let content = pendingStreamContent.removeValue(forKey: id) ?? ""
+        let reasoning = pendingStreamReasoning.removeValue(forKey: id) ?? ""
+        let decodeRate = pendingStreamDecodeRate.removeValue(forKey: id)
+        guard !content.isEmpty || !reasoning.isEmpty || decodeRate != nil else {
             return
         }
 
         updateMessage(id, in: sessionID) { message in
-            if let reasoningContent = event.reasoningContent {
-                message.reasoningContent.append(reasoningContent)
+            if !reasoning.isEmpty {
+                message.reasoningContent.append(reasoning)
             }
-            if let content = event.content {
-                if !content.isEmpty,
-                   !message.reasoningContent.isEmpty,
-                   message.thinkingDuration == nil {
+            if !content.isEmpty {
+                if !message.reasoningContent.isEmpty, message.thinkingDuration == nil {
                     message.thinkingDuration = Date().timeIntervalSince(message.createdAt)
                 }
                 message.content.append(content)
             }
-            if shouldRefreshDecodeRate,
-               let decodeTokensPerSecond = event.decodeTokensPerSecond {
+            if let decodeRate {
                 message.responseMetrics = ChatResponseMetrics(
                     totalTokens: message.responseMetrics?.totalTokens,
-                    decodeTokensPerSecond: decodeTokensPerSecond,
+                    decodeTokensPerSecond: decodeRate,
                     peakMemoryGB: message.responseMetrics?.peakMemoryGB
                 )
             }
         }
-        if hasTextDelta, currentSessionID == sessionID {
+        streamFlushDates[id] = Date()
+        if (!content.isEmpty || !reasoning.isEmpty), currentSessionID == sessionID {
             bumpScroll()
         }
+    }
+
+    private func clearStreamBuffers(_ id: UUID) {
+        streamFlushTasks[id]?.cancel()
+        streamFlushTasks.removeValue(forKey: id)
+        pendingStreamContent.removeValue(forKey: id)
+        pendingStreamReasoning.removeValue(forKey: id)
+        pendingStreamDecodeRate.removeValue(forKey: id)
+        streamFlushDates.removeValue(forKey: id)
     }
 
     private func shouldRefreshLiveDecodeRate(
@@ -860,6 +922,8 @@ final class ChatViewModel: ObservableObject {
         responseMetrics: ChatResponseMetrics?,
         isCancelled: Bool
     ) {
+        flushStream(id, in: sessionID)
+        clearStreamBuffers(id)
         liveDecodeRateRefreshDates.removeValue(forKey: id)
         updateMessage(id, in: sessionID) { message in
             message.isStreaming = false
@@ -887,6 +951,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func failAssistantMessage(_ id: UUID, in sessionID: UUID, error: Error) {
+        clearStreamBuffers(id)
         liveDecodeRateRefreshDates.removeValue(forKey: id)
         guard updateMessage(id, in: sessionID, mutate: { message in
             message.role = .error
