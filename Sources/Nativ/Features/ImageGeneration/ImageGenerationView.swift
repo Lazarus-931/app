@@ -440,6 +440,10 @@ private struct ImageGenerationResultsSection: View {
                         .textSelection(.enabled)
                 }
 
+                if let metrics = viewModel.lastRunMetrics, !viewModel.isGenerating {
+                    ImageGenerationMetricsStrip(metrics: metrics)
+                }
+
                 if viewModel.results.isEmpty && !viewModel.isGenerating && viewModel.errorText == nil {
                     ContentUnavailableView(
                         "No Images",
@@ -458,6 +462,40 @@ private struct ImageGenerationResultsSection: View {
                 }
             }
             .padding(12)
+        }
+    }
+}
+
+private struct ImageGenerationMetricsStrip: View {
+    let metrics: ImageGenerationMetrics
+
+    var body: some View {
+        HStack(spacing: 14) {
+            metric("Time", seconds: metrics.totalSeconds)
+            metric("Per image", seconds: metrics.secondsPerImage)
+            if let stepsPerSecond = metrics.stepsPerSecond {
+                metric("Steps/s", value: String(format: "%.1f", stepsPerSecond))
+            }
+            metric("Images", value: "\(metrics.imageCount)")
+        }
+        .font(.caption)
+        .padding(.vertical, 2)
+    }
+
+    private func metric(_ title: String, seconds: Double) -> some View {
+        let value = seconds >= 10
+            ? String(format: "%.0fs", seconds)
+            : String(format: "%.1fs", seconds)
+        return metric(title, value: value)
+    }
+
+    private func metric(_ title: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .fontWeight(.semibold)
+                .monospacedDigit()
         }
     }
 }
