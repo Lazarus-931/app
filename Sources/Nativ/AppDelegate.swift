@@ -336,7 +336,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppAppearance.applyStored()
-        applyApplicationIcon()
         runtime.start()
         model.onMenuStateChanged = { [weak self] in
             guard let self else {
@@ -360,14 +359,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if WelcomePreferences.hasCompleted {
             model.startServer()
         }
-    }
-
-    private func applyApplicationIcon() {
-        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
-              let icon = NSImage(contentsOf: iconURL) else {
-            return
-        }
-        NSApplication.shared.applicationIconImage = icon
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

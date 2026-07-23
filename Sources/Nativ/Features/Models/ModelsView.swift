@@ -48,7 +48,7 @@ struct ModelsView: View {
             guard section == .discover else { return }
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
-            hubLibrary.search(query: hubQuery, sort: hubSort)
+            hubLibrary.search(query: hubQuery, sort: hubSort, token: model.effectiveHuggingFaceToken)
         }
         .onDisappear {
             localLibrary.cancel()
@@ -217,7 +217,8 @@ struct ModelsView: View {
                                         downloadManager.download(
                                             repoID: hubModel.id,
                                             sizeBytes: hubModel.sizeBytes,
-                                            cachePath: model.settings.modelSearchPath
+                                            cachePath: model.settings.modelSearchPath,
+                                            token: model.effectiveHuggingFaceToken
                                         ) {
                                             localLibrary.scan(path: model.settings.modelSearchPath)
                                             NotificationCenter.default.post(
@@ -256,7 +257,7 @@ struct ModelsView: View {
                                 .frame(minWidth: 122)
 
                             Button {
-                                hubLibrary.goToNextPage()
+                                hubLibrary.goToNextPage(token: model.effectiveHuggingFaceToken)
                             } label: {
                                 Label("Next", systemImage: "chevron.right")
                                     .labelStyle(.titleAndIcon)
@@ -541,7 +542,7 @@ struct ModelsView: View {
     }
 
     private var hubSearchTaskID: String {
-        "\(section.rawValue):\(hubQuery):\(hubSort.rawValue)"
+        "\(section.rawValue):\(hubQuery):\(hubSort.rawValue):\(model.effectiveHuggingFaceToken ?? "")"
     }
 
     private var hubModelsURL: URL {
