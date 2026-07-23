@@ -7,11 +7,20 @@ enum HuggingFaceCachePath {
         if let path = configuredPath(in: ProcessInfo.processInfo.environment) {
             return path
         }
-        if let path = configuredPath(in: loginShellEnvironment()) {
+        if let path = configuredPath(in: loginShellValues) {
             return path
         }
         return legacyDefault
     }()
+
+    static let resolvedToken: String? = {
+        if let token = nonEmpty(ProcessInfo.processInfo.environment["HF_TOKEN"]) {
+            return token
+        }
+        return nonEmpty(loginShellValues["HF_TOKEN"])
+    }()
+
+    private static let loginShellValues: [String: String] = loginShellEnvironment()
 
     private static func configuredPath(in environment: [String: String]) -> String? {
         if let hubCache = nonEmpty(environment["HF_HUB_CACHE"]) {
@@ -29,7 +38,7 @@ enum HuggingFaceCachePath {
         process.executableURL = URL(fileURLWithPath: shell)
         process.arguments = [
             "-lic",
-            "printf 'HF_HUB_CACHE=%s\\nHF_HOME=%s\\n' \"$HF_HUB_CACHE\" \"$HF_HOME\""
+            "printf 'HF_HUB_CACHE=%s\\nHF_HOME=%s\\nHF_TOKEN=%s\\n' \"$HF_HUB_CACHE\" \"$HF_HOME\" \"$HF_TOKEN\""
         ]
         let output = Pipe()
         process.standardOutput = output

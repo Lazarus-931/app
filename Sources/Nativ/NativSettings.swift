@@ -13,6 +13,7 @@ struct NativSettings: Codable, Equatable {
     var textToSpeechModelID: String?
     var speechToTextModelID: String?
     var serverAPIKey: String?
+    var huggingFaceToken: String?
     var maxTokens: Int
     var maxKVSize: Int
     var systemPrompt: String
@@ -53,6 +54,7 @@ struct NativSettings: Codable, Equatable {
         textToSpeechModelID: String? = nil,
         speechToTextModelID: String? = nil,
         serverAPIKey: String? = nil,
+        huggingFaceToken: String? = nil,
         maxTokens: Int = 2048,
         maxKVSize: Int = 0,
         systemPrompt: String = "",
@@ -92,6 +94,7 @@ struct NativSettings: Codable, Equatable {
         self.textToSpeechModelID = textToSpeechModelID
         self.speechToTextModelID = speechToTextModelID
         self.serverAPIKey = serverAPIKey
+        self.huggingFaceToken = huggingFaceToken
         self.maxTokens = maxTokens
         self.maxKVSize = maxKVSize
         self.systemPrompt = systemPrompt
@@ -133,6 +136,7 @@ struct NativSettings: Codable, Equatable {
         case textToSpeechModelID
         case speechToTextModelID
         case serverAPIKey
+        case huggingFaceToken
         case selectedModelID
         case maxTokens
         case maxKVSize
@@ -178,6 +182,7 @@ struct NativSettings: Codable, Equatable {
         textToSpeechModelID = try container.decodeIfPresent(String.self, forKey: .textToSpeechModelID) ?? defaults.textToSpeechModelID
         speechToTextModelID = try container.decodeIfPresent(String.self, forKey: .speechToTextModelID) ?? defaults.speechToTextModelID
         serverAPIKey = try container.decodeIfPresent(String.self, forKey: .serverAPIKey) ?? defaults.serverAPIKey
+        huggingFaceToken = try container.decodeIfPresent(String.self, forKey: .huggingFaceToken) ?? defaults.huggingFaceToken
         maxTokens = try container.decodeIfPresent(Int.self, forKey: .maxTokens) ?? defaults.maxTokens
         maxKVSize = try container.decodeIfPresent(Int.self, forKey: .maxKVSize) ?? defaults.maxKVSize
         systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) ?? defaults.systemPrompt
@@ -220,6 +225,7 @@ struct NativSettings: Codable, Equatable {
         try container.encodeIfPresent(textToSpeechModelID, forKey: .textToSpeechModelID)
         try container.encodeIfPresent(speechToTextModelID, forKey: .speechToTextModelID)
         try container.encodeIfPresent(serverAPIKey, forKey: .serverAPIKey)
+        try container.encodeIfPresent(huggingFaceToken, forKey: .huggingFaceToken)
         try container.encode(maxTokens, forKey: .maxTokens)
         try container.encode(maxKVSize, forKey: .maxKVSize)
         try container.encode(systemPrompt, forKey: .systemPrompt)
@@ -291,6 +297,7 @@ struct NativSettings: Codable, Equatable {
         settings.textToSpeechModelID = Self.normalizedModelID(settings.textToSpeechModelID)
         settings.speechToTextModelID = Self.normalizedModelID(settings.speechToTextModelID)
         settings.serverAPIKey = Self.normalizedModelID(settings.serverAPIKey)
+        settings.huggingFaceToken = HuggingFaceAuthentication.normalizedToken(settings.huggingFaceToken)
         settings.maxTokens = min(max(settings.maxTokens, 1), 262_144)
         settings.maxKVSize = min(max(settings.maxKVSize, 0), 1_048_576)
         settings.systemPrompt = settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -327,6 +334,7 @@ struct NativSettings: Codable, Equatable {
             && lhs.cpuServerPort == rhs.cpuServerPort
             && lhs.languageModelID == rhs.languageModelID
             && lhs.serverAPIKey == rhs.serverAPIKey
+            && lhs.huggingFaceToken == rhs.huggingFaceToken
             && lhs.maxTokens == rhs.maxTokens
             && lhs.maxKVSize == rhs.maxKVSize
             && lhs.kvQuantizationEnabled == rhs.kvQuantizationEnabled
@@ -358,6 +366,12 @@ struct NativSettings: Codable, Equatable {
         environment["APC_ENABLED"] = settings.prefixCachingEnabled ? "1" : "0"
         if let serverAPIKey = settings.serverAPIKey {
             environment["MLX_VLM_SERVER_API_KEY"] = serverAPIKey
+        }
+        if let huggingFaceToken = HuggingFaceAuthentication.effectiveToken(
+            customToken: settings.huggingFaceToken,
+            environmentToken: HuggingFaceCachePath.resolvedToken
+        ) {
+            environment["HF_TOKEN"] = huggingFaceToken
         }
         if settings.prefixCachingEnabled {
             environment["APC_NUM_BLOCKS"] = "\(settings.prefixCacheBlocks)"

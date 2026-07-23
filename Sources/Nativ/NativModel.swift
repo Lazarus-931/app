@@ -25,6 +25,7 @@ final class NativModel: ObservableObject {
     @Published private(set) var cpuIsRunning = false
     @Published private(set) var cpuMetrics: NativMetrics?
     @Published private(set) var metricsLoading = false
+    let environmentHuggingFaceToken = HuggingFaceCachePath.resolvedToken
     @Published var settings = NativSettings.load() {
         didSet {
             settings.save()
@@ -95,6 +96,13 @@ final class NativModel: ObservableObject {
 
     var analyticsDatabaseURL: URL {
         currentAnalyticsDatabaseURL(runtimePath: metrics?.server.analyticsDatabasePath)
+    }
+
+    var effectiveHuggingFaceToken: String? {
+        HuggingFaceAuthentication.effectiveToken(
+            customToken: settings.huggingFaceToken,
+            environmentToken: environmentHuggingFaceToken
+        )
     }
 
     var unavailableMetricsText: String {
