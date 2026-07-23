@@ -28,6 +28,13 @@ struct SettingsView: View {
                 TextField("Speech-to-text model", text: optionalString($model.settings.speechToTextModelID))
             }
 
+            Section("Hugging Face") {
+                SecureField("Access token", text: optionalString($model.settings.huggingFaceToken))
+                Text(huggingFaceTokenStatus)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Generation") {
                 TextField("System prompt", text: $model.settings.systemPrompt, axis: .vertical)
                     .lineLimit(2...6)
@@ -129,6 +136,16 @@ struct SettingsView: View {
             launchAtLogin = SMAppService.mainApp.status == .enabled
             launchAtLoginError = error.localizedDescription
         }
+    }
+
+    private var huggingFaceTokenStatus: String {
+        if model.settings.huggingFaceToken?.isEmpty == false {
+            return "Using this custom token for gated model downloads."
+        }
+        if model.environmentHuggingFaceToken != nil {
+            return "Using HF_TOKEN from your environment. Enter a token to override it."
+        }
+        return "Set a token to download gated models. Manage tokens at huggingface.co/settings/tokens."
     }
 
     private func optionalString(_ source: Binding<String?>) -> Binding<String> {
