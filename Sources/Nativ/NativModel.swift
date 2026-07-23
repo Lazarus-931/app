@@ -165,14 +165,14 @@ final class NativModel: ObservableObject {
         }
 
         if shouldStartMetrics {
-            startCPUInstanceIfEnabled()
+            startCPUInstance()
             startMetricsPolling()
         }
         notifyMenuStateChanged()
     }
 
-    private func startCPUInstanceIfEnabled() {
-        guard settings.normalized().cpuInstanceEnabled, !cpuServer.isRunning else {
+    private func startCPUInstance() {
+        guard !cpuServer.isRunning else {
             return
         }
         do {
@@ -294,7 +294,7 @@ final class NativModel: ObservableObject {
             return
         }
         cpuMetrics = nil
-        startCPUInstanceIfEnabled()
+        startCPUInstance()
         notifyMenuStateChanged()
     }
 

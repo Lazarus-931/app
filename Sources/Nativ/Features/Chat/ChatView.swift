@@ -95,14 +95,6 @@ struct ChatView: View {
             .padding(.top, 12)
             .padding(.trailing, 22)
         }
-        .onChange(of: model.cpuIsRunning) { _, running in
-            // Only fall back to GPU when the CPU instance is actually turned
-            // off — not during a transient restart (e.g. switching the CPU
-            // model), which would otherwise silently reset the user's choice.
-            if !running, !model.settings.cpuInstanceEnabled {
-                chat.targetDevice = .gpu
-            }
-        }
     }
 
     private var configurationButton: some View {

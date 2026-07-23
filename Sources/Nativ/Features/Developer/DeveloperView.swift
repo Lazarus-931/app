@@ -21,13 +21,11 @@ struct DeveloperView: View {
                         port: model.settings.normalized().serverPort,
                         isLive: model.isRunning
                     )
-                    if model.settings.cpuInstanceEnabled || model.cpuIsRunning {
-                        ServerEndpointsPanel(
-                            title: "CPU server",
-                            port: model.settings.normalized().cpuServerPort,
-                            isLive: model.cpuIsRunning
-                        )
-                    }
+                    ServerEndpointsPanel(
+                        title: "CPU server",
+                        port: model.settings.normalized().cpuServerPort,
+                        isLive: model.cpuIsRunning
+                    )
                     logPanel
                         .frame(height: max(320, geometry.size.height - 430))
                 }
@@ -122,9 +120,7 @@ struct DeveloperView: View {
 
             portField("GPU port", value: $model.settings.serverPort)
 
-            if model.settings.cpuInstanceEnabled {
-                portField("CPU port", value: $model.settings.cpuServerPort)
-            }
+            portField("CPU port", value: $model.settings.cpuServerPort)
 
             if model.isRunning && model.settingsRequireRestart {
                 Button("Restart") {

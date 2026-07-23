@@ -21,13 +21,10 @@ struct SettingsView: View {
             }
 
             Section("Inference") {
-                Toggle("CPU instance", isOn: $model.settings.cpuInstanceEnabled)
-                if model.settings.cpuInstanceEnabled {
-                    TextField("CPU model", text: optionalString($model.settings.cpuLanguageModelID))
-                    Text("Runs a second server on the CPU fast path alongside the GPU server. Ports are set in Developer. Restart the server to apply.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                TextField("CPU model", text: optionalString($model.settings.cpuLanguageModelID))
+                Text("A second server always runs on the CPU fast path alongside the GPU server. Ports are set in Developer. Restart the server to apply.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Models") {
