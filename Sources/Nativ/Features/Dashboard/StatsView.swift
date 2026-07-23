@@ -79,16 +79,24 @@ struct StatsView: View {
     }
 }
 
+private enum AnalyticsComputeDevice: String, CaseIterable, Identifiable {
+    case gpu
+    case cpu
+
+    var id: String { rawValue }
+
+    var title: String {
+        self == .gpu ? "GPU" : "CPU"
+    }
+}
+
 private struct DashboardModelState: Equatable {
     let isRunning: Bool
     let cpuIsRunning: Bool
     let cpuLoadedModelID: String?
-    let cpuTotalTokens: Int?
-    let cpuRequestsCompleted: Int?
-    let cpuRequestsFailed: Int?
-    let cpuDecodeTokensPerSecond: Double?
     let modelSearchPath: String
     let analyticsDatabaseURL: URL
+    let cpuAnalyticsDatabaseURL: URL
     let loadedModelID: String?
     let historicalMetricsRevision: DashboardMetricsRevision?
 
@@ -97,12 +105,9 @@ private struct DashboardModelState: Equatable {
         isRunning = model.isRunning
         cpuIsRunning = model.cpuIsRunning
         cpuLoadedModelID = model.cpuLoadedModelID
-        cpuTotalTokens = model.cpuMetrics?.summary.totalProcessedTokens
-        cpuRequestsCompleted = model.cpuMetrics?.summary.requestsCompleted
-        cpuRequestsFailed = model.cpuMetrics?.summary.requestsFailed
-        cpuDecodeTokensPerSecond = model.cpuMetrics?.summary.averageDecodeTokensPerSecond
         modelSearchPath = model.settings.modelSearchPath
         analyticsDatabaseURL = model.analyticsDatabaseURL
+        cpuAnalyticsDatabaseURL = model.cpuAnalyticsDatabaseURL ?? NativAnalyticsStore.cpuDatabaseURL()
         loadedModelID = model.metrics?.server.loadedModel
         historicalMetricsRevision = model.metrics.map {
             DashboardMetricsRevision(
@@ -119,9 +124,23 @@ private struct DashboardContentView: View, Equatable {
     @FocusState private var isModelSearchFocused: Bool
     @State private var selectedChartMetric: DashboardOverviewMetric = .tokens
     @State private var isActivityExpanded = false
+    @State private var analyticsDevice: AnalyticsComputeDevice = .gpu
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.modelState == rhs.modelState && lhs.dashboard === rhs.dashboard
+        lhs.modelState == rhs.modelState
+            && lhs.dashboard === rhs.dashboard
+    }
+
+    private var selectedAnalyticsDatabaseURL: URL {
+        analyticsDevice == .cpu ? modelState.cpuAnalyticsDatabaseURL : modelState.analyticsDatabaseURL
+    }
+
+    private var selectedLoadedModelID: String? {
+        analyticsDevice == .cpu ? modelState.cpuLoadedModelID : modelState.loadedModelID
+    }
+
+    private var analyticsDeviceIsRunning: Bool {
+        analyticsDevice == .cpu ? modelState.cpuIsRunning : modelState.isRunning
     }
 
     var body: some View {
@@ -130,9 +149,6 @@ private struct DashboardContentView: View, Equatable {
                 pageHeader
                 filterBar
                 overviewCards
-                if modelState.cpuIsRunning {
-                    cpuInstancePanel
-                }
                 analyticsGrid
                 modelPerformanceSection
                 recentRequestsSection
@@ -156,11 +172,18 @@ private struct DashboardContentView: View, Equatable {
         .onChange(of: modelState.analyticsDatabaseURL) { _, _ in
             syncDashboardState(scanModels: false, reloadHistory: false)
         }
+        .onChange(of: modelState.cpuAnalyticsDatabaseURL) { _, _ in
+            syncDashboardState(scanModels: false, reloadHistory: false)
+        }
         .onChange(of: modelState.loadedModelID) { _, _ in
             syncDashboardState(scanModels: false, reloadHistory: false)
         }
         .onChange(of: modelState.historicalMetricsRevision) { oldRevision, newRevision in
             guard oldRevision != nil, newRevision != nil else { return }
+            syncDashboardState(scanModels: false, reloadHistory: true)
+        }
+        .onChange(of: analyticsDevice) { _, _ in
+            dashboard.selectedModelID = DashboardViewModel.ModelOption.allID
             syncDashboardState(scanModels: false, reloadHistory: true)
         }
     }
@@ -177,19 +200,23 @@ private struct DashboardContentView: View, Equatable {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(modelState.isRunning ? DashboardPalette.positive : Color.secondary)
-                    .frame(width: 7, height: 7)
-                Text(modelState.isRunning ? "Live" : "Offline")
-                    .font(.caption.weight(.semibold))
+            HStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(analyticsDeviceIsRunning ? DashboardPalette.positive : Color.secondary)
+                        .frame(width: 7, height: 7)
+                    Text(analyticsDeviceIsRunning ? "Live" : "Offline")
+                        .font(.caption.weight(.semibold))
+                }
 
-                if modelState.isRunning {
-                    DeviceChip(title: "GPU", color: .blue)
+                Picker("Compute", selection: $analyticsDevice) {
+                    ForEach(AnalyticsComputeDevice.allCases) { device in
+                        Text(device.title).tag(device)
+                    }
                 }
-                if modelState.cpuIsRunning {
-                    DeviceChip(title: "CPU", color: .orange)
-                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
 
                 Button {
                     dashboard.reloadHistorical()
@@ -203,64 +230,6 @@ private struct DashboardContentView: View, Equatable {
             }
             .fixedSize()
         }
-    }
-
-    private var cpuInstancePanel: some View {
-        HStack(alignment: .center, spacing: 24) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 7) {
-                    DeviceChip(title: "CPU", color: .orange)
-                    Text("CPU instance")
-                        .font(.callout.weight(.semibold))
-                }
-                Text(modelState.cpuLoadedModelID ?? "Loading model\u{2026}")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer(minLength: 16)
-
-            cpuStat("Tokens", modelState.cpuTotalTokens)
-            cpuStat("Requests", modelState.cpuRequestsCompleted)
-            cpuTextStat("Success", cpuSuccessRateLabel)
-            cpuTextStat("Decode", cpuDecodeRateLabel)
-        }
-        .padding(12)
-        .dashboardPanelStyle(cornerRadius: 12)
-    }
-
-    private func cpuStat(_ title: String, _ value: Int?) -> some View {
-        cpuTextStat(title, value.map { compact($0) } ?? "\u{2014}")
-    }
-
-    private func cpuTextStat(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .trailing, spacing: 1) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.callout.weight(.semibold).monospacedDigit())
-        }
-    }
-
-    private var cpuSuccessRateLabel: String {
-        guard let completed = modelState.cpuRequestsCompleted else {
-            return "\u{2014}"
-        }
-        let total = completed + (modelState.cpuRequestsFailed ?? 0)
-        guard total > 0 else {
-            return "\u{2014}"
-        }
-        return "\(Int((Double(completed) / Double(total) * 100).rounded()))%"
-    }
-
-    private var cpuDecodeRateLabel: String {
-        guard let rate = modelState.cpuDecodeTokensPerSecond, rate > 0, rate.isFinite else {
-            return "\u{2014}"
-        }
-        return NativFormatting.rate(rate)
     }
 
     private var filterBar: some View {
@@ -498,27 +467,14 @@ private struct DashboardContentView: View, Equatable {
     }
 
     private func syncDashboardState(scanModels: Bool, reloadHistory: Bool) {
-        dashboard.updateAnalyticsDatabaseURL(modelState.analyticsDatabaseURL)
-        dashboard.updatePreferredModelID(modelState.loadedModelID)
+        dashboard.updateAnalyticsDatabaseURL(selectedAnalyticsDatabaseURL)
+        dashboard.updatePreferredModelID(selectedLoadedModelID)
         if scanModels {
             dashboard.scanModels(at: modelState.modelSearchPath)
         }
         if reloadHistory {
             dashboard.reloadHistorical()
         }
-    }
-}
-
-private struct DeviceChip: View {
-    let title: String
-    let color: Color
-
-    var body: some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(color.opacity(0.2)))
     }
 }
 
