@@ -26,9 +26,8 @@ struct DeveloperView: View {
                         port: model.settings.normalized().cpuServerPort,
                         isLive: model.cpuIsRunning
                     )
-                    huggingFaceAuthenticationPanel
                     logPanel
-                        .frame(height: max(320, geometry.size.height - 540))
+                        .frame(height: max(320, geometry.size.height - 430))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 22)
@@ -37,16 +36,6 @@ struct DeveloperView: View {
             }
             .background(Color.nativWindow)
         }
-    }
-
-    private var huggingFaceAuthenticationPanel: some View {
-        HuggingFaceAuthenticationPanel(
-            customToken: Binding(
-                get: { model.settings.huggingFaceToken ?? "" },
-                set: { model.settings.huggingFaceToken = $0.isEmpty ? nil : $0 }
-            ),
-            hasEnvironmentToken: model.environmentHuggingFaceToken != nil
-        )
     }
 
     private var pageHeader: some View {
@@ -1060,155 +1049,6 @@ private enum LogTextStyler {
             let nextLocation = NSMaxRange(match)
             searchRange = NSRange(location: nextLocation, length: string.length - nextLocation)
         }
-    }
-}
-
-private struct HuggingFaceAuthenticationPanel: View {
-    @Binding var customToken: String
-    let hasEnvironmentToken: Bool
-    @State private var isCustomTokenExpanded: Bool
-    @State private var hasSelectedDisclosureState = false
-
-    init(customToken: Binding<String>, hasEnvironmentToken: Bool) {
-        _customToken = customToken
-        self.hasEnvironmentToken = hasEnvironmentToken
-        _isCustomTokenExpanded = State(initialValue: !hasEnvironmentToken)
-    }
-
-    private var hasCustomToken: Bool {
-        HuggingFaceAuthentication.normalizedToken(customToken) != nil
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "key.horizontal")
-                    .foregroundStyle(.purple)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Hugging Face Authentication")
-                        .font(.callout.weight(.semibold))
-                    Text("Authenticate Hub requests and downloads for gated models.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Label(authenticationStatus, systemImage: authenticationStatusImage)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(authenticationStatusColor)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 0) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        isCustomTokenExpanded.toggle()
-                        hasSelectedDisclosureState = true
-                    }
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(isCustomTokenExpanded ? 90 : 0))
-                            .frame(width: 10)
-
-                        Text("Use Custom Token")
-                            .font(.callout.weight(.medium))
-
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Use Custom Token")
-                .accessibilityValue(isCustomTokenExpanded ? "Expanded" : "Collapsed")
-
-                if isCustomTokenExpanded {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            SecureField("Enter token", text: $customToken)
-                                .textFieldStyle(.roundedBorder)
-                                .font(.callout.monospaced())
-                                .privacySensitive()
-                                .accessibilityLabel("Custom Hugging Face token")
-
-                            if hasCustomToken {
-                                Button {
-                                    customToken = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                }
-                                .buttonStyle(.borderless)
-                                .foregroundStyle(.secondary)
-                                .help("Clear custom token")
-                            }
-
-                            Link(destination: URL(string: "https://huggingface.co/settings/tokens")!) {
-                                Label("Manage Tokens", systemImage: "arrow.up.right")
-                            }
-                            .buttonStyle(.bordered)
-                        }
-
-                        Text(authenticationDetail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 10)
-                    .transition(.opacity)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-        }
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
-        .onChange(of: hasEnvironmentToken) { wasAvailable, isAvailable in
-            if !wasAvailable && isAvailable && !hasSelectedDisclosureState {
-                isCustomTokenExpanded = false
-            }
-        }
-        .onChange(of: customToken) { oldValue, newValue in
-            if oldValue != newValue {
-                hasSelectedDisclosureState = true
-            }
-        }
-    }
-
-    private var authenticationStatus: String {
-        if hasCustomToken { return "Custom Token" }
-        if hasEnvironmentToken { return "HF_TOKEN" }
-        return "Not Configured"
-    }
-
-    private var authenticationStatusImage: String {
-        hasCustomToken || hasEnvironmentToken ? "checkmark.circle.fill" : "circle.dashed"
-    }
-
-    private var authenticationStatusColor: Color {
-        hasCustomToken || hasEnvironmentToken ? .green : .secondary
-    }
-
-    private var authenticationDetail: String {
-        if hasCustomToken && hasEnvironmentToken {
-            return "The custom token overrides HF_TOKEN from your environment. Access to a gated model must also be approved on Hugging Face."
-        }
-        if hasCustomToken {
-            return "Using the custom token. Access to a gated model must also be approved on Hugging Face."
-        }
-        if hasEnvironmentToken {
-            return "Using HF_TOKEN from your process or login-shell environment. Enter a custom token above to override it."
-        }
-        return "Set HF_TOKEN in your environment or enter a custom token. Access to a gated model must also be approved on Hugging Face."
     }
 }
 

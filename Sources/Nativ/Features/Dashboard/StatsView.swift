@@ -209,13 +209,21 @@ private struct DashboardContentView: View, Equatable {
                         .font(.caption.weight(.semibold))
                 }
 
-                Picker("Compute", selection: $analyticsDevice) {
-                    ForEach(AnalyticsComputeDevice.allCases) { device in
-                        Text(device.title).tag(device)
-                    }
+                HStack(spacing: 7) {
+                    Text("GPU")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(analyticsDevice == .gpu ? Color.primary : .secondary)
+                    Toggle("Compute", isOn: Binding(
+                        get: { analyticsDevice == .cpu },
+                        set: { analyticsDevice = $0 ? .cpu : .gpu }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .tint(.green)
+                    Text("CPU")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(analyticsDevice == .cpu ? Color.primary : .secondary)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
                 .fixedSize()
 
                 Button {
