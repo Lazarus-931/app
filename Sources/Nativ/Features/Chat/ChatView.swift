@@ -95,11 +95,6 @@ struct ChatView: View {
             .padding(.top, 12)
             .padding(.trailing, 22)
         }
-        .onChange(of: model.cpuIsRunning) { _, running in
-            if !running {
-                chat.targetDevice = .gpu
-            }
-        }
     }
 
     private var configurationButton: some View {

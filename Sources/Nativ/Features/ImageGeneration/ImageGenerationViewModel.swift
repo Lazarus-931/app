@@ -22,6 +22,23 @@ enum SessionModelKind: String, Codable, Equatable, Sendable {
     }
 }
 
+struct ImageGenerationMetrics: Equatable, Sendable {
+    let imageCount: Int
+    let steps: Int
+    let totalSeconds: Double
+
+    var secondsPerImage: Double {
+        imageCount > 0 ? totalSeconds / Double(imageCount) : totalSeconds
+    }
+
+    var stepsPerSecond: Double? {
+        guard totalSeconds > 0, imageCount > 0, steps > 0 else {
+            return nil
+        }
+        return Double(steps * imageCount) / totalSeconds
+    }
+}
+
 @MainActor
 final class ImageGenerationViewModel: ObservableObject {
     @Published var prompt = ""
@@ -39,6 +56,7 @@ final class ImageGenerationViewModel: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var statusText: String?
     @Published private(set) var errorText: String?
+    @Published private(set) var lastRunMetrics: ImageGenerationMetrics?
 
     private var client = NativImageClient()
     private let sessionStore = ImageGenerationSessionStore()
@@ -206,6 +224,7 @@ final class ImageGenerationViewModel: ObservableObject {
         errorText = nil
         statusText = requestReference == nil ? "Generating image..." : "Editing image..."
         isGenerating = true
+        lastRunMetrics = nil
         persistCurrentSession(updateTimestamp: true)
 
         activeTask?.cancel()
@@ -215,6 +234,7 @@ final class ImageGenerationViewModel: ObservableObject {
             }
 
             do {
+                let startedAt = Date()
                 let response: MLXImageResponse
                 if let requestReference {
                     response = try await client.edit(MLXImageEditRequest(
@@ -241,8 +261,14 @@ final class ImageGenerationViewModel: ObservableObject {
                     ))
                 }
 
+                let elapsed = Date().timeIntervalSince(startedAt)
                 let decodedResults = try makeGeneratedImages(from: response)
                 results = decodedResults
+                lastRunMetrics = decodedResults.isEmpty ? nil : ImageGenerationMetrics(
+                    imageCount: decodedResults.count,
+                    steps: requestSteps,
+                    totalSeconds: elapsed
+                )
                 statusText = "\(decodedResults.count) \(decodedResults.count == 1 ? "image" : "images") ready."
                 persistCurrentSession(updateTimestamp: true)
                 appModel?.refreshMetricsIfRunning(force: true)
@@ -377,6 +403,7 @@ final class ImageGenerationViewModel: ObservableObject {
         results.removeAll()
         statusText = nil
         errorText = nil
+        lastRunMetrics = nil
         persistCurrentSession(updateTimestamp: true)
     }
 
@@ -436,6 +463,7 @@ final class ImageGenerationViewModel: ObservableObject {
         results = session.results
         statusText = nil
         errorText = nil
+        lastRunMetrics = nil
         refreshSessionList()
     }
 

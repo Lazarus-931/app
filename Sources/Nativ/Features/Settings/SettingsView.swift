@@ -4,7 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var model: NativModel
     @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
-    @AppStorage("pinNavigationPanel") private var pinNavigationPanel = false
+    @AppStorage("sidebarPinned") private var pinNavigationPanel = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchAtLoginError: String?
 
@@ -17,16 +17,6 @@ struct SettingsView: View {
                         systemImage: "exclamationmark.triangle"
                     )
                     .foregroundStyle(.orange)
-                }
-            }
-
-            Section("Inference") {
-                Toggle("CPU instance", isOn: $model.settings.cpuInstanceEnabled)
-                if model.settings.cpuInstanceEnabled {
-                    TextField("CPU model", text: optionalString($model.settings.cpuLanguageModelID))
-                    Text("Runs a second server on the CPU fast path alongside the GPU server. Ports are set in Developer. Restart the server to apply.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
 
