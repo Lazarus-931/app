@@ -20,13 +20,6 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Inference") {
-                TextField("CPU model", text: optionalString($model.settings.cpuLanguageModelID))
-                Text("A second server always runs on the CPU fast path alongside the GPU server. Ports are set in Developer. Restart the server to apply.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
             Section("Models") {
                 TextField("Model search path", text: $model.settings.modelSearchPath)
                 TextField("Language model", text: optionalString($model.settings.languageModelID))
