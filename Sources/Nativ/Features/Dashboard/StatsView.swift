@@ -90,6 +90,39 @@ private enum AnalyticsComputeDevice: String, CaseIterable, Identifiable {
     }
 }
 
+private struct ComputeDeviceToggle: View {
+    @Binding var device: AnalyticsComputeDevice
+    @Namespace private var thumbNamespace
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(AnalyticsComputeDevice.allCases) { option in
+                let isSelected = device == option
+                Text(option.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background {
+                        if isSelected {
+                            Capsule()
+                                .fill(Color.blue)
+                                .matchedGeometryEffect(id: "computeThumb", in: thumbNamespace)
+                        }
+                    }
+                    .contentShape(Capsule())
+                    .onTapGesture {
+                        withAnimation(.snappy(duration: 0.22)) {
+                            device = option
+                        }
+                    }
+            }
+        }
+        .padding(2)
+        .background(Capsule().fill(Color.primary.opacity(0.08)))
+    }
+}
+
 private struct DashboardModelState: Equatable {
     let isRunning: Bool
     let cpuIsRunning: Bool
@@ -209,22 +242,8 @@ private struct DashboardContentView: View, Equatable {
                         .font(.caption.weight(.semibold))
                 }
 
-                HStack(spacing: 7) {
-                    Text("GPU")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(analyticsDevice == .gpu ? Color.primary : .secondary)
-                    Toggle("Compute", isOn: Binding(
-                        get: { analyticsDevice == .cpu },
-                        set: { analyticsDevice = $0 ? .cpu : .gpu }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .tint(.green)
-                    Text("CPU")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(analyticsDevice == .cpu ? Color.primary : .secondary)
-                }
-                .fixedSize()
+                ComputeDeviceToggle(device: $analyticsDevice)
+                    .fixedSize()
 
                 Button {
                     dashboard.reloadHistorical()
