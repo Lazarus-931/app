@@ -260,6 +260,8 @@ struct ChatComposer: View {
         StableChatModelPicker(
             models: localLibrary.models,
             cpuModels: cpuCapableModels,
+            maxKVSize: model.settings.normalized().maxKVSize,
+            kvBits: model.settings.normalized().kvQuantizationEnabled ? model.settings.normalized().kvBits : nil,
             showsDeviceSections: model.cpuIsRunning,
             activeDevice: targetDevice,
             selectedModelID: selectedModelID,
@@ -286,8 +288,22 @@ struct ChatComposer: View {
     }
 
     private var cpuCapableModels: [LocalModel] {
-        localLibrary.models.filter { localModel in
-            localModel.sizeBytes.map { ModelCapacity.cpuCapable(weightBytes: $0) } ?? false
+        let settings = model.settings.normalized()
+        let kvBits = settings.kvQuantizationEnabled ? settings.kvBits : nil
+        return localLibrary.models.filter { localModel in
+            guard let weightBytes = localModel.sizeBytes else {
+                return false
+            }
+            let contextTokens = ModelCapacity.effectiveContextTokens(
+                maxKVSize: settings.maxKVSize,
+                modelContextSize: localModel.contextSize
+            )
+            return ModelCapacity.cpuCapable(
+                weightBytes: weightBytes,
+                kvElementsPerToken: localModel.kvCacheElementsPerToken,
+                contextTokens: contextTokens,
+                kvBits: kvBits
+            )
         }
     }
 
@@ -486,6 +502,8 @@ private struct StableChatModelPicker: View {
 
     let models: [LocalModel]
     let cpuModels: [LocalModel]
+    let maxKVSize: Int
+    let kvBits: Double?
     let showsDeviceSections: Bool
     let activeDevice: ChatInferenceDevice
     let selectedModelID: String?
@@ -513,6 +531,8 @@ private struct StableChatModelPicker: View {
             ChatModelPickerMenuControl(
                 models: models,
                 cpuModels: cpuModels,
+                maxKVSize: maxKVSize,
+                kvBits: kvBits,
                 showsDeviceSections: showsDeviceSections,
                 activeDevice: activeDevice,
                 selectedModelID: selectedModelID,
@@ -615,6 +635,8 @@ private final class ChatModelMenuSelection: NSObject {
 private struct ChatModelPickerMenuControl: NSViewRepresentable {
     let models: [LocalModel]
     let cpuModels: [LocalModel]
+    let maxKVSize: Int
+    let kvBits: Double?
     let showsDeviceSections: Bool
     let activeDevice: ChatInferenceDevice
     let selectedModelID: String?
@@ -766,6 +788,8 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
                     device: device,
                     provider: parent.selectedModelProvider,
                     sizeBytes: nil,
+                    kvElementsPerToken: nil,
+                    modelContextSize: nil,
                     action: #selector(switchModel(_:))
                 )
                 item.state = .on
@@ -783,6 +807,8 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
                     device: device,
                     provider: model.provider,
                     sizeBytes: parent.showsDeviceSections ? nil : model.sizeBytes,
+                    kvElementsPerToken: parent.showsDeviceSections ? nil : model.kvCacheElementsPerToken,
+                    modelContextSize: model.contextSize,
                     action: #selector(selectModel(_:))
                 )
                 item.state = model.repoID == selectedModelID ? .on : .off
@@ -827,13 +853,19 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
             device: ChatInferenceDevice,
             provider: LocalModelProvider?,
             sizeBytes: Int64?,
+            kvElementsPerToken: Int64?,
+            modelContextSize: Int?,
             action: Selector
         ) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
             item.representedObject = ChatModelMenuSelection(device: device, repoID: repoID)
             item.image = providerImage(provider)
-            if let annotation = deviceAnnotation(sizeBytes: sizeBytes) {
+            if let annotation = deviceAnnotation(
+                sizeBytes: sizeBytes,
+                kvElementsPerToken: kvElementsPerToken,
+                modelContextSize: modelContextSize
+            ) {
                 let attributedTitle = NSMutableAttributedString(
                     string: title,
                     attributes: [.font: Self.menuFont]
@@ -854,16 +886,34 @@ private struct ChatModelPickerMenuControl: NSViewRepresentable {
         }
 
         private func deviceAnnotation(
-            sizeBytes: Int64?
+            sizeBytes: Int64?,
+            kvElementsPerToken: Int64?,
+            modelContextSize: Int?
         ) -> (text: String, color: NSColor, selectable: Bool)? {
             guard let sizeBytes else {
                 return nil
             }
-            switch ModelCapacity.tier(weightBytes: sizeBytes) {
+            let contextTokens = ModelCapacity.effectiveContextTokens(
+                maxKVSize: parent.maxKVSize,
+                modelContextSize: modelContextSize
+            )
+            let tier = ModelCapacity.tier(
+                weightBytes: sizeBytes,
+                kvElementsPerToken: kvElementsPerToken,
+                contextTokens: contextTokens,
+                kvBits: parent.kvBits
+            )
+            switch tier {
             case .tooBig:
                 return ("too big", .systemRed, false)
             case .recommended, .fits:
-                return ModelCapacity.cpuCapable(weightBytes: sizeBytes)
+                let cpuCapable = ModelCapacity.cpuCapable(
+                    weightBytes: sizeBytes,
+                    kvElementsPerToken: kvElementsPerToken,
+                    contextTokens: contextTokens,
+                    kvBits: parent.kvBits
+                )
+                return cpuCapable
                     ? ("GPU \u{00b7} CPU", .tertiaryLabelColor, true)
                     : ("GPU", .tertiaryLabelColor, true)
             }

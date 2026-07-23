@@ -59,6 +59,7 @@ struct LocalModel: Identifiable, Equatable, Sendable {
     let modifiedAt: Date?
     let sizeBytes: Int64?
     let contextSize: Int?
+    let kvCacheElementsPerToken: Int64?
     let provider: LocalModelProvider?
     let capabilities: Set<LocalModelCapability>
     var source: LocalModelSource = .huggingFaceCache
@@ -203,6 +204,7 @@ enum LocalModelDiscovery {
                         modifiedAt: modifiedAt,
                         sizeBytes: snapshotSize(at: modelURL, fileManager: fileManager),
                         contextSize: contextSize(at: modelURL, fileManager: fileManager),
+                        kvCacheElementsPerToken: kvCacheElementsPerToken(at: modelURL, fileManager: fileManager),
                         provider: modelProvider(
                             repoID: repoID,
                             snapshotURL: modelURL,
@@ -261,6 +263,7 @@ enum LocalModelDiscovery {
                 modifiedAt: modifiedAt,
                 sizeBytes: snapshotSize(at: snapshotURL, fileManager: fileManager),
                 contextSize: contextSize(at: snapshotURL, fileManager: fileManager),
+                kvCacheElementsPerToken: kvCacheElementsPerToken(at: snapshotURL, fileManager: fileManager),
                 provider: modelProvider(
                     repoID: repoID,
                     snapshotURL: snapshotURL,
@@ -907,6 +910,67 @@ enum LocalModelDiscovery {
             }
         }
         return nil
+    }
+
+    private static func kvCacheElementsPerToken(
+        at snapshotURL: URL,
+        fileManager: FileManager
+    ) -> Int64? {
+        let configURL = snapshotURL.appendingPathComponent("config.json")
+        guard fileManager.fileExists(atPath: configURL.path),
+              let data = try? Data(contentsOf: configURL),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return nil
+        }
+        return kvCacheElementsPerToken(in: config)
+    }
+
+    private static func kvCacheElementsPerToken(in config: [String: Any]) -> Int64? {
+        for nestedKey in ["text_config", "llm_config", "language_config"] {
+            if let nested = config[nestedKey] as? [String: Any],
+               let value = kvCacheElements(in: nested) {
+                return value
+            }
+        }
+        return kvCacheElements(in: config)
+    }
+
+    private static func kvCacheElements(in config: [String: Any]) -> Int64? {
+        func intValue(_ keys: [String]) -> Int? {
+            for key in keys {
+                if let number = config[key] as? NSNumber {
+                    let value = number.intValue
+                    if value > 0 {
+                        return value
+                    }
+                }
+            }
+            return nil
+        }
+
+        guard let layers = intValue(["num_hidden_layers", "n_layer", "num_layers"]) else {
+            return nil
+        }
+        let attentionHeads = intValue(["num_attention_heads", "n_head", "num_heads"])
+        guard let kvHeads = intValue(["num_key_value_heads", "num_kv_heads"]) ?? attentionHeads else {
+            return nil
+        }
+
+        let headDim: Int
+        if let explicit = intValue(["head_dim"]) {
+            headDim = explicit
+        } else if let hidden = intValue(["hidden_size", "d_model", "n_embd"]),
+                  let attentionHeads, attentionHeads > 0 {
+            headDim = hidden / attentionHeads
+        } else {
+            return nil
+        }
+        guard headDim > 0 else {
+            return nil
+        }
+
+        return Int64(2 * layers * kvHeads * headDim)
     }
 
     private static func isDirectoryURL(_ url: URL, fileManager: FileManager) -> Bool {

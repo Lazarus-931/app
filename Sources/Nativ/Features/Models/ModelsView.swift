@@ -133,6 +133,8 @@ struct ModelsView: View {
                             InstalledModelRow(
                                 localModel: localModel,
                                 selectedLanguageModelID: model.settings.normalized().languageModelID,
+                                maxKVSize: model.settings.normalized().maxKVSize,
+                                kvBits: model.settings.normalized().kvQuantizationEnabled ? model.settings.normalized().kvBits : nil,
                                 isModelSwitchInProgress: model.modelSwitchInProgress,
                                 isDeleting: localLibrary.deletingModelIDs.contains(localModel.repoID),
                                 canDelete: localModel.isDeletableFromCache
@@ -610,6 +612,8 @@ private struct ModelsSearchField: View {
 private struct InstalledModelRow: View {
     let localModel: LocalModel
     let selectedLanguageModelID: String?
+    let maxKVSize: Int
+    let kvBits: Double?
     let isModelSwitchInProgress: Bool
     let isDeleting: Bool
     let canDelete: Bool
@@ -669,7 +673,15 @@ private struct InstalledModelRow: View {
                                     title: ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file),
                                     systemImage: "internaldrive"
                                 )
-                                ModelCapacityPills(weightBytes: sizeBytes)
+                                ModelCapacityPills(
+                                    weightBytes: sizeBytes,
+                                    kvElementsPerToken: localModel.kvCacheElementsPerToken,
+                                    contextTokens: ModelCapacity.effectiveContextTokens(
+                                        maxKVSize: maxKVSize,
+                                        modelContextSize: localModel.contextSize
+                                    ),
+                                    kvBits: kvBits
+                                )
                             }
                             if let badge = localModel.source.badgeLabel {
                                 ModelPill(title: badge, systemImage: "shippingbox", color: .purple)
@@ -980,9 +992,30 @@ private struct ModelProviderBadge: View {
 
 private struct ModelCapacityPills: View {
     let weightBytes: Int64
+    var kvElementsPerToken: Int64? = nil
+    var contextTokens: Int = 0
+    var kvBits: Double? = nil
+
+    private var tier: ModelCapacity.Tier {
+        ModelCapacity.tier(
+            weightBytes: weightBytes,
+            kvElementsPerToken: kvElementsPerToken,
+            contextTokens: contextTokens,
+            kvBits: kvBits
+        )
+    }
+
+    private var cpuCapable: Bool {
+        ModelCapacity.cpuCapable(
+            weightBytes: weightBytes,
+            kvElementsPerToken: kvElementsPerToken,
+            contextTokens: contextTokens,
+            kvBits: kvBits
+        )
+    }
 
     var body: some View {
-        switch ModelCapacity.tier(weightBytes: weightBytes) {
+        switch tier {
         case .recommended:
             CapacityIconPill(
                 systemImage: "sparkles",
@@ -998,8 +1031,7 @@ private struct ModelCapacityPills: View {
                 helpText: "Too big for this Mac"
             )
         }
-        if ModelCapacity.tier(weightBytes: weightBytes) != .tooBig,
-           ModelCapacity.cpuCapable(weightBytes: weightBytes) {
+        if tier != .tooBig, cpuCapable {
             CapacityIconPill(
                 systemImage: "cpu",
                 color: .orange,
