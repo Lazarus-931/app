@@ -80,36 +80,19 @@ struct ControlPanelView: View {
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
 
     var body: some View {
-        detail
-            .safeAreaInset(edge: .top, spacing: 0) {
-                Color.clear.frame(height: titlebarInsetHeight)
-            }
-            .overlay(alignment: .topLeading) {
-                ZStack(alignment: .topLeading) {
-                    Color.clear
-                        .frame(width: 12)
-                        .frame(maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                        .onHover { hovering in
-                            navigationEdgeHovered = hovering
-                            updateNavigationPanelVisibility()
-                        }
-
-                    if showsNavigationPanel || pinNavigationPanel {
-                        sidebar
-                            .padding(.top, isFullScreen ? 34 : 8)
-                            .padding(.leading, 10)
-                            .onHover { hovering in
-                                navigationPanelHovered = hovering
-                                updateNavigationPanelVisibility()
-                            }
-                            .transition(
-                                .move(edge: .leading)
-                                    .combined(with: .opacity)
-                            )
-                    }
+        Group {
+            if pinNavigationPanel {
+                HStack(spacing: 0) {
+                    dockedSidebar
+                    detailPane
                 }
+            } else {
+                detailPane
+                    .overlay(alignment: .topLeading) {
+                        floatingSidebarOverlay
+                    }
             }
+        }
         .frame(minWidth: 1040, minHeight: 600)
         .background {
             ControlPanelWindowStateReader(isFullScreen: $isFullScreen)
@@ -169,7 +152,41 @@ struct ControlPanelView: View {
         }
     }
 
-    private var sidebar: some View {
+    private var detailPane: some View {
+        detail
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Color.clear.frame(height: titlebarInsetHeight)
+            }
+    }
+
+    private var floatingSidebarOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(width: 12)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    navigationEdgeHovered = hovering
+                    updateNavigationPanelVisibility()
+                }
+
+            if showsNavigationPanel {
+                sidebar
+                    .padding(.top, isFullScreen ? 34 : 8)
+                    .padding(.leading, 10)
+                    .onHover { hovering in
+                        navigationPanelHovered = hovering
+                        updateNavigationPanelVisibility()
+                    }
+                    .transition(
+                        .move(edge: .leading)
+                            .combined(with: .opacity)
+                    )
+            }
+        }
+    }
+
+    private var sidebarContent: some View {
         VStack(spacing: 0) {
             sidebarList
 
@@ -217,22 +234,36 @@ struct ControlPanelView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
         }
-        .frame(width: 268, height: 500)
-        .background {
-            if pinNavigationPanel {
-                Color.nativPanel
-            } else {
+    }
+
+    private var sidebar: some View {
+        sidebarContent
+            .frame(width: 268, height: 500)
+            .background {
                 Rectangle()
                     .fill(.ultraThinMaterial)
                     .opacity(0.6)
             }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.28), radius: 26, y: 10)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.28), radius: 26, y: 10)
+    }
+
+    private var dockedSidebar: some View {
+        sidebarContent
+            .padding(.top, 8)
+            .frame(width: 268)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Color.nativPanel.ignoresSafeArea())
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(width: 0.5)
+                    .ignoresSafeArea()
+            }
     }
 
     private var sidebarList: some View {
