@@ -131,13 +131,8 @@ final class NativModel: ObservableObject {
     }
 
     var cpuAnalyticsDatabaseURL: URL? {
-        guard cpuIsRunning else {
+        guard isRunning else {
             return nil
-        }
-        if let path = cpuMetrics?.server.analyticsDatabasePath?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !path.isEmpty {
-            return URL(fileURLWithPath: path).standardizedFileURL
         }
         return NativAnalyticsStore.cpuDatabaseURL()
     }
@@ -149,22 +144,25 @@ final class NativModel: ObservableObject {
             baseURL: URL(string: "http://127.0.0.1:\(applied.serverPort)")!
         )
         cpuMetricsClient = NativMetricsClient(
-            baseURL: URL(string: "http://127.0.0.1:\(applied.cpuServerPort)")!
+            baseURL: URL(string: "http://127.0.0.1:\(applied.serverPort)")!
         )
         IntegrationProfileManager.serverPort = applied.serverPort
         do {
             var launchEnvironment = settings.launchEnvironment
             launchEnvironment["MLX_PLATFORM_ANALYTICS_DB_PATH"] = currentAnalyticsDatabaseURL().path
+            launchEnvironment["MLX_PLATFORM_CPU_ANALYTICS_DB_PATH"] = NativAnalyticsStore.cpuDatabaseURL().path
             try server.start(
                 arguments: settings.launchArguments,
                 environment: launchEnvironment
             )
             isRunning = true
+            cpuIsRunning = true
             settingsAppliedAtServerStart = settings.normalized()
             appendLog("\nStarted mlx-vlm-server.\n")
             shouldStartMetrics = true
         } catch NativError.alreadyRunning {
             isRunning = true
+            cpuIsRunning = true
             settingsAppliedAtServerStart = settings.normalized()
             appendLog("\nmlx-vlm-server is already running.\n")
             shouldStartMetrics = true
@@ -173,28 +171,9 @@ final class NativModel: ObservableObject {
         }
 
         if shouldStartMetrics {
-            startCPUInstance()
             startMetricsPolling()
         }
         notifyMenuStateChanged()
-    }
-
-    private func startCPUInstance() {
-        guard !cpuServer.isRunning else {
-            return
-        }
-        do {
-            var launchEnvironment = settings.launchEnvironment
-            launchEnvironment["MLX_PLATFORM_ANALYTICS_DB_PATH"] = NativAnalyticsStore.cpuDatabaseURL().path
-            try cpuServer.start(
-                arguments: settings.cpuLaunchArguments,
-                environment: launchEnvironment
-            )
-            cpuIsRunning = true
-            appendLog("\nStarted CPU mlx-vlm-server on port \(settings.normalized().cpuServerPort).\n")
-        } catch {
-            appendLog("\nFailed to start CPU mlx-vlm-server: \(error)\n")
-        }
     }
 
     func stopServer(preserveSessionStats: Bool = false) {
@@ -214,16 +193,10 @@ final class NativModel: ObservableObject {
             appendLog("\nFailed to stop mlx-vlm-server: \(error)\n")
         }
 
-        if cpuServer.isRunning {
-            try? cpuServer.stop()
-        }
-        cpuIsRunning = cpuServer.isRunning
-        if !cpuIsRunning {
-            cpuMetrics = nil
-        }
-
         isRunning = server.isRunning
+        cpuIsRunning = isRunning
         if !isRunning {
+            cpuMetrics = nil
             settingsAppliedAtServerStart = nil
         }
         stopMetricsPolling(clearSession: true)
@@ -292,17 +265,10 @@ final class NativModel: ObservableObject {
 
     func switchCPUModel(to modelID: String?) {
         settings.cpuLanguageModelID = modelID
-        guard cpuServer.isRunning else {
-            return
-        }
-        do {
-            try cpuServer.stop()
-        } catch {
-            appendLog("\nFailed to stop CPU mlx-vlm-server: \(error)\n")
+        guard isRunning else {
             return
         }
         cpuMetrics = nil
-        startCPUInstance()
         notifyMenuStateChanged()
     }
 
@@ -310,9 +276,6 @@ final class NativModel: ObservableObject {
         stopMetricsPolling(clearSession: true)
         if server.isRunning {
             try? server.stop(timeout: 2)
-        }
-        if cpuServer.isRunning {
-            try? cpuServer.stop(timeout: 2)
         }
         cpuIsRunning = false
         cpuMetrics = nil
@@ -364,7 +327,7 @@ final class NativModel: ObservableObject {
     }
 
     private func refreshCPUMetricsIfRunning() {
-        cpuIsRunning = cpuServer.isRunning
+        cpuIsRunning = server.isRunning
         guard cpuIsRunning else {
             cpuMetrics = nil
             return
