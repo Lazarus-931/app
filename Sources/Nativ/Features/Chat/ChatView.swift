@@ -226,6 +226,9 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var sendingStartedAt: Date?
     @Published private(set) var scrollToken = 0
     @Published var targetDevice: ChatInferenceDevice = .gpu
+    @Published var activeModelIsImageGeneration = false
+    @Published var imageGenerationWidth = 1024
+    @Published var imageGenerationHeight = 1024
 
     private let sessionStore = ChatSessionStore()
     private var activeTask: Task<Void, Never>?

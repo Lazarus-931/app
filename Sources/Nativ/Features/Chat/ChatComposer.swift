@@ -170,6 +170,10 @@ struct ChatComposer: View {
                     .frame(width: 30, height: 30)
                     .help("Add attachment")
 
+                    if selectedModelIsImageGeneration {
+                        imageSizeMenu
+                    }
+
                     Spacer(minLength: 12)
 
                     modelPicker
@@ -247,9 +251,14 @@ struct ChatComposer: View {
         .onChange(of: localLibrary.models) { _, models in
             disableThinkingIfUnsupported(modelID: selectedModelID, models: models)
             applyInitialReasoningDefaultIfNeeded(modelID: selectedModelID, models: models)
+            syncImageGenerationMode()
         }
         .onChange(of: selectedModelID) { _, modelID in
             configureReasoningForSelectedModel(modelID: modelID, models: localLibrary.models)
+            syncImageGenerationMode()
+        }
+        .onAppear {
+            syncImageGenerationMode()
         }
         .onDisappear {
             localLibrary.cancel()
@@ -331,6 +340,52 @@ struct ChatComposer: View {
         return localLibrary.models.first {
             $0.repoID == selectedModelID || $0.serverModelIdentifier == selectedModelID
         }
+    }
+
+    private var selectedModelIsImageGeneration: Bool {
+        selectedLocalModel?.capabilities.contains(.imageGeneration) == true
+    }
+
+    private func syncImageGenerationMode() {
+        if viewModel.activeModelIsImageGeneration != selectedModelIsImageGeneration {
+            viewModel.activeModelIsImageGeneration = selectedModelIsImageGeneration
+        }
+    }
+
+    private static let imageSizeOptions: [(label: String, width: Int, height: Int)] = [
+        ("512 × 512", 512, 512),
+        ("768 × 768", 768, 768),
+        ("1024 × 1024", 1024, 1024),
+        ("1024 × 768", 1024, 768),
+        ("768 × 1024", 768, 1024)
+    ]
+
+    private var imageSizeMenu: some View {
+        Menu {
+            ForEach(Self.imageSizeOptions, id: \.label) { option in
+                Button {
+                    viewModel.imageGenerationWidth = option.width
+                    viewModel.imageGenerationHeight = option.height
+                } label: {
+                    if viewModel.imageGenerationWidth == option.width,
+                       viewModel.imageGenerationHeight == option.height {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "aspectratio")
+                Text("\(viewModel.imageGenerationWidth)×\(viewModel.imageGenerationHeight)")
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Image size")
     }
 
     private var selectedModelProvider: LocalModelProvider? {
