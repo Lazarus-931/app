@@ -426,7 +426,8 @@ private struct IntegrationCatalogView: View {
                         IntegrationCard(
                             tool: tool,
                             status: viewModel.statuses[tool] ?? .unavailable,
-                            isLoading: viewModel.isRefreshingStatuses
+                            isLoading: viewModel.isRefreshingStatuses,
+                            modelIDs: viewModel.eligibleModels.map(\.id)
                         ) {
                             viewModel.select(tool)
                         }
@@ -442,11 +443,19 @@ private struct IntegrationCard: View {
     let tool: IntegrationTool
     let status: IntegrationToolStatus
     let isLoading: Bool
+    let modelIDs: [String]
     let action: () -> Void
     @State private var isHovering = false
+    @State private var showingSetup = false
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            if tool.isGuidedSetup {
+                showingSetup = true
+            } else {
+                action()
+            }
+        } label: {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .top) {
                     IntegrationLogo(tool: tool, size: 52)
@@ -466,7 +475,10 @@ private struct IntegrationCard: View {
                 }
 
                 HStack(spacing: 7) {
-                    if isLoading {
+                    if tool.isGuidedSetup {
+                        Image(systemName: "gearshape")
+                        Text("Setup")
+                    } else if isLoading {
                         ProgressView().controlSize(.small)
                         Text("Checking…")
                     } else if status.executableURL == nil {
@@ -498,7 +510,119 @@ private struct IntegrationCard: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .accessibilityLabel("Configure \(tool.displayName)")
+        .accessibilityLabel(tool.isGuidedSetup ? "Set up \(tool.displayName)" : "Configure \(tool.displayName)")
+        .popover(isPresented: $showingSetup, arrowEdge: .bottom) {
+            IntegrationSetupPopover(tool: tool, modelIDs: modelIDs)
+        }
+    }
+}
+
+private struct IntegrationSetupPopover: View {
+    let tool: IntegrationTool
+    let modelIDs: [String]
+
+    var body: some View {
+        ScrollView {
+            IntegrationPanel(title: "Setup", systemImage: "gearshape.2") {
+                Text("Connect \(tool.displayName) to models served from this Mac.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                    copyableRow(label: "Endpoint", value: IntegrationProfileManager.openAIBaseURL)
+                    copyableRow(label: "API key", value: IntegrationProfileManager.providerID)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Installed models")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    if modelIDs.isEmpty {
+                        Text("No installed chat models were found. Download one from the Models page first.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        ForEach(modelIDs, id: \.self) { id in
+                            modelRow(id)
+                        }
+                    }
+                }
+
+                if !tool.guidedSetupSteps.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Steps")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(Array(tool.guidedSetupSteps.enumerated()), id: \.offset) { index, step in
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                Text("\(index + 1).")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(step)
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+
+                if let caveat = tool.guidedSetupCaveat {
+                    Label(caveat, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button {
+                    NSWorkspace.shared.open(tool.installURL)
+                } label: {
+                    Label("Open \(tool.displayName)", systemImage: "arrow.up.forward.app")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(16)
+        }
+        .frame(width: 380)
+        .frame(maxHeight: 560)
+    }
+
+    private func copyableRow(label: String, value: String) -> some View {
+        GridRow {
+            Text(label).foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            copyButton(value)
+        }
+    }
+
+    private func modelRow(_ id: String) -> some View {
+        HStack(spacing: 8) {
+            Text(id)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            copyButton(id)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func copyButton(_ value: String) -> some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(value, forType: .string)
+        } label: {
+            Image(systemName: "doc.on.doc")
+        }
+        .buttonStyle(.borderless)
+        .help("Copy")
     }
 }
 
@@ -793,12 +917,24 @@ private struct IntegrationLogo: View {
     let size: CGFloat
 
     var body: some View {
-        Image(tool.logoAssetName)
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
-            .accessibilityHidden(true)
+        if tool.isGuidedSetup {
+            RoundedRectangle(cornerRadius: size * 0.2)
+                .fill(Color.primary.opacity(0.06))
+                .frame(width: size, height: size)
+                .overlay {
+                    Image(systemName: tool.guidedSymbolName)
+                        .font(.system(size: size * 0.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityHidden(true)
+        } else {
+            Image(tool.logoAssetName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
+                .accessibilityHidden(true)
+        }
     }
 }
 
