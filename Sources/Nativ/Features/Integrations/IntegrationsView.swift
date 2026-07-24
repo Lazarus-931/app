@@ -917,24 +917,12 @@ private struct IntegrationLogo: View {
     let size: CGFloat
 
     var body: some View {
-        if tool.isGuidedSetup {
-            RoundedRectangle(cornerRadius: size * 0.2)
-                .fill(Color.primary.opacity(0.06))
-                .frame(width: size, height: size)
-                .overlay {
-                    Image(systemName: tool.guidedSymbolName)
-                        .font(.system(size: size * 0.5, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .accessibilityHidden(true)
-        } else {
-            Image(tool.logoAssetName)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
-                .accessibilityHidden(true)
-        }
+        Image(tool.logoAssetName)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
+            .accessibilityHidden(true)
     }
 }
 

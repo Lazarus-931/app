@@ -359,6 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if WelcomePreferences.hasCompleted {
             model.startServer()
         }
+        promptForCrashReportIfNeeded()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -465,6 +466,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func reportIssue() {
         IssueReport.open(model: model, runtime: runtime)
+    }
+
+    private func promptForCrashReportIfNeeded() {
+        guard WelcomePreferences.hasCompleted,
+              let crash = IssueReport.unseenCrashReport() else {
+            return
+        }
+        IssueReport.markCrashReportSeen(crash)
+        Task { @MainActor in
+            let alert = NSAlert()
+            alert.messageText = "Did Nativ crash?"
+            alert.informativeText = """
+            Nativ found a crash report from \(crash.displayDate). Report it? \
+            The crash details will be added to the issue and the full report copied to your clipboard.
+            """
+            alert.addButton(withTitle: "Report Crash\u{2026}")
+            alert.addButton(withTitle: "Not Now")
+            if alert.runModal() == .alertFirstButtonReturn {
+                self.reportIssue()
+            }
+        }
     }
 
     func createNewChat() {
