@@ -74,6 +74,7 @@ class RequestObservation:
     started_at_unix: float
     start_time: float
     first_token_at: float | None = None
+    device: str | None = None
 
 
 @dataclass
@@ -129,6 +130,13 @@ def analytics_db_path() -> str:
     return os.path.expanduser(
         "~/Library/Application Support/Nativ/Analytics.sqlite3"
     )
+
+
+def analytics_cpu_db_path() -> str | None:
+    configured_path = os.environ.get("MLX_PLATFORM_CPU_ANALYTICS_DB_PATH")
+    if configured_path:
+        return os.path.expanduser(configured_path)
+    return None
 
 
 def bucket_start_unix(timestamp: float, granularity: str) -> float:
@@ -435,6 +443,16 @@ class AnalyticsStore:
 
 
 ANALYTICS_STORE = AnalyticsStore(analytics_db_path())
+_ANALYTICS_CPU_PATH = analytics_cpu_db_path()
+ANALYTICS_STORE_CPU = (
+    AnalyticsStore(_ANALYTICS_CPU_PATH) if _ANALYTICS_CPU_PATH else None
+)
+
+
+def analytics_store_for(device: str | None) -> AnalyticsStore:
+    if device == "cpu" and ANALYTICS_STORE_CPU is not None:
+        return ANALYTICS_STORE_CPU
+    return ANALYTICS_STORE
 
 
 class MetricsTracker:
@@ -510,7 +528,7 @@ class MetricsTracker:
             aggregate.last_request_at = completed_at
 
         try:
-            ANALYTICS_STORE.record_event(event)
+            analytics_store_for(observation.device).record_event(event)
         except Exception as error:
             base.logger.warning("analytics persistence failed for failed request: %s", error)
 
@@ -616,7 +634,7 @@ class MetricsTracker:
             aggregate.last_request_at = completed_at
 
         try:
-            ANALYTICS_STORE.record_event(event)
+            analytics_store_for(observation.device).record_event(event)
         except Exception as error:
             base.logger.warning("analytics persistence failed for completed request: %s", error)
 
@@ -624,6 +642,8 @@ class MetricsTracker:
         runtime = current_runtime_snapshot()
         try:
             ANALYTICS_STORE.heartbeat(runtime)
+            if ANALYTICS_STORE_CPU is not None:
+                ANALYTICS_STORE_CPU.heartbeat(runtime)
         except Exception as error:
             base.logger.warning("analytics session heartbeat failed: %s", error)
 
@@ -721,6 +741,7 @@ def parse_request_observation(request: Request, payload: dict[str, Any]) -> Requ
         thinking_enabled=resolve_thinking_enabled(payload),
         started_at_unix=time.time(),
         start_time=time.perf_counter(),
+        device=payload.get("device") if isinstance(payload.get("device"), str) else None,
     )
 
 
