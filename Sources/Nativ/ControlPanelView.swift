@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 
 enum ControlPanelTab: String, CaseIterable, Identifiable {
     case chat = "Chat"
-    case imageGeneration = "Image Generation"
     case dashboard = "Dashboard"
     case models = "Models"
     case integrations = "Integrations"
@@ -21,8 +20,6 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
         switch self {
         case .chat:
             "bubble.left.and.bubble.right"
-        case .imageGeneration:
-            "photo.on.rectangle"
         case .dashboard:
             "chart.bar.xaxis"
         case .models:
@@ -65,7 +62,6 @@ struct ControlPanelView: View {
     @ObservedObject var navigation: ControlPanelNavigation
     @ObservedObject var runtime: SystemRuntimeMonitor
     @StateObject private var chat = ChatViewModel()
-    @StateObject private var imageGeneration = ImageGenerationViewModel()
     @StateObject private var dashboard = DashboardViewModel()
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
@@ -370,8 +366,6 @@ struct ControlPanelView: View {
                         showsConfiguration: $isChatConfigurationVisible,
                         isFullScreen: isFullScreen
                     )
-                case .imageGeneration:
-                    ImageGenerationView(model: model, viewModel: imageGeneration)
                 case .dashboard:
                     StatsView(model: model, dashboard: dashboard)
                 case .models:
@@ -407,14 +401,6 @@ struct ControlPanelView: View {
                 sidebarSelection = .tab(.chat)
             }
             selectedTab = .chat
-        case .imageGeneration(let sessionID):
-            if imageGeneration.sessions.contains(where: { $0.id == sessionID }) {
-                imageGeneration.selectSession(sessionID)
-                sidebarSelection = selection
-            } else {
-                sidebarSelection = .tab(.imageGeneration)
-            }
-            selectedTab = .imageGeneration
         }
     }
 
@@ -485,14 +471,6 @@ struct ControlPanelView: View {
             if deletingSelection {
                 applySidebarSelection(chat.currentSessionID.map(ControlPanelSidebarSelection.chat) ?? .tab(.chat))
             }
-        case .imageGeneration(let sessionID):
-            imageGeneration.deleteSession(sessionID)
-            if deletingSelection {
-                applySidebarSelection(
-                    imageGeneration.currentSessionID.map(ControlPanelSidebarSelection.imageGeneration)
-                        ?? .tab(.imageGeneration)
-                )
-            }
         case .tab:
             break
         }
@@ -502,8 +480,6 @@ struct ControlPanelView: View {
         switch recent.selection {
         case .chat(let sessionID):
             return sessionID == chat.currentSessionID
-        case .imageGeneration(let sessionID):
-            return sessionID == imageGeneration.currentSessionID
         case .tab:
             return false
         }
@@ -513,8 +489,6 @@ struct ControlPanelView: View {
         switch recent.selection {
         case .chat(let sessionID):
             return chat.isSessionBusy(sessionID)
-        case .imageGeneration:
-            return imageGeneration.isGenerating
         case .tab:
             return false
         }
@@ -524,8 +498,6 @@ struct ControlPanelView: View {
         switch recent.selection {
         case .chat:
             return false
-        case .imageGeneration:
-            return imageGeneration.isGenerating
         case .tab:
             return false
         }
@@ -601,13 +573,11 @@ private struct ControlPanelDetailSafeArea: ViewModifier {
 private enum ControlPanelSidebarSelection: Hashable {
     case tab(ControlPanelTab)
     case chat(UUID)
-    case imageGeneration(UUID)
 }
 
 private struct ControlPanelRecentSession: Identifiable, Equatable {
     enum ID: Hashable {
         case chat(UUID)
-        case imageGeneration(UUID)
     }
 
     let id: ID
@@ -624,20 +594,10 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
         updatedAt = session.updatedAt
     }
 
-    init(imageGeneration session: ImageGenerationSessionSummary) {
-        id = .imageGeneration(session.id)
-        title = session.title
-        inferenceDevice = nil
-        createdAt = session.createdAt
-        updatedAt = session.updatedAt
-    }
-
     var selection: ControlPanelSidebarSelection {
         switch id {
         case .chat(let sessionID):
             return .chat(sessionID)
-        case .imageGeneration(let sessionID):
-            return .imageGeneration(sessionID)
         }
     }
 

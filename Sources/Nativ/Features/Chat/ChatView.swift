@@ -215,6 +215,10 @@ final class ChatViewModel: ObservableObject {
         let modelID: String
         let device: ChatInferenceDevice
         let baseURL: URL
+        var isImageGeneration = false
+        var imageWidth = 1024
+        var imageHeight = 1024
+        var referenceAttachment: ChatImageAttachment?
     }
 
     @Published private(set) var sessions: [ChatSessionSummary] = []
@@ -226,6 +230,9 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var sendingStartedAt: Date?
     @Published private(set) var scrollToken = 0
     @Published var targetDevice: ChatInferenceDevice = .gpu
+    @Published var activeModelIsImageGeneration = false
+    @Published var imageGenerationWidth = 1024
+    @Published var imageGenerationHeight = 1024
 
     private let sessionStore = ChatSessionStore()
     private var activeTask: Task<Void, Never>?
@@ -431,7 +438,10 @@ final class ChatViewModel: ObservableObject {
         self.currentSession?.lastInferenceDevice = device.rawValue
         persistCurrentSession(updateTimestamp: true)
         self.appModel = appModel
-        let requestPort = device == .cpu ? settings.cpuServerPort : settings.serverPort
+        let isImage = activeModelIsImageGeneration
+        let requestPort = isImage
+            ? settings.serverPort
+            : (device == .cpu ? settings.cpuServerPort : settings.serverPort)
         requestQueue.append(QueuedChatRequest(
             id: UUID(),
             sessionID: currentSession.id,
@@ -440,7 +450,11 @@ final class ChatViewModel: ObservableObject {
             settings: settings,
             modelID: modelID,
             device: device,
-            baseURL: URL(string: "http://127.0.0.1:\(requestPort)")!
+            baseURL: URL(string: "http://127.0.0.1:\(requestPort)")!,
+            isImageGeneration: isImage,
+            imageWidth: imageGenerationWidth,
+            imageHeight: imageGenerationHeight,
+            referenceAttachment: isImage ? imageAttachments.first : nil
         ))
         bumpScroll()
         startNextRequestIfNeeded()
@@ -635,7 +649,10 @@ final class ChatViewModel: ObservableObject {
 
         while !requestQueue.isEmpty {
             let queuedRequest = requestQueue.removeFirst()
-            guard let request = makeCompletionRequest(for: queuedRequest),
+            let completionRequest = queuedRequest.isImageGeneration
+                ? nil
+                : makeCompletionRequest(for: queuedRequest)
+            guard queuedRequest.isImageGeneration || completionRequest != nil,
                   insertAssistantMessage(for: queuedRequest)
             else {
                 continue
@@ -653,25 +670,29 @@ final class ChatViewModel: ObservableObject {
                     return
                 }
 
-                let requestClient = NativChatClient(baseURL: queuedRequest.baseURL)
                 do {
-                    let completion = try await requestClient.streamChat(request, onEvent: { [weak self] event in
-                        await MainActor.run {
-                            self?.append(
-                                event: event,
-                                to: queuedRequest.assistantMessageID,
-                                in: queuedRequest.sessionID
-                            )
-                        }
-                    })
-                    finishAssistantMessage(
-                        queuedRequest.assistantMessageID,
-                        in: queuedRequest.sessionID,
-                        fallbackContent: completion.content,
-                        fallbackReasoningContent: completion.reasoningContent,
-                        responseMetrics: ChatResponseMetrics(completion: completion),
-                        isCancelled: false
-                    )
+                    if queuedRequest.isImageGeneration {
+                        try await runImageGeneration(queuedRequest)
+                    } else if let completionRequest {
+                        let requestClient = NativChatClient(baseURL: queuedRequest.baseURL)
+                        let completion = try await requestClient.streamChat(completionRequest, onEvent: { [weak self] event in
+                            await MainActor.run {
+                                self?.append(
+                                    event: event,
+                                    to: queuedRequest.assistantMessageID,
+                                    in: queuedRequest.sessionID
+                                )
+                            }
+                        })
+                        finishAssistantMessage(
+                            queuedRequest.assistantMessageID,
+                            in: queuedRequest.sessionID,
+                            fallbackContent: completion.content,
+                            fallbackReasoningContent: completion.reasoningContent,
+                            responseMetrics: ChatResponseMetrics(completion: completion),
+                            isCancelled: false
+                        )
+                    }
                     appModel?.refreshMetricsIfRunning(force: true)
                 } catch is CancellationError {
                     finishAssistantMessage(
@@ -945,6 +966,107 @@ final class ChatViewModel: ObservableObject {
         persistSession(sessionID, updateTimestamp: true)
     }
 
+    private func runImageGeneration(_ queuedRequest: QueuedChatRequest) async throws {
+        guard let promptMessage = message(queuedRequest.userMessageID, in: queuedRequest.sessionID) else {
+            throw NativImageError.missingImageData
+        }
+        let prompt = promptMessage.content
+        let client = NativImageClient(baseURL: queuedRequest.baseURL)
+        let steps = 4
+        let startedAt = Date()
+        let response: MLXImageResponse
+        if let reference = queuedRequest.referenceAttachment,
+           let referenceURL = writeTemporaryImage(reference) {
+            response = try await client.edit(MLXImageEditRequest(
+                model: queuedRequest.modelID,
+                prompt: prompt,
+                image: [referenceURL.path],
+                n: 1,
+                width: queuedRequest.imageWidth,
+                height: queuedRequest.imageHeight,
+                steps: steps
+            ))
+        } else {
+            response = try await client.generate(MLXImageGenerationRequest(
+                model: queuedRequest.modelID,
+                prompt: prompt,
+                n: 1,
+                width: queuedRequest.imageWidth,
+                height: queuedRequest.imageHeight,
+                steps: steps
+            ))
+        }
+        let elapsed = Date().timeIntervalSince(startedAt)
+        let attachments = Self.generatedAttachments(from: response)
+        guard !attachments.isEmpty else {
+            throw NativImageError.missingImageData
+        }
+        finishImageMessage(
+            queuedRequest.assistantMessageID,
+            in: queuedRequest.sessionID,
+            generatedImages: attachments,
+            metrics: ImageGenerationMetrics(
+                imageCount: attachments.count,
+                steps: steps,
+                totalSeconds: elapsed
+            )
+        )
+    }
+
+    private func finishImageMessage(
+        _ id: UUID,
+        in sessionID: UUID,
+        generatedImages: [ChatImageAttachment],
+        metrics: ImageGenerationMetrics
+    ) {
+        updateMessage(id, in: sessionID) { message in
+            message.isStreaming = false
+            message.generatedImages = generatedImages
+            message.imageGenerationMetrics = metrics
+        }
+        persistSession(sessionID, updateTimestamp: true)
+    }
+
+    private func writeTemporaryImage(_ attachment: ChatImageAttachment) -> URL? {
+        guard let data = attachment.imageData else {
+            return nil
+        }
+        let providedExtension = (attachment.filename as NSString).pathExtension
+        let fileExtension = providedExtension.isEmpty ? "png" : providedExtension
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(fileExtension)
+        do {
+            try data.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    private static func generatedAttachments(from response: MLXImageResponse) -> [ChatImageAttachment] {
+        response.data.compactMap { item -> ChatImageAttachment? in
+            let base64: String
+            if let encoded = item.b64JSON, !encoded.isEmpty {
+                base64 = encoded
+            } else if let path = item.path,
+                      let fileData = try? Data(contentsOf: URL(fileURLWithPath: path)) {
+                base64 = fileData.base64EncodedString()
+            } else {
+                return nil
+            }
+            guard let data = Data(base64Encoded: base64), NSImage(data: data) != nil else {
+                return nil
+            }
+            let fileExtension = item.mimeType.contains("jpeg") ? "jpg" : "png"
+            return ChatImageAttachment(
+                filename: "generated-\(item.seed).\(fileExtension)",
+                mimeType: item.mimeType,
+                base64Data: base64
+            )
+        }
+    }
+
     private func failAssistantMessage(_ id: UUID, in sessionID: UUID, error: Error) {
         clearStreamBuffers(id)
         liveDecodeRateRefreshDates.removeValue(forKey: id)
@@ -1158,6 +1280,13 @@ private struct ChatMessageRow: View {
 
                 if showsTextContent {
                     textBubble
+                }
+
+                if !message.generatedImages.isEmpty {
+                    ChatGeneratedImages(attachments: message.generatedImages)
+                    if let imageMetrics = message.imageGenerationMetrics {
+                        ChatImageGenerationMetricsRow(metrics: imageMetrics)
+                    }
                 }
             }
 
@@ -1637,6 +1766,147 @@ private struct ChatResponseMetricPill: View {
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         )
         .help("\(label): \(value)")
+    }
+}
+
+private func saveGeneratedImage(_ attachment: ChatImageAttachment) {
+    guard let data = attachment.imageData else {
+        return
+    }
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = attachment.filename
+    panel.canCreateDirectories = true
+    guard panel.runModal() == .OK, let url = panel.url else {
+        return
+    }
+    try? data.write(to: url)
+}
+
+private struct ChatGeneratedImages: View {
+    let attachments: [ChatImageAttachment]
+    @State private var fullscreenAttachment: ChatImageAttachment?
+
+    private let columns = [GridItem(.adaptive(minimum: 220), spacing: 10, alignment: .top)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            ForEach(attachments) { attachment in
+                ChatGeneratedImageThumbnail(attachment: attachment) {
+                    fullscreenAttachment = attachment
+                }
+            }
+        }
+        .sheet(item: $fullscreenAttachment) { attachment in
+            ChatGeneratedImageFullscreen(attachment: attachment) {
+                fullscreenAttachment = nil
+            }
+        }
+    }
+}
+
+private struct ChatGeneratedImageThumbnail: View {
+    let attachment: ChatImageAttachment
+    let onExpand: () -> Void
+    @State private var isHovering = false
+
+    private var nsImage: NSImage? {
+        attachment.imageData.flatMap(NSImage.init(data:))
+    }
+
+    var body: some View {
+        if let nsImage {
+            Image(nsImage: nsImage)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, minHeight: 180, maxHeight: 320)
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    if isHovering {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.white.opacity(0.12))
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if isHovering {
+                        Button {
+                            saveGeneratedImage(attachment)
+                        } label: {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.black.opacity(0.75))
+                                .frame(width: 28, height: 28)
+                                .background(Color.white.opacity(0.85), in: Circle())
+                                .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(8)
+                        .help("Download image")
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .onTapGesture(perform: onExpand)
+                .onHover { isHovering = $0 }
+                .animation(.easeInOut(duration: 0.12), value: isHovering)
+        }
+    }
+}
+
+private struct ChatGeneratedImageFullscreen: View {
+    let attachment: ChatImageAttachment
+    let onDismiss: () -> Void
+
+    private var nsImage: NSImage? {
+        attachment.imageData.flatMap(NSImage.init(data:))
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.92).ignoresSafeArea()
+            if let nsImage {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(24)
+            }
+        }
+        .frame(minWidth: 720, minHeight: 520)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onDismiss)
+        .onExitCommand(perform: onDismiss)
+    }
+}
+
+private struct ChatImageGenerationMetricsRow: View {
+    let metrics: ImageGenerationMetrics
+
+    var body: some View {
+        HStack(spacing: 12) {
+            metric("Time", seconds: metrics.totalSeconds)
+            metric("Per image", seconds: metrics.secondsPerImage)
+            if let stepsPerSecond = metrics.stepsPerSecond {
+                metric("Steps/s", value: String(format: "%.1f", stepsPerSecond))
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private func metric(_ title: String, seconds: Double) -> some View {
+        let value = seconds >= 10
+            ? String(format: "%.0fs", seconds)
+            : String(format: "%.1fs", seconds)
+        return metric(title, value: value)
+    }
+
+    private func metric(_ title: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .fontWeight(.semibold)
+                .monospacedDigit()
+        }
     }
 }
 

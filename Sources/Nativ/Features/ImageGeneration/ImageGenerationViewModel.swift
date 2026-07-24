@@ -22,7 +22,7 @@ enum SessionModelKind: String, Codable, Equatable, Sendable {
     }
 }
 
-struct ImageGenerationMetrics: Equatable, Sendable {
+struct ImageGenerationMetrics: Equatable, Sendable, Codable {
     let imageCount: Int
     let steps: Int
     let totalSeconds: Double

@@ -126,6 +126,8 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
     var thinkingDuration: TimeInterval?
     var imageAttachments: [ChatImageAttachment]
     var responseMetrics: ChatResponseMetrics?
+    var generatedImages: [ChatImageAttachment]
+    var imageGenerationMetrics: ImageGenerationMetrics?
 
     init(
         id: UUID = UUID(),
@@ -138,7 +140,9 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         isThinkingEnabled: Bool = false,
         thinkingDuration: TimeInterval? = nil,
         imageAttachments: [ChatImageAttachment] = [],
-        responseMetrics: ChatResponseMetrics? = nil
+        responseMetrics: ChatResponseMetrics? = nil,
+        generatedImages: [ChatImageAttachment] = [],
+        imageGenerationMetrics: ImageGenerationMetrics? = nil
     ) {
         self.id = id
         self.role = role
@@ -151,6 +155,8 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         self.thinkingDuration = thinkingDuration
         self.imageAttachments = imageAttachments
         self.responseMetrics = responseMetrics
+        self.generatedImages = generatedImages
+        self.imageGenerationMetrics = imageGenerationMetrics
     }
 
     enum CodingKeys: String, CodingKey {
@@ -165,6 +171,8 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         case thinkingDuration
         case imageAttachments
         case responseMetrics
+        case generatedImages
+        case imageGenerationMetrics
     }
 
     init(from decoder: Decoder) throws {
@@ -180,6 +188,8 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         thinkingDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .thinkingDuration)
         imageAttachments = try container.decodeIfPresent([ChatImageAttachment].self, forKey: .imageAttachments) ?? []
         responseMetrics = try container.decodeIfPresent(ChatResponseMetrics.self, forKey: .responseMetrics)
+        generatedImages = try container.decodeIfPresent([ChatImageAttachment].self, forKey: .generatedImages) ?? []
+        imageGenerationMetrics = try container.decodeIfPresent(ImageGenerationMetrics.self, forKey: .imageGenerationMetrics)
 
         if role == .error,
            content == NativChatError.missingAssistantContent.localizedDescription,
@@ -202,6 +212,8 @@ struct ChatTranscriptMessage: Identifiable, Equatable, Codable {
         try container.encodeIfPresent(thinkingDuration, forKey: .thinkingDuration)
         try container.encode(imageAttachments, forKey: .imageAttachments)
         try container.encodeIfPresent(responseMetrics, forKey: .responseMetrics)
+        try container.encode(generatedImages, forKey: .generatedImages)
+        try container.encodeIfPresent(imageGenerationMetrics, forKey: .imageGenerationMetrics)
     }
 
     var apiMessage: MLXChatMessage? {
