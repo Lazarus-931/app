@@ -1,17 +1,23 @@
 import AppKit
 import Foundation
+import NativServerKit
 
 @MainActor
 enum IssueReport {
     static let newIssueURL = "https://github.com/Lazarus-931/app/issues/new"
-    private static let maximumBodyLength = 6000
+    private static let maximumBodyLength = 7000
     private static let crashReportMaxAge: TimeInterval = 7 * 24 * 60 * 60
+    private static let lastSeenCrashKey = "Nativ.lastSeenCrashReport"
 
     struct CrashReport {
         let fileName: String
         let modifiedAt: Date
         let summary: String
         let raw: String
+
+        var displayDate: String {
+            crashDateFormatter.string(from: modifiedAt)
+        }
     }
 
     static func open(model: NativModel, runtime: SystemRuntimeMonitor) {
@@ -24,6 +30,17 @@ enum IssueReport {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    static func unseenCrashReport() -> CrashReport? {
+        guard let crash = latestCrashReport() else {
+            return nil
+        }
+        return crash.fileName == UserDefaults.standard.string(forKey: lastSeenCrashKey) ? nil : crash
+    }
+
+    static func markCrashReportSeen(_ report: CrashReport) {
+        UserDefaults.standard.set(report.fileName, forKey: lastSeenCrashKey)
     }
 
     static func url(model: NativModel, runtime: SystemRuntimeMonitor, crash: CrashReport? = nil) -> URL? {
@@ -47,7 +64,7 @@ enum IssueReport {
         let gpuModel = model.isRunning ? model.loadedModelDisplay : "none"
         let cpuModel = model.cpuIsRunning ? model.cpuMenuModelDisplay : "none"
 
-        var sections = [
+        var sections: [String] = [
             """
             ### What happened
 
@@ -57,6 +74,7 @@ enum IssueReport {
             - App: Nativ v\(appVersion)
             - macOS: \(runtime.macOSVersion) (\(runtime.macOSBuild))
             - Chip: \(runtime.chipName), \(ram) RAM
+            - Memory in use: \(memoryUsage(runtime))
             - mlx-vlm: \(runtime.mlxVLMVersion)
 
             ### Server state
@@ -69,27 +87,76 @@ enum IssueReport {
 
         if let crash {
             sections.append(
-                """
-                ### Crash report
-                - Report: \(crash.fileName)
-                - When: \(crashDateFormatter.string(from: crash.modifiedAt))
-
-                ```
-                \(crash.summary)
-                ```
-
-                _The full Apple crash report was copied to your clipboard — paste it below._
-                """
+                "### Crash report\n"
+                    + "- Report: \(crash.fileName)\n"
+                    + "- When: \(crash.displayDate)\n\n"
+                    + "```\n\(crash.summary)\n```\n\n"
+                    + "_The full Apple crash report was copied to your clipboard — paste it below._"
             )
         }
 
-        let tail = logTail(model.logText, lines: 25)
+        let launchArguments = redactHomeDirectory(settings.launchArguments.joined(separator: " "))
+        if !launchArguments.isEmpty {
+            sections.append("### Server configuration\n```\n\(launchArguments)\n```")
+        }
+
+        if let metrics = metricsSection(model: model) {
+            sections.append(metrics)
+        }
+
+        let tail = logTail(model.logText, lines: 20)
         if !tail.isEmpty {
             sections.append("### Recent server output\n```\n\(tail)\n```")
         }
 
-        let body = sections.joined(separator: "\n\n")
-        return String(body.suffix(maximumBodyLength))
+        return assemble(sections)
+    }
+
+    private static func assemble(_ sections: [String]) -> String {
+        var body = ""
+        for section in sections {
+            let addition = body.isEmpty ? section : "\n\n" + section
+            if body.count + addition.count > maximumBodyLength {
+                break
+            }
+            body += addition
+        }
+        return body
+    }
+
+    private static func memoryUsage(_ runtime: SystemRuntimeMonitor) -> String {
+        guard runtime.usedMemoryBytes > 0, runtime.totalMemoryBytes > 0 else {
+            return "unavailable"
+        }
+        let gib = 1_073_741_824.0
+        return String(
+            format: "%.1f / %.0f GB (%d%%)",
+            Double(runtime.usedMemoryBytes) / gib,
+            Double(runtime.totalMemoryBytes) / gib,
+            Int((runtime.memoryUsageFraction * 100).rounded())
+        )
+    }
+
+    private static func metricsSection(model: NativModel) -> String? {
+        var blocks: [String] = []
+        if let metrics = model.metrics {
+            blocks.append("**Session**\n" + statsLines(NativStats.sessionEntries(metrics)))
+            if let latest = metrics.latest {
+                blocks.append("**Latest request**\n" + statsLines(NativStats.latestRequestEntries(latest)))
+            }
+            blocks.append("**Runtime**\n" + statsLines(NativStats.runtimeEntries(metrics.server)))
+        }
+        if model.allTimeStats.hasValues {
+            blocks.append("**All-time**\n" + statsLines(NativStats.allTimeEntries(model.allTimeStats)))
+        }
+        guard !blocks.isEmpty else {
+            return nil
+        }
+        return "### Metrics\n" + blocks.joined(separator: "\n\n")
+    }
+
+    private static func statsLines(_ entries: [StatsEntry]) -> String {
+        entries.map { "- \($0.label): \($0.value)" }.joined(separator: "\n")
     }
 
     private static func logTail(_ text: String, lines: Int) -> String {
