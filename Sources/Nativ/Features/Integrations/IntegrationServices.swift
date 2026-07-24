@@ -14,8 +14,29 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
     case openClaw
     case zed
     case continueDev
+    case vscode
+    case cursor
+    case cline
+    case jetbrains
 
     var id: String { rawValue }
+
+    var isGuidedSetup: Bool {
+        switch self {
+        case .vscode, .cursor, .cline, .jetbrains: true
+        default: false
+        }
+    }
+
+    var guidedSymbolName: String {
+        switch self {
+        case .vscode: "chevron.left.forwardslash.chevron.right"
+        case .cursor: "cursorarrow.rays"
+        case .cline: "terminal"
+        case .jetbrains: "hammer"
+        default: "app.dashed"
+        }
+    }
 
     var displayName: String {
         switch self {
@@ -31,6 +52,10 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .openClaw: "OpenClaw"
         case .zed: "Zed"
         case .continueDev: "Continue"
+        case .vscode: "VS Code"
+        case .cursor: "Cursor"
+        case .cline: "Cline"
+        case .jetbrains: "JetBrains"
         }
     }
 
@@ -48,6 +73,10 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .openClaw: "openclaw"
         case .zed: "zed"
         case .continueDev: "cn"
+        case .vscode: "code"
+        case .cursor: "cursor"
+        case .cline: "cline"
+        case .jetbrains: "jetbrains"
         }
     }
 
@@ -67,6 +96,10 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .openClaw: "Open personal AI agent and gateway"
         case .zed: "High-performance, multiplayer code editor"
         case .continueDev: "Open-source AI code assistant"
+        case .vscode: "Visual Studio Code with MLX or Copilot BYOK"
+        case .cursor: "AI-first editor via an OpenAI-compatible provider"
+        case .cline: "Autonomous coding agent for VS Code"
+        case .jetbrains: "IntelliJ-family IDEs via AI Assistant"
         }
     }
 
@@ -91,6 +124,45 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .openClaw: URL(string: "https://docs.openclaw.ai/")!
         case .zed: URL(string: "https://zed.dev/download")!
         case .continueDev: URL(string: "https://docs.continue.dev/cli/quickstart")!
+        case .vscode: URL(string: "https://code.visualstudio.com/")!
+        case .cursor: URL(string: "https://cursor.com/")!
+        case .cline: URL(string: "https://cline.bot/")!
+        case .jetbrains: URL(string: "https://www.jetbrains.com/")!
+        }
+    }
+
+    var guidedSetupSteps: [String] {
+        switch self {
+        case .vscode:
+            return [
+                "Community MLX extension (best UX, WIP): install it, then it auto-discovers models served here.",
+                "Copilot BYOK (works today): Copilot Chat → Manage Models → add an \"OpenAI Compatible\" provider, paste the endpoint below, key, and a model id."
+            ]
+        case .cursor:
+            return [
+                "Settings → Models → add a custom OpenAI-compatible model.",
+                "Set the Base URL and API key below, and add a model id from the list."
+            ]
+        case .cline:
+            return [
+                "Open the Cline panel → settings.",
+                "Choose the \"OpenAI Compatible\" provider, then paste the Base URL, API key, and a model id below."
+            ]
+        case .jetbrains:
+            return [
+                "AI Assistant → Settings → Models → add a custom OpenAI-compatible server.",
+                "Enter the Base URL and API key below and pick a model id."
+            ]
+        default:
+            return []
+        }
+    }
+
+    var guidedSetupCaveat: String? {
+        switch self {
+        case .vscode: "The community extension is still WIP; the Copilot BYOK path works today."
+        case .cline: "Cline is heavy on tool calls — use a tool-capable model."
+        default: nil
         }
     }
 }
@@ -225,6 +297,8 @@ struct IntegrationProfileManager {
                 let openAICompatible = languageModels["openai_compatible"] as? [String: Any]
             else { return false }
             return openAICompatible[Self.providerID] != nil
+        case .vscode, .cursor, .cline, .jetbrains:
+            return false
         }
     }
 
@@ -266,6 +340,8 @@ struct IntegrationProfileManager {
             try configureZed(models: models)
         case .continueDev:
             try configureContinue(selectedModelID: selectedModelID, models: models)
+        case .vscode, .cursor, .cline, .jetbrains:
+            break
         }
     }
 
@@ -384,6 +460,8 @@ struct IntegrationProfileManager {
             return home.appendingPathComponent(".config/zed/settings.json")
         case .continueDev:
             return integrationsSupportURL.appendingPathComponent("continue-config.yaml")
+        case .vscode, .cursor, .cline, .jetbrains:
+            return integrationsSupportURL.appendingPathComponent("\(tool.rawValue)-guided-unused.json")
         }
     }
 
@@ -808,6 +886,8 @@ struct IntegrationProfileManager {
             return (["."], ["NATIV_API_KEY": "nativ"])
         case .continueDev:
             return (["--config", configurationURL(for: tool).path], [:])
+        case .vscode, .cursor, .cline, .jetbrains:
+            return ([], [:])
         }
     }
 
