@@ -354,6 +354,7 @@ public struct MLXChatCompletionRequest: Encodable, Equatable, Sendable {
     public var responseFormat: MLXChatResponseFormat?
     public var stream: Bool
     public var streamOptions: MLXChatStreamOptions?
+    public var device: String?
 
     public init(
         model: String,
@@ -370,7 +371,8 @@ public struct MLXChatCompletionRequest: Encodable, Equatable, Sendable {
         thinkingEndToken: String? = nil,
         responseFormat: MLXChatResponseFormat? = nil,
         stream: Bool = false,
-        streamOptions: MLXChatStreamOptions? = nil
+        streamOptions: MLXChatStreamOptions? = nil,
+        device: String? = nil
     ) {
         self.model = model
         self.messages = messages
@@ -387,6 +389,7 @@ public struct MLXChatCompletionRequest: Encodable, Equatable, Sendable {
         self.responseFormat = responseFormat
         self.stream = stream
         self.streamOptions = streamOptions
+        self.device = device
     }
 
     enum CodingKeys: String, CodingKey {
@@ -405,6 +408,7 @@ public struct MLXChatCompletionRequest: Encodable, Equatable, Sendable {
         case responseFormat = "response_format"
         case stream
         case streamOptions = "stream_options"
+        case device
     }
 }
 
