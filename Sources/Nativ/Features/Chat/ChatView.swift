@@ -1281,6 +1281,13 @@ private struct ChatMessageRow: View {
                 if showsTextContent {
                     textBubble
                 }
+
+                if !message.generatedImages.isEmpty {
+                    ChatGeneratedImages(attachments: message.generatedImages)
+                    if let imageMetrics = message.imageGenerationMetrics {
+                        ChatImageGenerationMetricsRow(metrics: imageMetrics)
+                    }
+                }
             }
 
             if let liveDecodeTokensPerSecond {
@@ -1759,6 +1766,147 @@ private struct ChatResponseMetricPill: View {
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         )
         .help("\(label): \(value)")
+    }
+}
+
+private func saveGeneratedImage(_ attachment: ChatImageAttachment) {
+    guard let data = attachment.imageData else {
+        return
+    }
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = attachment.filename
+    panel.canCreateDirectories = true
+    guard panel.runModal() == .OK, let url = panel.url else {
+        return
+    }
+    try? data.write(to: url)
+}
+
+private struct ChatGeneratedImages: View {
+    let attachments: [ChatImageAttachment]
+    @State private var fullscreenAttachment: ChatImageAttachment?
+
+    private let columns = [GridItem(.adaptive(minimum: 220), spacing: 10, alignment: .top)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            ForEach(attachments) { attachment in
+                ChatGeneratedImageThumbnail(attachment: attachment) {
+                    fullscreenAttachment = attachment
+                }
+            }
+        }
+        .sheet(item: $fullscreenAttachment) { attachment in
+            ChatGeneratedImageFullscreen(attachment: attachment) {
+                fullscreenAttachment = nil
+            }
+        }
+    }
+}
+
+private struct ChatGeneratedImageThumbnail: View {
+    let attachment: ChatImageAttachment
+    let onExpand: () -> Void
+    @State private var isHovering = false
+
+    private var nsImage: NSImage? {
+        attachment.imageData.flatMap(NSImage.init(data:))
+    }
+
+    var body: some View {
+        if let nsImage {
+            Image(nsImage: nsImage)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, minHeight: 180, maxHeight: 320)
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    if isHovering {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.white.opacity(0.12))
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if isHovering {
+                        Button {
+                            saveGeneratedImage(attachment)
+                        } label: {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.black.opacity(0.75))
+                                .frame(width: 28, height: 28)
+                                .background(Color.white.opacity(0.85), in: Circle())
+                                .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(8)
+                        .help("Download image")
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .onTapGesture(perform: onExpand)
+                .onHover { isHovering = $0 }
+                .animation(.easeInOut(duration: 0.12), value: isHovering)
+        }
+    }
+}
+
+private struct ChatGeneratedImageFullscreen: View {
+    let attachment: ChatImageAttachment
+    let onDismiss: () -> Void
+
+    private var nsImage: NSImage? {
+        attachment.imageData.flatMap(NSImage.init(data:))
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.92).ignoresSafeArea()
+            if let nsImage {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(24)
+            }
+        }
+        .frame(minWidth: 720, minHeight: 520)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onDismiss)
+        .onExitCommand(perform: onDismiss)
+    }
+}
+
+private struct ChatImageGenerationMetricsRow: View {
+    let metrics: ImageGenerationMetrics
+
+    var body: some View {
+        HStack(spacing: 12) {
+            metric("Time", seconds: metrics.totalSeconds)
+            metric("Per image", seconds: metrics.secondsPerImage)
+            if let stepsPerSecond = metrics.stepsPerSecond {
+                metric("Steps/s", value: String(format: "%.1f", stepsPerSecond))
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private func metric(_ title: String, seconds: Double) -> some View {
+        let value = seconds >= 10
+            ? String(format: "%.0fs", seconds)
+            : String(format: "%.1fs", seconds)
+        return metric(title, value: value)
+    }
+
+    private func metric(_ title: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .fontWeight(.semibold)
+                .monospacedDigit()
+        }
     }
 }
 
