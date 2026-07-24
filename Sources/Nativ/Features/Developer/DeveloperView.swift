@@ -17,14 +17,9 @@ struct DeveloperView: View {
                     runtimeGrid
                     serverControlPanel
                     ServerEndpointsPanel(
-                        title: "GPU server",
+                        title: "Server",
                         port: model.settings.normalized().serverPort,
                         isLive: model.isRunning
-                    )
-                    ServerEndpointsPanel(
-                        title: "CPU server",
-                        port: model.settings.normalized().cpuServerPort,
-                        isLive: model.cpuIsRunning
                     )
                     logPanel
                         .frame(height: max(320, geometry.size.height - 430))
@@ -118,9 +113,7 @@ struct DeveloperView: View {
 
             Spacer(minLength: 16)
 
-            portField("GPU port", value: $model.settings.serverPort)
-
-            portField("CPU port", value: $model.settings.cpuServerPort)
+            portField("Port", value: $model.settings.serverPort)
 
             if model.isRunning && model.settingsRequireRestart {
                 Button("Restart") {
