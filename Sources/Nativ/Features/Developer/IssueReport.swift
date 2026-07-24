@@ -31,13 +31,6 @@ enum IssueReport {
             fromByteCount: Int64(clamping: runtime.totalMemoryBytes),
             countStyle: .memory
         )
-        let availableBytes = runtime.totalMemoryBytes > runtime.usedMemoryBytes
-            ? runtime.totalMemoryBytes - runtime.usedMemoryBytes
-            : 0
-        let availableRAM = ByteCountFormatter.string(
-            fromByteCount: Int64(clamping: availableBytes),
-            countStyle: .memory
-        )
         let gpuModel = model.isRunning ? model.loadedModelDisplay : "none"
         let cpuModel = model.cpuIsRunning ? model.cpuMenuModelDisplay : "none"
 
@@ -51,7 +44,6 @@ enum IssueReport {
             - App: Nativ v\(appVersion)
             - macOS: \(runtime.macOSVersion) (\(runtime.macOSBuild))
             - Chip: \(runtime.chipName), \(ram) RAM
-            - Memory available: \(availableRAM) of \(ram)
             - mlx-vlm: \(runtime.mlxVLMVersion)
 
             ### Server state

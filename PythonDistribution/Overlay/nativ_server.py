@@ -28,6 +28,10 @@ TRACKED_PATHS = {
     "/v1/chat/completions",
     "/responses",
     "/v1/responses",
+    "/images/generations",
+    "/v1/images/generations",
+    "/images/edits",
+    "/v1/images/edits",
 }
 METRICS_PATHS = {"/metrics", "/v1/metrics"}
 
@@ -74,6 +78,7 @@ class RequestObservation:
     started_at_unix: float
     start_time: float
     first_token_at: float | None = None
+    device: str | None = None
 
 
 @dataclass
@@ -129,6 +134,13 @@ def analytics_db_path() -> str:
     return os.path.expanduser(
         "~/Library/Application Support/Nativ/Analytics.sqlite3"
     )
+
+
+def analytics_cpu_db_path() -> str | None:
+    configured_path = os.environ.get("MLX_PLATFORM_CPU_ANALYTICS_DB_PATH")
+    if configured_path:
+        return os.path.expanduser(configured_path)
+    return None
 
 
 def bucket_start_unix(timestamp: float, granularity: str) -> float:
@@ -435,6 +447,16 @@ class AnalyticsStore:
 
 
 ANALYTICS_STORE = AnalyticsStore(analytics_db_path())
+_ANALYTICS_CPU_PATH = analytics_cpu_db_path()
+ANALYTICS_STORE_CPU = (
+    AnalyticsStore(_ANALYTICS_CPU_PATH) if _ANALYTICS_CPU_PATH else None
+)
+
+
+def analytics_store_for(device: str | None) -> AnalyticsStore:
+    if device == "cpu" and ANALYTICS_STORE_CPU is not None:
+        return ANALYTICS_STORE_CPU
+    return ANALYTICS_STORE
 
 
 class MetricsTracker:
@@ -510,7 +532,7 @@ class MetricsTracker:
             aggregate.last_request_at = completed_at
 
         try:
-            ANALYTICS_STORE.record_event(event)
+            analytics_store_for(observation.device).record_event(event)
         except Exception as error:
             base.logger.warning("analytics persistence failed for failed request: %s", error)
 
@@ -616,7 +638,7 @@ class MetricsTracker:
             aggregate.last_request_at = completed_at
 
         try:
-            ANALYTICS_STORE.record_event(event)
+            analytics_store_for(observation.device).record_event(event)
         except Exception as error:
             base.logger.warning("analytics persistence failed for completed request: %s", error)
 
@@ -624,6 +646,8 @@ class MetricsTracker:
         runtime = current_runtime_snapshot()
         try:
             ANALYTICS_STORE.heartbeat(runtime)
+            if ANALYTICS_STORE_CPU is not None:
+                ANALYTICS_STORE_CPU.heartbeat(runtime)
         except Exception as error:
             base.logger.warning("analytics session heartbeat failed: %s", error)
 
@@ -700,6 +724,43 @@ def resolve_thinking_enabled(payload: dict[str, Any]) -> bool:
     return bool(base.get_server_enable_thinking())
 
 
+def current_peak_memory_gb() -> float | None:
+    try:
+        import mlx.core as mx
+        getter = getattr(mx, "get_peak_memory", None)
+        if getter is None:
+            metal = getattr(mx, "metal", None)
+            getter = getattr(metal, "get_peak_memory", None) if metal is not None else None
+        if getter is None:
+            return None
+        return float(getter()) / (1024**3)
+    except Exception:
+        return None
+
+
+def parse_image_completion(response_body: bytes, observation: RequestObservation) -> dict[str, Any]:
+    model = observation.model
+    image_count = observation.image_count
+    try:
+        payload = json.loads(response_body.decode("utf-8")) if response_body else {}
+        data = payload.get("data")
+        if isinstance(data, list) and data:
+            image_count = len(data)
+        model = payload.get("model") or model
+    except Exception:
+        pass
+    observation.image_count = image_count
+    return {
+        "model": model,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "generated_tokens": 0,
+        "request_elapsed_s": max(0.0, time.perf_counter() - observation.start_time),
+        "peak_memory_gb": current_peak_memory_gb(),
+        "finish_reason": "stop",
+    }
+
+
 def parse_request_observation(request: Request, payload: dict[str, Any]) -> RequestObservation:
     image_count = 0
     audio_count = 0
@@ -709,6 +770,9 @@ def parse_request_observation(request: Request, payload: dict[str, Any]) -> Requ
         input_items = payload.get("input")
         if isinstance(input_items, list):
             image_count, audio_count = iter_message_media(input_items)
+    elif "/images/" in request.url.path:
+        requested = payload.get("n")
+        image_count = int(requested) if isinstance(requested, int) and requested > 0 else 1
 
     return RequestObservation(
         request_id=uuid.uuid4().hex,
@@ -721,6 +785,7 @@ def parse_request_observation(request: Request, payload: dict[str, Any]) -> Requ
         thinking_enabled=resolve_thinking_enabled(payload),
         started_at_unix=time.time(),
         start_time=time.perf_counter(),
+        device=payload.get("device") if isinstance(payload.get("device"), str) else None,
     )
 
 
@@ -1131,6 +1196,8 @@ def install_metrics_overlay() -> None:
             response, response_body = await materialize_response(response)
             if request.url.path.endswith("chat/completions"):
                 completion = parse_chat_response(response_body, observation)
+            elif "/images/" in request.url.path:
+                completion = parse_image_completion(response_body, observation)
             else:
                 completion = parse_responses_body(response_body, observation)
             completion = merge_base_metrics(

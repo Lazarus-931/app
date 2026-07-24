@@ -35,7 +35,7 @@ mlx-lm==0.31.3
 # mlx-vlm with --device selection, enabling CPU+GPU dual inference. Source
 # builds include the Metal backend, so mlx-metal is not pinned separately.
 mlx @ git+https://github.com/Lazarus-931/mlx.git@4c274fb4826dac77851434392ddf73188ebdce22
-mlx-vlm @ git+https://github.com/Lazarus-931/mlx-vlm.git@45f5513581ad8822cb644d213cb650a14c32a911
+mlx-vlm @ git+https://github.com/Lazarus-931/mlx-vlm.git@ca7fe42317ecd483f13dafb0692f792014cd0511
 multidict==6.7.1
 multiprocess==0.70.19
 numpy==2.4.4

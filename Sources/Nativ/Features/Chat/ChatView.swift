@@ -439,9 +439,7 @@ final class ChatViewModel: ObservableObject {
         persistCurrentSession(updateTimestamp: true)
         self.appModel = appModel
         let isImage = activeModelIsImageGeneration
-        let requestPort = isImage
-            ? settings.serverPort
-            : (device == .cpu ? settings.cpuServerPort : settings.serverPort)
+        let requestPort = settings.serverPort
         requestQueue.append(QueuedChatRequest(
             id: UUID(),
             sessionID: currentSession.id,
@@ -761,7 +759,8 @@ final class ChatViewModel: ObservableObject {
             thinkingStartToken: settings.thinkingEnabled ? settings.thinkingStartToken : nil,
             thinkingEndToken: settings.thinkingEnabled ? settings.thinkingEndToken : nil,
             responseFormat: settings.chatResponseFormat,
-            stream: true
+            stream: true,
+            device: queuedRequest.device == .cpu ? "cpu" : "gpu"
         )
     }
 
