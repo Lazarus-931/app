@@ -7,6 +7,13 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
     case claudeCode
     case hermes
     case openCode
+    case aider
+    case goose
+    case crush
+    case qwenCode
+    case openClaw
+    case zed
+    case continueDev
 
     var id: String { rawValue }
 
@@ -17,6 +24,13 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .claudeCode: "Claude Code"
         case .hermes: "Hermes"
         case .openCode: "OpenCode"
+        case .aider: "Aider"
+        case .goose: "Goose"
+        case .crush: "Crush"
+        case .qwenCode: "Qwen Code"
+        case .openClaw: "OpenClaw"
+        case .zed: "Zed"
+        case .continueDev: "Continue"
         }
     }
 
@@ -27,6 +41,13 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .claudeCode: "claude"
         case .hermes: "hermes"
         case .openCode: "opencode"
+        case .aider: "aider"
+        case .goose: "goose"
+        case .crush: "crush"
+        case .qwenCode: "qwen"
+        case .openClaw: "openclaw"
+        case .zed: "zed"
+        case .continueDev: "cn"
         }
     }
 
@@ -39,6 +60,20 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .claudeCode: "Anthropic's agentic coding tool"
         case .hermes: "Open agent with tools, skills, and memory"
         case .openCode: "Open-source coding agent"
+        case .aider: "AI pair programming in your terminal"
+        case .goose: "Extensible on-machine AI agent"
+        case .crush: "Glamourous terminal coding agent"
+        case .qwenCode: "Agentic coding CLI tuned for Qwen"
+        case .openClaw: "Open personal AI agent and gateway"
+        case .zed: "High-performance, multiplayer code editor"
+        case .continueDev: "Open-source AI code assistant"
+        }
+    }
+
+    var preferredModelHint: String? {
+        switch self {
+        case .qwenCode: "Tuned for Qwen models — works with any model served here."
+        default: nil
         }
     }
 
@@ -49,6 +84,13 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .claudeCode: URL(string: "https://code.claude.com/docs/en/setup")!
         case .hermes: URL(string: "https://github.com/NousResearch/hermes-agent")!
         case .openCode: URL(string: "https://opencode.ai/docs")!
+        case .aider: URL(string: "https://aider.chat/docs/install.html")!
+        case .goose: URL(string: "https://github.com/block/goose")!
+        case .crush: URL(string: "https://github.com/charmbracelet/crush")!
+        case .qwenCode: URL(string: "https://github.com/QwenLM/qwen-code")!
+        case .openClaw: URL(string: "https://docs.openclaw.ai/")!
+        case .zed: URL(string: "https://zed.dev/download")!
+        case .continueDev: URL(string: "https://docs.continue.dev/cli/quickstart")!
         }
     }
 }
@@ -157,9 +199,32 @@ struct IntegrationProfileManager {
                 let providers = root["provider"] as? [String: Any]
             else { return false }
             return providers[Self.providerID] != nil
-        case .codex, .hermes:
+        case .codex, .hermes, .aider, .qwenCode, .continueDev:
             guard let text = String(data: data, encoding: .utf8) else { return false }
             return text.contains(Self.providerID) && text.contains(Self.openAIBaseURL)
+        case .goose:
+            guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+            return root["name"] as? String == Self.providerID
+        case .crush:
+            guard
+                let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let providers = root["providers"] as? [String: Any]
+            else { return false }
+            return providers[Self.providerID] != nil
+        case .openClaw:
+            guard
+                let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let modelsRoot = root["models"] as? [String: Any],
+                let providers = modelsRoot["providers"] as? [String: Any]
+            else { return false }
+            return providers[Self.providerID] != nil
+        case .zed:
+            guard
+                let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let languageModels = root["language_models"] as? [String: Any],
+                let openAICompatible = languageModels["openai_compatible"] as? [String: Any]
+            else { return false }
+            return openAICompatible[Self.providerID] != nil
         }
     }
 
@@ -187,6 +252,20 @@ struct IntegrationProfileManager {
                 ),
                 to: configurationURL(for: tool)
             )
+        case .aider:
+            try configureAider()
+        case .goose:
+            try configureGoose(models: models)
+        case .crush:
+            try configureCrush(selectedModelID: selectedModelID, models: models, maxOutputTokens: maxOutputTokens)
+        case .qwenCode:
+            try configureQwenCode(selectedModelID: selectedModelID)
+        case .openClaw:
+            try configureOpenClaw(models: models)
+        case .zed:
+            try configureZed(models: models)
+        case .continueDev:
+            try configureContinue(selectedModelID: selectedModelID, models: models)
         }
     }
 
@@ -291,6 +370,20 @@ struct IntegrationProfileManager {
             return home.appendingPathComponent(".hermes/profiles/nativ/config.yaml")
         case .openCode:
             return integrationsSupportURL.appendingPathComponent("opencode.json")
+        case .aider:
+            return integrationsSupportURL.appendingPathComponent("aider.env")
+        case .goose:
+            return home.appendingPathComponent(".config/goose/custom_providers/nativ.json")
+        case .crush:
+            return integrationsSupportURL.appendingPathComponent("crush.json")
+        case .qwenCode:
+            return integrationsSupportURL.appendingPathComponent("qwen.env")
+        case .openClaw:
+            return home.appendingPathComponent(".openclaw/openclaw.json")
+        case .zed:
+            return home.appendingPathComponent(".config/zed/settings.json")
+        case .continueDev:
+            return integrationsSupportURL.appendingPathComponent("continue-config.yaml")
         }
     }
 
@@ -526,6 +619,143 @@ struct IntegrationProfileManager {
         ]
     }
 
+    private func configureAider() throws {
+        let contents = "OPENAI_API_BASE=\(Self.openAIBaseURL)\nOPENAI_API_KEY=nativ\n"
+        try writeText(contents, to: configurationURL(for: .aider))
+    }
+
+    private func configureGoose(models: [IntegrationModelDescriptor]) throws {
+        let modelEntries = models.map { model -> [String: Any] in
+            ["name": model.id, "context_limit": model.contextWindow ?? 131_072]
+        }
+        let provider: [String: Any] = [
+            "name": Self.providerID,
+            "engine": "openai",
+            "display_name": "Nativ",
+            "description": "Local models from Nativ",
+            "api_key_env": "NATIV_API_KEY",
+            "base_url": Self.openAIBaseURL + "/chat/completions",
+            "models": modelEntries,
+            "supports_streaming": true,
+            "requires_auth": true
+        ]
+        try writeJSON(provider, to: configurationURL(for: .goose))
+    }
+
+    private func configureCrush(
+        selectedModelID: String,
+        models: [IntegrationModelDescriptor],
+        maxOutputTokens: Int
+    ) throws {
+        let providerModels = models.map { model -> [String: Any] in
+            var entry: [String: Any] = ["id": model.id, "name": model.displayName]
+            if let contextWindow = model.contextWindow {
+                entry["context_window"] = contextWindow
+            }
+            return entry
+        }
+        let large: [String: Any] = [
+            "model": selectedModelID,
+            "provider": Self.providerID,
+            "max_tokens": maxOutputTokens
+        ]
+        let small: [String: Any] = ["model": selectedModelID, "provider": Self.providerID]
+        let configuration: [String: Any] = [
+            "models": ["large": large, "small": small],
+            "providers": [
+                Self.providerID: [
+                    "type": "openai-compat",
+                    "base_url": Self.openAIBaseURL,
+                    "api_key": "nativ",
+                    "models": providerModels
+                ]
+            ]
+        ]
+        try writeJSON(configuration, to: configurationURL(for: .crush))
+    }
+
+    private func configureQwenCode(selectedModelID: String) throws {
+        let contents = "OPENAI_API_KEY=nativ\nOPENAI_BASE_URL=\(Self.openAIBaseURL)\nOPENAI_MODEL=\(selectedModelID)\n"
+        try writeText(contents, to: configurationURL(for: .qwenCode))
+    }
+
+    private func configureOpenClaw(models: [IntegrationModelDescriptor]) throws {
+        let url = configurationURL(for: .openClaw)
+        var root: [String: Any] = [:]
+        if fileManager.fileExists(atPath: url.path) {
+            let data = try Data(contentsOf: url)
+            guard let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw IntegrationServiceError.invalidConfiguration(url)
+            }
+            root = existing
+        }
+        var modelsRoot = root["models"] as? [String: Any] ?? [:]
+        var providers = modelsRoot["providers"] as? [String: Any] ?? [:]
+        providers[Self.providerID] = [
+            "baseUrl": Self.openAIBaseURL,
+            "apiKey": "nativ",
+            "api": "openai-completions",
+            "models": models.map(openClawModel)
+        ]
+        modelsRoot["providers"] = providers
+        root["models"] = modelsRoot
+        try writeJSON(root, to: url)
+    }
+
+    private func openClawModel(_ model: IntegrationModelDescriptor) -> [String: Any] {
+        var value: [String: Any] = ["id": model.id, "name": model.displayName]
+        if let contextWindow = model.contextWindow {
+            value["contextWindow"] = contextWindow
+        }
+        return value
+    }
+
+    private func configureZed(models: [IntegrationModelDescriptor]) throws {
+        let url = configurationURL(for: .zed)
+        var root: [String: Any] = [:]
+        if fileManager.fileExists(atPath: url.path) {
+            let data = try Data(contentsOf: url)
+            guard let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw IntegrationServiceError.invalidConfiguration(url)
+            }
+            root = existing
+        }
+        var languageModels = root["language_models"] as? [String: Any] ?? [:]
+        var openAICompatible = languageModels["openai_compatible"] as? [String: Any] ?? [:]
+        openAICompatible[Self.providerID] = [
+            "api_url": Self.openAIBaseURL,
+            "available_models": models.map(zedModel)
+        ]
+        languageModels["openai_compatible"] = openAICompatible
+        root["language_models"] = languageModels
+        try writeJSON(root, to: url)
+    }
+
+    private func zedModel(_ model: IntegrationModelDescriptor) -> [String: Any] {
+        [
+            "name": model.id,
+            "display_name": model.displayName,
+            "max_tokens": model.contextWindow ?? 131_072
+        ]
+    }
+
+    private func configureContinue(selectedModelID: String, models: [IntegrationModelDescriptor]) throws {
+        let ordered = models.filter { $0.id == selectedModelID } + models.filter { $0.id != selectedModelID }
+        var lines = ["name: nativ", "version: 0.0.1", "models:"]
+        for model in ordered {
+            lines.append("  - name: \(yamlString(model.displayName))")
+            lines.append("    provider: openai")
+            lines.append("    apiBase: \(yamlString(Self.openAIBaseURL))")
+            lines.append("    model: \(yamlString(model.id))")
+            lines.append("    apiKey: nativ")
+            lines.append("    roles:")
+            lines.append("      - chat")
+            lines.append("      - edit")
+            lines.append("      - apply")
+        }
+        try writeText(lines.joined(separator: "\n") + "\n", to: configurationURL(for: .continueDev))
+    }
+
     private func launchConfiguration(
         tool: IntegrationTool,
         selectedModelID: String
@@ -551,6 +781,33 @@ struct IntegrationProfileManager {
                 ["--model", "\(Self.providerID)/\(selectedModelID)"],
                 ["OPENCODE_CONFIG": configurationURL(for: tool).path]
             )
+        case .aider:
+            return (
+                ["--env-file", configurationURL(for: tool).path, "--model", "openai/\(selectedModelID)"],
+                [:]
+            )
+        case .goose:
+            return (
+                ["session", "start", "--provider", Self.providerID],
+                ["NATIV_API_KEY": "nativ", "GOOSE_MODEL": selectedModelID]
+            )
+        case .crush:
+            return ([], ["CRUSH_GLOBAL_CONFIG": configurationURL(for: tool).path])
+        case .qwenCode:
+            return (
+                [],
+                [
+                    "OPENAI_API_KEY": "nativ",
+                    "OPENAI_BASE_URL": Self.openAIBaseURL,
+                    "OPENAI_MODEL": selectedModelID
+                ]
+            )
+        case .openClaw:
+            return (["agent", "--model", "\(Self.providerID)/\(selectedModelID)"], [:])
+        case .zed:
+            return (["."], ["NATIV_API_KEY": "nativ"])
+        case .continueDev:
+            return (["--config", configurationURL(for: tool).path], [:])
         }
     }
 
