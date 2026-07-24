@@ -449,8 +449,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             model: model,
             navigation: controlPanelNavigation,
             runtime: runtime,
-            onComplete: { [weak self] modelID, serverAPIKey in
-                self?.completeWelcome(modelID: modelID, serverAPIKey: serverAPIKey)
+            onComplete: { [weak self] modelID, serverAPIKey, ttsModelID in
+                self?.completeWelcome(modelID: modelID, serverAPIKey: serverAPIKey, ttsModelID: ttsModelID)
             }
         )
     }
@@ -499,10 +499,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
-    private func completeWelcome(modelID: String?, serverAPIKey: String?) {
+    private func completeWelcome(modelID: String?, serverAPIKey: String?, ttsModelID: String?) {
         var settings = model.settings
         settings.languageModelID = modelID
         settings.serverAPIKey = serverAPIKey
+        if let ttsModelID {
+            settings.textToSpeechModelID = ttsModelID
+        }
         model.settings = settings.normalized()
         WelcomePreferences.markCompleted()
 

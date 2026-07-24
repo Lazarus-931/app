@@ -7,6 +7,13 @@ struct SettingsView: View {
     @AppStorage("sidebarPinned") private var pinNavigationPanel = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchAtLoginError: String?
+    @StateObject private var textToSpeechLibrary = LocalModelLibrary()
+
+    private var textToSpeechModels: [LocalModel] {
+        textToSpeechLibrary.models.filter {
+            $0.capabilities.contains(.textToSpeech) || $0.capabilities.contains(.audio)
+        }
+    }
 
     var body: some View {
         Form {
@@ -24,7 +31,27 @@ struct SettingsView: View {
                 TextField("Model search path", text: $model.settings.modelSearchPath)
                 TextField("Language model", text: optionalString($model.settings.languageModelID))
                 TextField("Image generation model", text: optionalString($model.settings.imageGenerationModelID))
-                TextField("Text-to-speech model", text: optionalString($model.settings.textToSpeechModelID))
+                Menu {
+                    Button("None") {
+                        model.settings.textToSpeechModelID = nil
+                    }
+                    if !textToSpeechModels.isEmpty {
+                        Divider()
+                        ForEach(textToSpeechModels, id: \.repoID) { ttsModel in
+                            Button(ttsModel.repoID) {
+                                model.settings.textToSpeechModelID = ttsModel.repoID
+                            }
+                        }
+                    }
+                } label: {
+                    LabeledContent("Text-to-speech model") {
+                        Text(model.settings.textToSpeechModelID ?? "None")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onAppear {
+                    textToSpeechLibrary.scan(path: model.settings.modelSearchPath)
+                }
                 TextField("Speech-to-text model", text: optionalString($model.settings.speechToTextModelID))
             }
 

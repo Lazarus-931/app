@@ -40,6 +40,20 @@ struct ChatView: View {
     @State private var composerHeight: CGFloat = 0
     @State private var followsLatestMessage = true
     @State private var isUserScrollingTranscript = false
+    @State private var showVoiceSession = false
+    @StateObject private var tts = TextToSpeechService()
+    @StateObject private var voiceController = VoiceSessionController()
+
+    private var readAloudModelID: String? {
+        let trimmed = model.settings.normalized().textToSpeechModelID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false) ? trimmed : nil
+    }
+
+    private var serverBaseURL: URL {
+        URL(string: "http://127.0.0.1:\(model.settings.normalized().serverPort)")
+            ?? URL(string: "http://127.0.0.1:8080")!
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -54,6 +68,9 @@ struct ChatView: View {
                             canSend: canSend,
                             onSend: {
                                 chat.send(using: model)
+                            },
+                            onStartVoice: {
+                                startVoiceSession()
                             }
                         )
                         .frame(maxWidth: Layout.conversationMaxWidth)
@@ -95,6 +112,26 @@ struct ChatView: View {
             }
             .padding(.top, 12)
             .padding(.trailing, 22)
+        }
+        .overlay {
+            if showVoiceSession {
+                VoiceSessionOverlay(controller: voiceController, onEnd: endVoiceSession)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: showVoiceSession)
+    }
+
+    private func startVoiceSession() {
+        voiceController.start(chat: chat, model: model)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showVoiceSession = true
+        }
+    }
+
+    private func endVoiceSession() {
+        voiceController.stop()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showVoiceSession = false
         }
     }
 
@@ -169,8 +206,13 @@ struct ChatView: View {
                     }
                 } else {
                     ForEach(chat.visibleMessages) { message in
-                        ChatMessageRow(message: message)
-                            .id(message.id)
+                        ChatMessageRow(
+                            message: message,
+                            tts: tts,
+                            ttsModelID: readAloudModelID,
+                            serverBaseURL: serverBaseURL
+                        )
+                        .id(message.id)
                     }
                 }
             }
@@ -245,6 +287,8 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var messages: [ChatTranscriptMessage] = []
     @Published private(set) var pendingImageAttachments: [ChatImageAttachment] = []
     @Published var draft = ""
+    /// Fired with the final assistant text when a response finishes (used by the voice session for TTS).
+    var onAssistantResponseFinished: ((String) -> Void)?
     @Published private(set) var activeRequestSessionID: UUID?
     @Published private(set) var sendingStartedAt: Date?
     @Published private(set) var scrollToken = 0
@@ -982,6 +1026,14 @@ final class ChatViewModel: ObservableObject {
                 : nil
         }
         persistSession(sessionID, updateTimestamp: true)
+
+        if !isCancelled, let handler = onAssistantResponseFinished {
+            let finalContent = message(id, in: sessionID)?.content ?? fallbackContent
+            let trimmed = finalContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                handler(trimmed)
+            }
+        }
     }
 
     private func runImageGeneration(_ queuedRequest: QueuedChatRequest) async throws {
@@ -1264,6 +1316,9 @@ private struct ChatMessageRow: View {
     private static let maximumUserBubbleWidth: CGFloat = 560
 
     let message: ChatTranscriptMessage
+    @ObservedObject var tts: TextToSpeechService
+    let ttsModelID: String?
+    let serverBaseURL: URL
     @State private var didCopyResponse = false
     @State private var isHoveringMessage = false
 
@@ -1322,13 +1377,20 @@ private struct ChatMessageRow: View {
                         onCopy: copyResponse
                     )
 
+                    if ttsModelID != nil {
+                        ChatReadAloudButton(
+                            isSpeaking: isReadingAloud,
+                            onToggle: toggleReadAloud
+                        )
+                    }
+
                     Text(message.createdAt, format: .dateTime.hour().minute())
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
                 }
-                .opacity(isHoveringMessage || didCopyResponse ? 1 : 0)
-                .accessibilityHidden(!isHoveringMessage && !didCopyResponse)
+                .opacity(isHoveringMessage || didCopyResponse || isReadingAloud ? 1 : 0)
+                .accessibilityHidden(!isHoveringMessage && !didCopyResponse && !isReadingAloud)
             }
         }
         .frame(maxWidth: .infinity, alignment: rowAlignment)
@@ -1500,6 +1562,23 @@ private struct ChatMessageRow: View {
             && !message.content.isEmpty
     }
 
+    private var isReadingAloud: Bool {
+        tts.isSpeaking(messageID: message.id)
+    }
+
+    private func toggleReadAloud() {
+        if isReadingAloud {
+            tts.stop()
+        } else if let ttsModelID {
+            tts.speak(
+                message.content,
+                model: ttsModelID,
+                baseURL: serverBaseURL,
+                messageID: message.id
+            )
+        }
+    }
+
     private func copyResponse() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -1574,6 +1653,32 @@ private struct ChatCopyResponseButton: View {
         .onHover { isHovering = $0 }
         .animation(.easeInOut(duration: 0.12), value: isHovering)
         .animation(.easeInOut(duration: 0.15), value: didCopy)
+    }
+}
+
+private struct ChatReadAloudButton: View {
+    let isSpeaking: Bool
+    let onToggle: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onToggle) {
+            Image(systemName: isSpeaking ? "stop.circle" : "speaker.wave.2")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(
+                    isSpeaking
+                        ? Color.accentColor
+                        : (isHovering ? Color.primary : Color.secondary)
+                )
+                .frame(width: 30, height: 28)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help(isSpeaking ? "Stop" : "Read aloud")
+        .accessibilityLabel(isSpeaking ? "Stop reading aloud" : "Read response aloud")
+        .onHover { isHovering = $0 }
+        .animation(.easeInOut(duration: 0.12), value: isHovering)
+        .animation(.easeInOut(duration: 0.15), value: isSpeaking)
     }
 }
 
