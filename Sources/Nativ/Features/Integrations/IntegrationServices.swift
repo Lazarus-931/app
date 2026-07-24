@@ -28,16 +28,6 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         }
     }
 
-    var guidedSymbolName: String {
-        switch self {
-        case .vscode: "chevron.left.forwardslash.chevron.right"
-        case .cursor: "cursorarrow.rays"
-        case .cline: "terminal"
-        case .jetbrains: "hammer"
-        default: "app.dashed"
-        }
-    }
-
     var displayName: String {
         switch self {
         case .pi: "Pi"
