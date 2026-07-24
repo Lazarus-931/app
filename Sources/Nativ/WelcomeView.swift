@@ -1034,6 +1034,6 @@ private enum WelcomeAPIKeyGenerator {
 }
 
 #Preview {
-    WelcomeView(model: NativModel()) { _, _ in }
+    WelcomeView(model: NativModel()) { _, _, _ in }
         .frame(width: 1240, height: 720)
 }
