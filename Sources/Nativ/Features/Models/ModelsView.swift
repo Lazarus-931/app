@@ -53,7 +53,6 @@ struct ModelsView: View {
         .onDisappear {
             localLibrary.cancel()
             hubLibrary.cancel()
-            downloadManager.cancelDownload()
         }
     }
 
