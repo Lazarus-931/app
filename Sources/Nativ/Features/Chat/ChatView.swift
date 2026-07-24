@@ -215,6 +215,10 @@ final class ChatViewModel: ObservableObject {
         let modelID: String
         let device: ChatInferenceDevice
         let baseURL: URL
+        var isImageGeneration = false
+        var imageWidth = 1024
+        var imageHeight = 1024
+        var referenceAttachment: ChatImageAttachment?
     }
 
     @Published private(set) var sessions: [ChatSessionSummary] = []
@@ -434,7 +438,10 @@ final class ChatViewModel: ObservableObject {
         self.currentSession?.lastInferenceDevice = device.rawValue
         persistCurrentSession(updateTimestamp: true)
         self.appModel = appModel
-        let requestPort = device == .cpu ? settings.cpuServerPort : settings.serverPort
+        let isImage = activeModelIsImageGeneration
+        let requestPort = isImage
+            ? settings.serverPort
+            : (device == .cpu ? settings.cpuServerPort : settings.serverPort)
         requestQueue.append(QueuedChatRequest(
             id: UUID(),
             sessionID: currentSession.id,
@@ -443,7 +450,11 @@ final class ChatViewModel: ObservableObject {
             settings: settings,
             modelID: modelID,
             device: device,
-            baseURL: URL(string: "http://127.0.0.1:\(requestPort)")!
+            baseURL: URL(string: "http://127.0.0.1:\(requestPort)")!,
+            isImageGeneration: isImage,
+            imageWidth: imageGenerationWidth,
+            imageHeight: imageGenerationHeight,
+            referenceAttachment: isImage ? imageAttachments.first : nil
         ))
         bumpScroll()
         startNextRequestIfNeeded()
@@ -638,7 +649,10 @@ final class ChatViewModel: ObservableObject {
 
         while !requestQueue.isEmpty {
             let queuedRequest = requestQueue.removeFirst()
-            guard let request = makeCompletionRequest(for: queuedRequest),
+            let completionRequest = queuedRequest.isImageGeneration
+                ? nil
+                : makeCompletionRequest(for: queuedRequest)
+            guard queuedRequest.isImageGeneration || completionRequest != nil,
                   insertAssistantMessage(for: queuedRequest)
             else {
                 continue
@@ -656,25 +670,29 @@ final class ChatViewModel: ObservableObject {
                     return
                 }
 
-                let requestClient = NativChatClient(baseURL: queuedRequest.baseURL)
                 do {
-                    let completion = try await requestClient.streamChat(request, onEvent: { [weak self] event in
-                        await MainActor.run {
-                            self?.append(
-                                event: event,
-                                to: queuedRequest.assistantMessageID,
-                                in: queuedRequest.sessionID
-                            )
-                        }
-                    })
-                    finishAssistantMessage(
-                        queuedRequest.assistantMessageID,
-                        in: queuedRequest.sessionID,
-                        fallbackContent: completion.content,
-                        fallbackReasoningContent: completion.reasoningContent,
-                        responseMetrics: ChatResponseMetrics(completion: completion),
-                        isCancelled: false
-                    )
+                    if queuedRequest.isImageGeneration {
+                        try await runImageGeneration(queuedRequest)
+                    } else if let completionRequest {
+                        let requestClient = NativChatClient(baseURL: queuedRequest.baseURL)
+                        let completion = try await requestClient.streamChat(completionRequest, onEvent: { [weak self] event in
+                            await MainActor.run {
+                                self?.append(
+                                    event: event,
+                                    to: queuedRequest.assistantMessageID,
+                                    in: queuedRequest.sessionID
+                                )
+                            }
+                        })
+                        finishAssistantMessage(
+                            queuedRequest.assistantMessageID,
+                            in: queuedRequest.sessionID,
+                            fallbackContent: completion.content,
+                            fallbackReasoningContent: completion.reasoningContent,
+                            responseMetrics: ChatResponseMetrics(completion: completion),
+                            isCancelled: false
+                        )
+                    }
                     appModel?.refreshMetricsIfRunning(force: true)
                 } catch is CancellationError {
                     finishAssistantMessage(
@@ -946,6 +964,107 @@ final class ChatViewModel: ObservableObject {
                 : nil
         }
         persistSession(sessionID, updateTimestamp: true)
+    }
+
+    private func runImageGeneration(_ queuedRequest: QueuedChatRequest) async throws {
+        guard let promptMessage = message(queuedRequest.userMessageID, in: queuedRequest.sessionID) else {
+            throw NativImageError.missingImageData
+        }
+        let prompt = promptMessage.content
+        let client = NativImageClient(baseURL: queuedRequest.baseURL)
+        let steps = 4
+        let startedAt = Date()
+        let response: MLXImageResponse
+        if let reference = queuedRequest.referenceAttachment,
+           let referenceURL = writeTemporaryImage(reference) {
+            response = try await client.edit(MLXImageEditRequest(
+                model: queuedRequest.modelID,
+                prompt: prompt,
+                image: [referenceURL.path],
+                n: 1,
+                width: queuedRequest.imageWidth,
+                height: queuedRequest.imageHeight,
+                steps: steps
+            ))
+        } else {
+            response = try await client.generate(MLXImageGenerationRequest(
+                model: queuedRequest.modelID,
+                prompt: prompt,
+                n: 1,
+                width: queuedRequest.imageWidth,
+                height: queuedRequest.imageHeight,
+                steps: steps
+            ))
+        }
+        let elapsed = Date().timeIntervalSince(startedAt)
+        let attachments = Self.generatedAttachments(from: response)
+        guard !attachments.isEmpty else {
+            throw NativImageError.missingImageData
+        }
+        finishImageMessage(
+            queuedRequest.assistantMessageID,
+            in: queuedRequest.sessionID,
+            generatedImages: attachments,
+            metrics: ImageGenerationMetrics(
+                imageCount: attachments.count,
+                steps: steps,
+                totalSeconds: elapsed
+            )
+        )
+    }
+
+    private func finishImageMessage(
+        _ id: UUID,
+        in sessionID: UUID,
+        generatedImages: [ChatImageAttachment],
+        metrics: ImageGenerationMetrics
+    ) {
+        updateMessage(id, in: sessionID) { message in
+            message.isStreaming = false
+            message.generatedImages = generatedImages
+            message.imageGenerationMetrics = metrics
+        }
+        persistSession(sessionID, updateTimestamp: true)
+    }
+
+    private func writeTemporaryImage(_ attachment: ChatImageAttachment) -> URL? {
+        guard let data = attachment.imageData else {
+            return nil
+        }
+        let providedExtension = (attachment.filename as NSString).pathExtension
+        let fileExtension = providedExtension.isEmpty ? "png" : providedExtension
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(fileExtension)
+        do {
+            try data.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    private static func generatedAttachments(from response: MLXImageResponse) -> [ChatImageAttachment] {
+        response.data.compactMap { item -> ChatImageAttachment? in
+            let base64: String
+            if let encoded = item.b64JSON, !encoded.isEmpty {
+                base64 = encoded
+            } else if let path = item.path,
+                      let fileData = try? Data(contentsOf: URL(fileURLWithPath: path)) {
+                base64 = fileData.base64EncodedString()
+            } else {
+                return nil
+            }
+            guard let data = Data(base64Encoded: base64), NSImage(data: data) != nil else {
+                return nil
+            }
+            let fileExtension = item.mimeType.contains("jpeg") ? "jpg" : "png"
+            return ChatImageAttachment(
+                filename: "generated-\(item.seed).\(fileExtension)",
+                mimeType: item.mimeType,
+                base64Data: base64
+            )
+        }
     }
 
     private func failAssistantMessage(_ id: UUID, in sessionID: UUID, error: Error) {
