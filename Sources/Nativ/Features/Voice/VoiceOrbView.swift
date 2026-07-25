@@ -1,49 +1,88 @@
 import SwiftUI
 
-/// A floating, ambient orb whose scale, glow, and hue drift with the live audio
-/// level (0...1) — mic while you speak, playback while the model speaks. Calm and
-/// beat-like rather than distracting.
+/// A floating, fluid cloud of soft particles that reads like drifting sand rather
+/// than a hard circle. Two lobes visualize the two voices at once: the model's
+/// speech pulses a cool lobe toward the top-left (`modelLevel`), and your own
+/// speech pulses a warm lobe toward the bottom-right (`userLevel`).
 struct VoiceOrbView: View {
-    var level: Double
-    var size: CGFloat = 200
+    var userLevel: Double
+    var modelLevel: Double
+    var size: CGFloat = 210
+
+    private let particleCount = 26
+
+    // Cool (model) points top-left; warm (you) points bottom-right. Screen y is down.
+    private let modelLobeAngle = 5.0 * .pi / 4.0
+    private let userLobeAngle = .pi / 4.0
+
+    private var coolColor: Color { Color(hue: 0.62, saturation: 0.82, brightness: 1.0) }
+    private var warmColor: Color { Color(hue: 0.045, saturation: 0.85, brightness: 1.0) }
 
     var body: some View {
+        let user = max(0, min(1, userLevel))
+        let model = max(0, min(1, modelLevel))
+
         TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
-            let clampedLevel = max(0, min(1, level))
-            let pulse = 1.0 + clampedLevel * 0.34 + sin(time * 2.1) * 0.02
-            let hue = 0.62 + clampedLevel * 0.06
-            let drift = CGSize(
-                width: sin(time * 0.7) * 0.08,
-                height: cos(time * 0.9) * 0.08
-            )
 
             ZStack {
+                // Soft idle core so the orb stays visible when both voices are quiet.
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color(hue: hue, saturation: 0.45, brightness: 1.0),
-                                Color(hue: hue + 0.04, saturation: 0.7, brightness: 0.92),
-                                Color(hue: hue + 0.08, saturation: 0.6, brightness: 0.7)
-                                    .opacity(0.55)
+                                Color(hue: 0.63, saturation: 0.5, brightness: 1.0).opacity(0.32),
+                                .clear
                             ],
-                            center: UnitPoint(x: 0.42 + drift.width, y: 0.36 + drift.height),
-                            startRadius: 2,
-                            endRadius: size * 0.72
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: size * 0.42
                         )
                     )
-                    .blur(radius: size * 0.04)
-                    .scaleEffect(pulse)
+                    .blur(radius: size * 0.06)
 
-                Circle()
-                    .stroke(Color.white.opacity(0.12 + clampedLevel * 0.3), lineWidth: max(1, size * 0.01))
-                    .scaleEffect(pulse * 1.04)
-                    .blur(radius: size * 0.015)
+                Canvas { context, canvasSize in
+                    let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+                    let baseRadius = min(canvasSize.width, canvasSize.height) * 0.22
+
+                    for index in 0..<particleCount {
+                        let isModel = index.isMultiple(of: 2)
+                        let level = isModel ? model : user
+                        let lobeAngle = isModel ? modelLobeAngle : userLobeAngle
+                        let phase = Double(index)
+
+                        // Drifting position on a wobbling ring, biased toward the lobe.
+                        let ringAngle = (phase / Double(particleCount)) * 2.0 * .pi
+                        let wobble = sin(time * 1.25 + phase) * 0.16
+                            + cos(time * 0.85 + phase * 1.7) * 0.10
+                        let ring = baseRadius * (0.72 + 0.28 * (0.5 + 0.5 * sin(time * 0.8 + phase)))
+                        let bias = baseRadius * CGFloat(0.30 + 0.55 * level)
+
+                        let px = center.x
+                            + CGFloat(cos(ringAngle)) * ring * CGFloat(1 + wobble)
+                            + CGFloat(cos(lobeAngle)) * bias
+                        let py = center.y
+                            + CGFloat(sin(ringAngle)) * ring * CGFloat(1 + wobble)
+                            + CGFloat(sin(lobeAngle)) * bias
+
+                        let blob = size * CGFloat(0.11 + 0.16 * level + 0.03 * (0.5 + 0.5 * sin(time + phase)))
+                        let rect = CGRect(x: px - blob / 2, y: py - blob / 2, width: blob, height: blob)
+                        let opacity = 0.22 + 0.6 * level
+                        let color = isModel ? coolColor : warmColor
+                        context.fill(Path(ellipseIn: rect), with: .color(color.opacity(opacity)))
+                    }
+                }
+                .blur(radius: size * 0.05)
             }
             .frame(width: size, height: size)
-            .shadow(color: Color(hue: hue, saturation: 0.6, brightness: 1).opacity(0.5), radius: size * 0.12)
-            .animation(.easeOut(duration: 0.12), value: level)
+            .shadow(
+                color: coolColor.opacity(0.28 + 0.3 * model),
+                radius: size * 0.11
+            )
+            .shadow(
+                color: warmColor.opacity(0.22 + 0.3 * user),
+                radius: size * 0.11
+            )
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)

@@ -16,8 +16,10 @@ final class VoiceSessionController: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var isActive = false
     @Published var isMinimized = false
-    /// Amplitude (0...1) driving the orb — mic level while listening, playback level while speaking.
-    @Published private(set) var level: Double = 0
+    /// Amplitude (0...1) of your microphone — drives the warm, bottom-right lobe of the orb.
+    @Published private(set) var userLevel: Double = 0
+    /// Amplitude (0...1) of the model's speech playback — drives the cool, top-left lobe.
+    @Published private(set) var modelLevel: Double = 0
     @Published private(set) var statusText = ""
 
     let recognizer = VoiceSpeechRecognizer()
@@ -57,7 +59,8 @@ final class VoiceSessionController: ObservableObject {
         isActive = false
         isMinimized = false
         phase = .idle
-        level = 0
+        userLevel = 0
+        modelLevel = 0
         statusText = ""
     }
 
@@ -144,14 +147,13 @@ final class VoiceSessionController: ObservableObject {
                 guard let self else {
                     return
                 }
-                switch self.phase {
-                case .listening:
-                    self.level = self.recognizer.level
-                case .speaking:
-                    self.level = self.player.level
-                case .thinking, .idle:
-                    self.level = self.level * 0.85
-                }
+                // Track the two voices independently so the orb can show both at once.
+                self.userLevel = self.phase == .listening
+                    ? self.recognizer.level
+                    : self.userLevel * 0.85
+                self.modelLevel = self.phase == .speaking
+                    ? self.player.level
+                    : self.modelLevel * 0.85
             }
         }
         RunLoop.main.add(timer, forMode: .common)
