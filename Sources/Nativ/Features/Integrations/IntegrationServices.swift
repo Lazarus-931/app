@@ -218,10 +218,38 @@ enum IntegrationServiceError: LocalizedError {
 struct IntegrationProfileManager {
     static let providerID = "nativ"
     static var serverPort = 8080
+    /// Static base URLs, used for the read-only endpoint shown in the UI.
     static var openAIBaseURL: String { "http://127.0.0.1:\(serverPort)/v1" }
     static var anthropicBaseURL: String { "http://127.0.0.1:\(serverPort)" }
 
-    private let fileManager = FileManager.default
+    let serverBaseURL: URL
+    private let fileManager: FileManager
+    private let homeDirectory: URL
+    private let applicationSupportDirectory: URL
+
+    /// Instance base URLs derived from the injected `serverBaseURL` (equal to the
+    /// static values in production; overridable in tests).
+    var openAIBaseURL: String {
+        serverBaseURL.appendingPathComponent("v1").absoluteString
+    }
+    var anthropicBaseURL: String {
+        serverBaseURL.absoluteString
+    }
+
+    init(
+        serverBaseURL: URL = URL(string: "http://127.0.0.1:\(IntegrationProfileManager.serverPort)")!,
+        fileManager: FileManager = .default,
+        homeDirectory: URL? = nil,
+        applicationSupportDirectory: URL? = nil
+    ) {
+        let resolvedHomeDirectory = homeDirectory ?? fileManager.homeDirectoryForCurrentUser
+        self.serverBaseURL = serverBaseURL
+        self.fileManager = fileManager
+        self.homeDirectory = resolvedHomeDirectory
+        self.applicationSupportDirectory = applicationSupportDirectory
+            ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? resolvedHomeDirectory
+    }
 
     func status(for tool: IntegrationTool) async -> IntegrationToolStatus {
         let resolvedExecutableURL: URL?
@@ -254,7 +282,7 @@ struct IntegrationProfileManager {
                 let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                 let environment = root["env"] as? [String: Any]
             else { return false }
-            return environment["ANTHROPIC_BASE_URL"] as? String == Self.anthropicBaseURL
+            return environment["ANTHROPIC_BASE_URL"] as? String == anthropicBaseURL
         case .openCode:
             guard
                 let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -263,7 +291,7 @@ struct IntegrationProfileManager {
             return providers[Self.providerID] != nil
         case .codex, .hermes, .aider, .qwenCode, .continueDev:
             guard let text = String(data: data, encoding: .utf8) else { return false }
-            return text.contains(Self.providerID) && text.contains(Self.openAIBaseURL)
+            return text.contains(Self.providerID) && text.contains(openAIBaseURL)
         case .goose:
             guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
             return root["name"] as? String == Self.providerID
@@ -396,7 +424,7 @@ struct IntegrationProfileManager {
     }
 
     func configureCodexDesktop(selectedModelID: String) throws {
-        let url = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex/config.toml")
+        let url = homeDirectory.appendingPathComponent(".codex/config.toml")
         let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let updated = updatingCodexUserConfiguration(existing, selectedModelID: selectedModelID)
         try writeText(updated, to: url)
@@ -424,7 +452,7 @@ struct IntegrationProfileManager {
     }
 
     func configurationURL(for tool: IntegrationTool) -> URL {
-        let home = fileManager.homeDirectoryForCurrentUser
+        let home = homeDirectory
         switch tool {
         case .pi:
             return home.appendingPathComponent(".pi/agent/models.json")
@@ -456,16 +484,14 @@ struct IntegrationProfileManager {
     }
 
     private var integrationsSupportURL: URL {
-        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? fileManager.homeDirectoryForCurrentUser
-        return base
+        applicationSupportDirectory
             .appendingPathComponent("Nativ", isDirectory: true)
             .appendingPathComponent("Integrations", isDirectory: true)
     }
 
     private func bundledExecutableURL(for tool: IntegrationTool) -> URL? {
         guard tool == .codex else { return nil }
-        let home = fileManager.homeDirectoryForCurrentUser
+        let home = homeDirectory
         let candidates = [
             URL(fileURLWithPath: "/Applications/ChatGPT.app/Contents/Resources/codex"),
             URL(fileURLWithPath: "/Applications/Codex.app/Contents/Resources/codex"),
@@ -549,7 +575,7 @@ struct IntegrationProfileManager {
         }
         var providers = root["providers"] as? [String: Any] ?? [:]
         providers[Self.providerID] = [
-            "baseUrl": Self.openAIBaseURL,
+            "baseUrl": openAIBaseURL,
             "api": "openai-completions",
             "apiKey": "nativ",
             "compat": [
@@ -585,7 +611,7 @@ struct IntegrationProfileManager {
 
         [model_providers.\(tomlString(Self.providerID))]
         name = "Nativ"
-        base_url = \(tomlString(Self.openAIBaseURL))
+        base_url = \(tomlString(openAIBaseURL))
         wire_api = "responses"
         """
     }
@@ -595,7 +621,7 @@ struct IntegrationProfileManager {
             "env": [
                 "ANTHROPIC_AUTH_TOKEN": "nativ",
                 "ANTHROPIC_API_KEY": "",
-                "ANTHROPIC_BASE_URL": Self.anthropicBaseURL,
+                "ANTHROPIC_BASE_URL": anthropicBaseURL,
                 "ANTHROPIC_MODEL": selectedModelID,
                 "ANTHROPIC_SMALL_FAST_MODEL": selectedModelID
             ]
@@ -622,13 +648,13 @@ struct IntegrationProfileManager {
         model:
           default: \(yamlString(selectedModelID))
           provider: custom
-          base_url: \(yamlString(Self.openAIBaseURL))
+          base_url: \(yamlString(openAIBaseURL))
           api_key: nativ
         display:
           streaming: true
         custom_providers:
           - name: nativ
-            base_url: \(yamlString(Self.openAIBaseURL))
+            base_url: \(yamlString(openAIBaseURL))
             api_key: nativ
             api_mode: chat_completions
             models:
@@ -678,7 +704,7 @@ struct IntegrationProfileManager {
                     "npm": "@ai-sdk/openai-compatible",
                     "name": "Nativ",
                     "options": [
-                        "baseURL": Self.openAIBaseURL,
+                        "baseURL": openAIBaseURL,
                         "apiKey": "nativ"
                     ],
                     "models": modelCatalog
@@ -688,7 +714,7 @@ struct IntegrationProfileManager {
     }
 
     private func configureAider() throws {
-        let contents = "OPENAI_API_BASE=\(Self.openAIBaseURL)\nOPENAI_API_KEY=nativ\n"
+        let contents = "OPENAI_API_BASE=\(openAIBaseURL)\nOPENAI_API_KEY=nativ\n"
         try writeText(contents, to: configurationURL(for: .aider))
     }
 
@@ -702,7 +728,7 @@ struct IntegrationProfileManager {
             "display_name": "Nativ",
             "description": "Local models from Nativ",
             "api_key_env": "NATIV_API_KEY",
-            "base_url": Self.openAIBaseURL + "/chat/completions",
+            "base_url": openAIBaseURL + "/chat/completions",
             "models": modelEntries,
             "supports_streaming": true,
             "requires_auth": true
@@ -733,7 +759,7 @@ struct IntegrationProfileManager {
             "providers": [
                 Self.providerID: [
                     "type": "openai-compat",
-                    "base_url": Self.openAIBaseURL,
+                    "base_url": openAIBaseURL,
                     "api_key": "nativ",
                     "models": providerModels
                 ]
@@ -743,7 +769,7 @@ struct IntegrationProfileManager {
     }
 
     private func configureQwenCode(selectedModelID: String) throws {
-        let contents = "OPENAI_API_KEY=nativ\nOPENAI_BASE_URL=\(Self.openAIBaseURL)\nOPENAI_MODEL=\(selectedModelID)\n"
+        let contents = "OPENAI_API_KEY=nativ\nOPENAI_BASE_URL=\(openAIBaseURL)\nOPENAI_MODEL=\(selectedModelID)\n"
         try writeText(contents, to: configurationURL(for: .qwenCode))
     }
 
@@ -760,7 +786,7 @@ struct IntegrationProfileManager {
         var modelsRoot = root["models"] as? [String: Any] ?? [:]
         var providers = modelsRoot["providers"] as? [String: Any] ?? [:]
         providers[Self.providerID] = [
-            "baseUrl": Self.openAIBaseURL,
+            "baseUrl": openAIBaseURL,
             "apiKey": "nativ",
             "api": "openai-completions",
             "models": models.map(openClawModel)
@@ -791,7 +817,7 @@ struct IntegrationProfileManager {
         var languageModels = root["language_models"] as? [String: Any] ?? [:]
         var openAICompatible = languageModels["openai_compatible"] as? [String: Any] ?? [:]
         openAICompatible[Self.providerID] = [
-            "api_url": Self.openAIBaseURL,
+            "api_url": openAIBaseURL,
             "available_models": models.map(zedModel)
         ]
         languageModels["openai_compatible"] = openAICompatible
@@ -813,7 +839,7 @@ struct IntegrationProfileManager {
         for model in ordered {
             lines.append("  - name: \(yamlString(model.displayName))")
             lines.append("    provider: openai")
-            lines.append("    apiBase: \(yamlString(Self.openAIBaseURL))")
+            lines.append("    apiBase: \(yamlString(openAIBaseURL))")
             lines.append("    model: \(yamlString(model.id))")
             lines.append("    apiKey: nativ")
             lines.append("    roles:")
@@ -839,7 +865,7 @@ struct IntegrationProfileManager {
                 [
                     "ANTHROPIC_AUTH_TOKEN": "nativ",
                     "ANTHROPIC_API_KEY": "",
-                    "ANTHROPIC_BASE_URL": Self.anthropicBaseURL
+                    "ANTHROPIC_BASE_URL": anthropicBaseURL
                 ]
             )
         case .hermes:
@@ -866,7 +892,7 @@ struct IntegrationProfileManager {
                 [],
                 [
                     "OPENAI_API_KEY": "nativ",
-                    "OPENAI_BASE_URL": Self.openAIBaseURL,
+                    "OPENAI_BASE_URL": openAIBaseURL,
                     "OPENAI_MODEL": selectedModelID
                 ]
             )
@@ -951,7 +977,7 @@ struct IntegrationProfileManager {
         output.append("# Provider managed by Nativ.")
         output.append("[model_providers.\(tomlString(Self.providerID))]")
         output.append("name = \(tomlString("Nativ"))")
-        output.append("base_url = \(tomlString(Self.openAIBaseURL))")
+        output.append("base_url = \(tomlString(openAIBaseURL))")
         output.append("wire_api = \(tomlString("responses"))")
         output.append("")
         return output.joined(separator: "\n")

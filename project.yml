@@ -82,3 +82,14 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         MARKETING_VERSION: 0.0.1
         CURRENT_PROJECT_VERSION: 6
+  NativTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/NativTests
+    dependencies:
+      - target: Nativ
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.local.NativTests
+        GENERATE_INFOPLIST_FILE: YES
