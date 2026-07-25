@@ -5,13 +5,14 @@ import UniformTypeIdentifiers
 enum ControlPanelTab: String, CaseIterable, Identifiable {
     case chat = "Chat"
     case dashboard = "Dashboard"
+    case system = "System"
     case models = "Models"
     case integrations = "Integrations"
     case developer = "Developer"
     case settings = "Settings"
 
     static var allCases: [ControlPanelTab] {
-        [.chat, .dashboard, .models, .integrations, .developer]
+        [.chat, .dashboard, .system, .models, .integrations, .developer]
     }
 
     var id: String { rawValue }
@@ -22,6 +23,8 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
             "bubble.left.and.bubble.right"
         case .dashboard:
             "chart.bar.xaxis"
+        case .system:
+            "gauge.open.with.lines.needle.33percent"
         case .models:
             "cube.transparent"
         case .integrations:
@@ -108,6 +111,7 @@ struct ControlPanelView: View {
     @ObservedObject var runtime: SystemRuntimeMonitor
     @StateObject private var chat = ChatViewModel()
     @StateObject private var dashboard = DashboardViewModel()
+    @StateObject private var systemMonitor = SystemMonitorStore()
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var showsNavigationPanel = false
@@ -420,6 +424,8 @@ struct ControlPanelView: View {
                     )
                 case .dashboard:
                     StatsView(model: model, dashboard: dashboard)
+                case .system:
+                    SystemMonitorView(store: systemMonitor, menuBarPreferences: .shared)
                 case .models:
                     ModelsView(model: model)
                 case .integrations:
