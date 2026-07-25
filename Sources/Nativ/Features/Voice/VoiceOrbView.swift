@@ -47,27 +47,27 @@ struct VoiceOrbView: View {
 
                     for index in 0..<particleCount {
                         let isModel = index.isMultiple(of: 2)
-                        let level = isModel ? model : user
-                        let lobeAngle = isModel ? modelLobeAngle : userLobeAngle
+                        let level: Double = isModel ? model : user
+                        let lobeAngle: Double = isModel ? modelLobeAngle : userLobeAngle
                         let phase = Double(index)
 
                         // Drifting position on a wobbling ring, biased toward the lobe.
-                        let ringAngle = (phase / Double(particleCount)) * 2.0 * .pi
-                        let wobble = sin(time * 1.25 + phase) * 0.16
+                        let ringAngle: Double = (phase / Double(particleCount)) * 2.0 * .pi
+                        let wobble: Double = sin(time * 1.25 + phase) * 0.16
                             + cos(time * 0.85 + phase * 1.7) * 0.10
-                        let ring = baseRadius * (0.72 + 0.28 * (0.5 + 0.5 * sin(time * 0.8 + phase)))
+                        let ringFraction: Double = 0.72 + 0.28 * (0.5 + 0.5 * sin(time * 0.8 + phase))
+                        let ring = baseRadius * CGFloat(ringFraction)
                         let bias = baseRadius * CGFloat(0.30 + 0.55 * level)
 
-                        let px = center.x
-                            + CGFloat(cos(ringAngle)) * ring * CGFloat(1 + wobble)
-                            + CGFloat(cos(lobeAngle)) * bias
-                        let py = center.y
-                            + CGFloat(sin(ringAngle)) * ring * CGFloat(1 + wobble)
-                            + CGFloat(sin(lobeAngle)) * bias
+                        let ringX = CGFloat(cos(ringAngle) * (1.0 + wobble))
+                        let ringY = CGFloat(sin(ringAngle) * (1.0 + wobble))
+                        let px = center.x + ringX * ring + CGFloat(cos(lobeAngle)) * bias
+                        let py = center.y + ringY * ring + CGFloat(sin(lobeAngle)) * bias
 
-                        let blob = size * CGFloat(0.11 + 0.16 * level + 0.03 * (0.5 + 0.5 * sin(time + phase)))
+                        let blobFraction: Double = 0.11 + 0.16 * level + 0.03 * (0.5 + 0.5 * sin(time + phase))
+                        let blob = size * CGFloat(blobFraction)
                         let rect = CGRect(x: px - blob / 2, y: py - blob / 2, width: blob, height: blob)
-                        let opacity = 0.22 + 0.6 * level
+                        let opacity: Double = 0.22 + 0.6 * level
                         let color = isModel ? coolColor : warmColor
                         context.fill(Path(ellipseIn: rect), with: .color(color.opacity(opacity)))
                     }
