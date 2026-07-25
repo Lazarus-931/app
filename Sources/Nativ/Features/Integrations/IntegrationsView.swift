@@ -577,7 +577,7 @@ private struct IntegrationSetupPopover: View {
                 }
 
                 Button {
-                    NSWorkspace.shared.open(tool.installURL)
+                    openGuidedApp()
                 } label: {
                     Label("Open \(tool.displayName)", systemImage: "arrow.up.forward.app")
                 }
@@ -587,6 +587,17 @@ private struct IntegrationSetupPopover: View {
         }
         .frame(width: 380)
         .frame(maxHeight: 560)
+    }
+
+    // Launch the installed app when we know its bundle id; otherwise fall back to the
+    // install/docs page.
+    private func openGuidedApp() {
+        if let bundleID = tool.appBundleIdentifier,
+           let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            NSWorkspace.shared.open(appURL)
+        } else {
+            NSWorkspace.shared.open(tool.installURL)
+        }
     }
 
     private func copyableRow(label: String, value: String) -> some View {

@@ -210,7 +210,8 @@ struct ChatView: View {
                             message: message,
                             tts: tts,
                             ttsModelID: readAloudModelID,
-                            serverBaseURL: serverBaseURL
+                            serverBaseURL: serverBaseURL,
+                            serverAPIKey: model.settings.serverAPIKey
                         )
                         .id(message.id)
                     }
@@ -735,7 +736,10 @@ final class ChatViewModel: ObservableObject {
                     if queuedRequest.isImageGeneration {
                         try await runImageGeneration(queuedRequest)
                     } else if let completionRequest {
-                        let requestClient = NativChatClient(baseURL: queuedRequest.baseURL)
+                        let requestClient = NativChatClient(
+                            baseURL: queuedRequest.baseURL,
+                            apiKey: queuedRequest.settings.serverAPIKey
+                        )
                         let completion = try await requestClient.streamChat(completionRequest, onEvent: { [weak self] event in
                             await MainActor.run {
                                 self?.append(
@@ -1041,7 +1045,10 @@ final class ChatViewModel: ObservableObject {
             throw NativImageError.missingImageData
         }
         let prompt = promptMessage.content
-        let client = NativImageClient(baseURL: queuedRequest.baseURL)
+        let client = NativImageClient(
+            baseURL: queuedRequest.baseURL,
+            apiKey: queuedRequest.settings.serverAPIKey
+        )
         let steps = 4
         let startedAt = Date()
         let response: MLXImageResponse
@@ -1319,6 +1326,7 @@ private struct ChatMessageRow: View {
     @ObservedObject var tts: TextToSpeechService
     let ttsModelID: String?
     let serverBaseURL: URL
+    let serverAPIKey: String?
     @State private var didCopyResponse = false
     @State private var isHoveringMessage = false
 
@@ -1574,6 +1582,7 @@ private struct ChatMessageRow: View {
                 message.content,
                 model: ttsModelID,
                 baseURL: serverBaseURL,
+                apiKey: serverAPIKey,
                 messageID: message.id
             )
         }

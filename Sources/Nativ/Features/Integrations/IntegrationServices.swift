@@ -121,6 +121,16 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         }
     }
 
+    /// The macOS bundle identifier for tools that ship as a GUI app, so guided setup
+    /// can launch the installed app instead of a docs page.
+    var appBundleIdentifier: String? {
+        switch self {
+        case .vscode: "com.microsoft.VSCode"
+        case .cursor: "com.todesktop.230313mzl4w4u92"
+        default: nil
+        }
+    }
+
     var guidedSetupSteps: [String] {
         switch self {
         case .vscode:

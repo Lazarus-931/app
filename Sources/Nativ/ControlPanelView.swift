@@ -60,80 +60,21 @@ final class ControlPanelNavigation: ObservableObject {
     }
 }
 
-private struct GlobalDownloadChip: View {
-    @ObservedObject private var downloads = HuggingFaceDownloadManager.shared
-    var onOpen: () -> Void
-    @State private var offset: CGSize = .zero
-    @State private var dragOrigin: CGSize = .zero
+/// A small pulsing download arrow shown next to the Models sidebar row while a model
+/// is downloading. When concurrent downloads are supported this can show the number of
+/// models still downloading beside the arrow.
+private struct ModelsDownloadArrow: View {
+    @State private var pulse = false
 
     var body: some View {
-        if let modelID = downloads.downloadingModelID {
-            let percent = Int((downloads.downloadProgress * 100).rounded())
-            HStack(spacing: 10) {
-                progressCircle(percent: percent)
-                    .frame(width: 38, height: 38)
-                Text(shortName(modelID))
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
-            .contentShape(Capsule())
-            .offset(offset)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        offset = CGSize(
-                            width: dragOrigin.width + value.translation.width,
-                            height: dragOrigin.height + value.translation.height
-                        )
-                    }
-                    .onEnded { value in
-                        // Near-zero move = a click → open Models; a real drag keeps the new spot.
-                        if abs(value.translation.width) < 4, abs(value.translation.height) < 4 {
-                            offset = dragOrigin
-                            onOpen()
-                        } else {
-                            dragOrigin = offset
-                        }
-                    }
-            )
-            .help("Drag to move \u{00b7} click to open the downloading model")
-            .accessibilityLabel("Downloading \(shortName(modelID)), \(percent) percent. Open the Models page.")
-            .transition(.move(edge: .top).combined(with: .opacity))
-        }
-    }
-
-    @ViewBuilder
-    private func progressCircle(percent: Int) -> some View {
-        ZStack {
-            Circle().stroke(Color.secondary.opacity(0.22), lineWidth: 3)
-            if downloads.isDownloadPaused {
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.secondary)
-            } else if downloads.downloadProgress <= 0.0001 {
-                // Bytes haven't started (Hugging Face is still resolving file metadata) —
-                // show a preparing spinner rather than a stuck "0".
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Circle()
-                    .trim(from: 0, to: downloads.downloadProgress)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Text("\(percent)")
-                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
-            }
-        }
-    }
-
-    private func shortName(_ modelID: String) -> String {
-        let last = modelID.split(separator: "/").last.map(String.init) ?? modelID
-        return NativFormatting.truncateModelName(last, maxLength: 22)
+        Image(systemName: "arrow.down.circle.fill")
+            .font(.caption)
+            .foregroundStyle(.tint)
+            .opacity(pulse ? 0.4 : 1.0)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+            .onAppear { pulse = true }
+            .help("A model is downloading")
+            .accessibilityLabel("A model is downloading")
     }
 }
 
@@ -144,6 +85,7 @@ struct ControlPanelView: View {
     @StateObject private var chat = ChatViewModel()
     @StateObject private var dashboard = DashboardViewModel()
     @StateObject private var systemMonitor = SystemMonitorStore()
+    @ObservedObject private var downloads = HuggingFaceDownloadManager.shared
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var showsNavigationPanel = false
@@ -171,13 +113,6 @@ struct ControlPanelView: View {
             }
         }
         .frame(minWidth: 1040, minHeight: 600)
-        .overlay(alignment: .top) {
-            if selectedTab != .models {
-                GlobalDownloadChip(onOpen: { navigation.open(.models) })
-                    .padding(.top, 10)
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: selectedTab)
         .background {
             ControlPanelWindowStateReader(isFullScreen: $isFullScreen)
                 .frame(width: 0, height: 0)
@@ -358,9 +293,14 @@ struct ControlPanelView: View {
                     Button {
                         applySidebarSelection(selection)
                     } label: {
-                        Label(tab.rawValue, systemImage: tab.systemImage)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(.rect)
+                        HStack(spacing: 6) {
+                            Label(tab.rawValue, systemImage: tab.systemImage)
+                            if tab == .models, downloads.downloadingModelID != nil {
+                                ModelsDownloadArrow()
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(.rect)
                     }
                     .sidebarRowSelectionStyle(isSelected: sidebarSelection == selection)
                     .buttonStyle(.plain)

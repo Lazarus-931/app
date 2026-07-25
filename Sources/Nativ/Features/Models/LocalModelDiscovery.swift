@@ -45,9 +45,17 @@ enum LocalModelCapability: String, CaseIterable, Hashable, Sendable {
 enum LocalModelSource: Equatable, Sendable {
     case huggingFaceCache
     case lmStudio
+    case external
 
     var badgeLabel: String? {
-        self == .lmStudio ? "LM Studio" : nil
+        switch self {
+        case .lmStudio:
+            return "LM Studio"
+        case .external:
+            return "Folder"
+        case .huggingFaceCache:
+            return nil
+        }
     }
 }
 
@@ -87,10 +95,26 @@ struct LocalModelConfigurationMetadata: Equatable, Sendable {
 }
 
 enum LocalModelDiscovery {
-    static func scan(path: String) async throws -> [LocalModel] {
+    static func scan(path: String, additionalPaths: [String] = []) async throws -> [LocalModel] {
         let expandedPath = Self.expandedPath(path)
+        let expandedAdditionalPaths = additionalPaths.map(Self.expandedPath)
         return try await Task.detached(priority: .userInitiated) {
-            try Self.scanSynchronously(path: expandedPath)
+            let externalModels = Self.scanAdditionalPathsSynchronously(
+                expandedAdditionalPaths,
+                fileManager: FileManager.default
+            )
+            do {
+                let cacheModels = try Self.scanSynchronously(path: expandedPath)
+                let uniqueExternalModels = externalModels.filter { external in
+                    !cacheModels.contains(where: { $0.repoID == external.repoID })
+                }
+                return Self.sortedModels(cacheModels + uniqueExternalModels)
+            } catch {
+                guard !externalModels.isEmpty else {
+                    throw error
+                }
+                return Self.sortedModels(externalModels)
+            }
         }.value
     }
 
@@ -276,7 +300,11 @@ enum LocalModelDiscovery {
         let lmStudioModels = scanLMStudioSynchronously(fileManager: fileManager)
             .filter { external in !models.contains(where: { $0.repoID == external.repoID }) }
 
-        return (models + lmStudioModels).sorted { lhs, rhs in
+        return sortedModels(models + lmStudioModels)
+    }
+
+    private static func sortedModels(_ models: [LocalModel]) -> [LocalModel] {
+        models.sorted { lhs, rhs in
             switch lhs.repoID.localizedCaseInsensitiveCompare(rhs.repoID) {
             case .orderedAscending:
                 return true
@@ -286,6 +314,85 @@ enum LocalModelDiscovery {
                 return lhs.repoID < rhs.repoID
             }
         }
+    }
+
+    private static func scanAdditionalPathsSynchronously(
+        _ rootPaths: [String],
+        fileManager: FileManager
+    ) -> [LocalModel] {
+        var models: [LocalModel] = []
+        var seenPaths = Set<String>()
+
+        for rootPath in rootPaths {
+            let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
+            guard isDirectoryURL(rootURL, fileManager: fileManager) else {
+                continue
+            }
+
+            if isLikelyMLXModelSnapshot(rootURL, fileManager: fileManager) {
+                if let model = externalModel(at: rootURL, fileManager: fileManager, seenPaths: &seenPaths) {
+                    models.append(model)
+                }
+                continue
+            }
+
+            for childURL in directoryContents(of: rootURL, fileManager: fileManager) {
+                if isLikelyMLXModelSnapshot(childURL, fileManager: fileManager) {
+                    if let model = externalModel(at: childURL, fileManager: fileManager, seenPaths: &seenPaths) {
+                        models.append(model)
+                    }
+                    continue
+                }
+
+                for grandchildURL in directoryContents(of: childURL, fileManager: fileManager)
+                where isLikelyMLXModelSnapshot(grandchildURL, fileManager: fileManager) {
+                    if let model = externalModel(at: grandchildURL, fileManager: fileManager, seenPaths: &seenPaths) {
+                        models.append(model)
+                    }
+                }
+            }
+        }
+        return models
+    }
+
+    private static func directoryContents(of url: URL, fileManager: FileManager) -> [URL] {
+        let contents = (try? fileManager.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return contents.filter { isDirectoryURL($0, fileManager: fileManager) }
+    }
+
+    private static func externalModel(
+        at modelURL: URL,
+        fileManager: FileManager,
+        seenPaths: inout Set<String>
+    ) -> LocalModel? {
+        let standardizedPath = modelURL.standardizedFileURL.path
+        guard seenPaths.insert(standardizedPath).inserted else {
+            return nil
+        }
+
+        let hubStyleID = modelURL.standardizedFileURL.pathComponents.suffix(2).joined(separator: "/")
+        let modifiedAt = (try? modelURL.resourceValues(
+            forKeys: [.contentModificationDateKey]
+        ))?.contentModificationDate
+        return LocalModel(
+            repoID: standardizedPath,
+            snapshotURL: modelURL,
+            modifiedAt: modifiedAt,
+            sizeBytes: snapshotSize(at: modelURL, fileManager: fileManager),
+            contextSize: contextSize(at: modelURL, fileManager: fileManager),
+            kvCacheElementsPerToken: kvCacheElementsPerToken(at: modelURL, fileManager: fileManager),
+            provider: modelProvider(
+                repoID: hubStyleID,
+                snapshotURL: modelURL,
+                fileManager: fileManager
+            ),
+            capabilities: modelCapabilities(at: modelURL, fileManager: fileManager),
+            source: .external
+        )
     }
 
     private static func configurationMetadataSynchronously(
@@ -1006,14 +1113,14 @@ final class LocalModelLibrary: ObservableObject {
         scanTask?.cancel()
     }
 
-    func scan(path: String) {
+    func scan(path: String, additionalPaths: [String] = []) {
         scanTask?.cancel()
         isScanning = true
         error = nil
 
         scanTask = Task { [weak self] in
             do {
-                let models = try await LocalModelDiscovery.scan(path: path)
+                let models = try await LocalModelDiscovery.scan(path: path, additionalPaths: additionalPaths)
                 guard !Task.isCancelled else {
                     return
                 }

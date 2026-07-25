@@ -5,6 +5,7 @@ struct NativSettings: Codable, Equatable {
     static let defaultModelSearchPath = HuggingFaceCachePath.resolvedDefault
 
     var modelSearchPath: String
+    var additionalModelSearchPaths: [String]
     var serverPort: Int
     var cpuServerPort: Int
     var cpuLanguageModelID: String?
@@ -46,6 +47,7 @@ struct NativSettings: Codable, Equatable {
 
     init(
         modelSearchPath: String = Self.defaultModelSearchPath,
+        additionalModelSearchPaths: [String] = [],
         serverPort: Int = 8080,
         cpuServerPort: Int = 8081,
         cpuLanguageModelID: String? = nil,
@@ -86,6 +88,7 @@ struct NativSettings: Codable, Equatable {
         prefixCacheBlockSize: Int = 16
     ) {
         self.modelSearchPath = modelSearchPath
+        self.additionalModelSearchPaths = additionalModelSearchPaths
         self.serverPort = serverPort
         self.cpuServerPort = cpuServerPort
         self.cpuLanguageModelID = cpuLanguageModelID
@@ -128,6 +131,7 @@ struct NativSettings: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case modelSearchPath
+        case additionalModelSearchPaths
         case serverPort
         case cpuServerPort
         case cpuLanguageModelID
@@ -174,6 +178,7 @@ struct NativSettings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let legacySelectedModelID = try container.decodeIfPresent(String.self, forKey: .selectedModelID)
         modelSearchPath = try container.decodeIfPresent(String.self, forKey: .modelSearchPath) ?? defaults.modelSearchPath
+        additionalModelSearchPaths = try container.decodeIfPresent([String].self, forKey: .additionalModelSearchPaths) ?? defaults.additionalModelSearchPaths
         serverPort = try container.decodeIfPresent(Int.self, forKey: .serverPort) ?? defaults.serverPort
         cpuServerPort = try container.decodeIfPresent(Int.self, forKey: .cpuServerPort) ?? defaults.cpuServerPort
         cpuLanguageModelID = try container.decodeIfPresent(String.self, forKey: .cpuLanguageModelID) ?? defaults.cpuLanguageModelID
@@ -217,6 +222,7 @@ struct NativSettings: Codable, Equatable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(modelSearchPath, forKey: .modelSearchPath)
+        try container.encode(additionalModelSearchPaths, forKey: .additionalModelSearchPaths)
         try container.encode(serverPort, forKey: .serverPort)
         try container.encode(cpuServerPort, forKey: .cpuServerPort)
         try container.encodeIfPresent(cpuLanguageModelID, forKey: .cpuLanguageModelID)
@@ -284,6 +290,10 @@ struct NativSettings: Codable, Equatable {
         settings.modelSearchPath = trimmedPath.isEmpty || trimmedPath == HuggingFaceCachePath.legacyDefault
             ? Self.defaultModelSearchPath
             : trimmedPath
+        var seenAdditionalPaths = Set<String>()
+        settings.additionalModelSearchPaths = settings.additionalModelSearchPaths
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seenAdditionalPaths.insert($0).inserted }
         settings.serverPort = min(max(settings.serverPort, 1024), 65_535)
         settings.cpuServerPort = min(max(settings.cpuServerPort, 1024), 65_535)
         if settings.cpuServerPort == settings.serverPort {
@@ -466,6 +476,10 @@ struct NativSettings: Codable, Equatable {
 
     var expandedModelSearchPath: String {
         NSString(string: modelSearchPath).expandingTildeInPath
+    }
+
+    var modelScanKey: String {
+        ([expandedModelSearchPath] + additionalModelSearchPaths).joined(separator: "\u{0}")
     }
 
     private static func normalizedModelID(_ value: String?) -> String? {

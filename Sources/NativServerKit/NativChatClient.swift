@@ -416,15 +416,18 @@ public final class NativChatClient {
     private let baseURL: URL
     private let session: URLSession
     private let timeout: TimeInterval
+    private let apiKey: String?
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
     public init(
         baseURL: URL = URL(string: "http://127.0.0.1:8080")!,
-        timeout: TimeInterval = 600
+        timeout: TimeInterval = 600,
+        apiKey: String? = nil
     ) {
         self.baseURL = baseURL
         self.timeout = timeout
+        self.apiKey = apiKey
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = timeout
@@ -590,6 +593,9 @@ public final class NativChatClient {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(accepts, forHTTPHeaderField: "Accept")
+        if let apiKey, !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try encoder.encode(payload)
         return request
     }
