@@ -55,8 +55,10 @@ final class VoiceAudioPlayer: NSObject, ObservableObject {
         player.updateMeters()
         let power = player.averagePower(forChannel: 0)
         let amplitude = pow(10.0, Double(power) / 20.0)
-        // Light smoothing so the orb pulses rather than jitters.
-        level = level * 0.6 + min(1.0, amplitude) * 0.4
+        // Perceptual boost so the model's speech visibly pulses the orb, with light
+        // smoothing so it pulses rather than jitters.
+        let scaled = min(1.0, pow(amplitude, 0.6) * 1.4)
+        level = level * 0.5 + scaled * 0.5
     }
 }
 
