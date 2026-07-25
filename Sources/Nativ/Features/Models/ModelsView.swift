@@ -32,6 +32,7 @@ struct ModelsView: View {
         VStack(spacing: 0) {
             pageHeader
             Divider()
+            activeDownloadBanner
 
             switch section {
             case .installed:
@@ -48,12 +49,59 @@ struct ModelsView: View {
             guard section == .discover else { return }
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
-            hubLibrary.search(query: hubQuery, sort: hubSort, token: model.effectiveHuggingFaceToken)
+            hubLibrary.search(
+                query: hubQuery,
+                sort: hubSort,
+                capabilities: hubCapabilityFilters,
+                token: model.effectiveHuggingFaceToken
+            )
         }
         .onDisappear {
             localLibrary.cancel()
             hubLibrary.cancel()
         }
+    }
+
+    @ViewBuilder
+    private var activeDownloadBanner: some View {
+        if let modelID = downloadManager.downloadingModelID {
+            HStack(spacing: 12) {
+                ProgressView(value: downloadManager.downloadProgress)
+                    .progressViewStyle(.circular)
+                    .controlSize(.small)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(downloadBannerName(modelID))
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                    Text(downloadManager.isDownloadPaused
+                        ? "Download paused"
+                        : "Downloading… \(Int((downloadManager.downloadProgress * 100).rounded()))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Spacer(minLength: 12)
+                Button(downloadManager.isDownloadPaused ? "Resume" : "Pause") {
+                    if downloadManager.isDownloadPaused {
+                        downloadManager.resumeDownload()
+                    } else {
+                        downloadManager.pauseDownload()
+                    }
+                }
+                Button("Cancel", role: .destructive) {
+                    downloadManager.cancelDownload()
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .background(Color.accentColor.opacity(0.08))
+            Divider()
+        }
+    }
+
+    private func downloadBannerName(_ modelID: String) -> String {
+        let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
+        return NativFormatting.truncateModelName(shortName, maxLength: 44)
     }
 
     private var pageHeader: some View {
@@ -519,20 +567,17 @@ struct ModelsView: View {
     }
 
     private var filteredHubModels: [HuggingFaceModel] {
+        // Capability filtering is now applied server-side (HuggingFaceHubClient.search);
+        // only the access filter remains client-side.
         hubLibrary.models.filter { hubModel in
-            let matchesCapability = hubCapabilityFilters.allSatisfy {
-                hubModel.capabilities.contains($0)
-            }
-            let matchesAccess: Bool
             switch hubAccessFilter {
             case .all:
-                matchesAccess = true
+                return true
             case .open:
-                matchesAccess = !hubModel.isGated && !hubModel.isPrivate
+                return !hubModel.isGated && !hubModel.isPrivate
             case .gated:
-                matchesAccess = hubModel.isGated
+                return hubModel.isGated
             }
-            return matchesCapability && matchesAccess
         }
     }
 
@@ -541,7 +586,8 @@ struct ModelsView: View {
     }
 
     private var hubSearchTaskID: String {
-        "\(section.rawValue):\(hubQuery):\(hubSort.rawValue):\(model.effectiveHuggingFaceToken ?? "")"
+        let capabilities = hubCapabilityFilters.map(\.rawValue).sorted().joined(separator: ",")
+        return "\(section.rawValue):\(hubQuery):\(hubSort.rawValue):\(capabilities):\(model.effectiveHuggingFaceToken ?? "")"
     }
 
     private var hubModelsURL: URL {

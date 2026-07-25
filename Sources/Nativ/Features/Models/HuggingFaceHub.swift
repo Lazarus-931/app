@@ -219,7 +219,12 @@ enum HuggingFaceHubError: LocalizedError {
 }
 
 private struct HuggingFaceHubClient: Sendable {
-    func search(query: String, sort: HuggingFaceModelSort, token: String?) async throws -> HuggingFaceModelPage {
+    func search(
+        query: String,
+        sort: HuggingFaceModelSort,
+        capabilities: Set<LocalModelCapability>,
+        token: String?
+    ) async throws -> HuggingFaceModelPage {
         var components = URLComponents()
         components.scheme = "https"
         components.host = "huggingface.co"
@@ -231,6 +236,11 @@ private struct HuggingFaceHubClient: Sendable {
             URLQueryItem(name: "direction", value: "-1"),
             URLQueryItem(name: "limit", value: "50")
         ]
+        // Filter by capability server-side so audio/vision/etc. results are not just
+        // whatever slice of the capability-blind top-50 happened to match client-side.
+        queryItems.append(contentsOf: capabilities
+            .sorted { $0.rawValue < $1.rawValue }
+            .compactMap(\.hubAPISearchQueryItem))
         queryItems.append(contentsOf: [
             "downloads", "likes", "pipeline_tag", "library_name", "tags",
             "private", "gated", "safetensors"
@@ -287,6 +297,27 @@ private struct HuggingFaceHubClient: Sendable {
     }
 }
 
+private extension LocalModelCapability {
+    /// The Hugging Face `/api/models` query item that filters to this capability
+    /// server-side. Uses `filter` for broad categories and `pipeline_tag` for
+    /// specific tasks (both verified against the live API — note `other=` values
+    /// are web-UI only and are ignored by the API). `nil` = no clean server filter.
+    var hubAPISearchQueryItem: URLQueryItem? {
+        switch self {
+        case .text: URLQueryItem(name: "pipeline_tag", value: "text-generation")
+        case .vision: URLQueryItem(name: "pipeline_tag", value: "image-text-to-text")
+        case .audio: URLQueryItem(name: "filter", value: "audio")
+        case .video: URLQueryItem(name: "filter", value: "video")
+        case .imageGeneration: URLQueryItem(name: "pipeline_tag", value: "text-to-image")
+        case .speechToText: URLQueryItem(name: "pipeline_tag", value: "automatic-speech-recognition")
+        case .textToSpeech: URLQueryItem(name: "pipeline_tag", value: "text-to-speech")
+        case .embeddings: URLQueryItem(name: "pipeline_tag", value: "feature-extraction")
+        case .reasoning: URLQueryItem(name: "filter", value: "reasoning")
+        case .tools: nil
+        }
+    }
+}
+
 private struct HuggingFaceModelPage: Sendable {
     let models: [HuggingFaceModel]
     let nextPageURL: URL?
@@ -314,7 +345,12 @@ final class HuggingFaceModelLibrary: ObservableObject {
         searchTask?.cancel()
     }
 
-    func search(query: String, sort: HuggingFaceModelSort, token: String?) {
+    func search(
+        query: String,
+        sort: HuggingFaceModelSort,
+        capabilities: Set<LocalModelCapability> = [],
+        token: String?
+    ) {
         searchTask?.cancel()
         isSearching = true
         error = nil
@@ -326,7 +362,7 @@ final class HuggingFaceModelLibrary: ObservableObject {
         searchTask = Task { [weak self] in
             do {
                 guard let self else { return }
-                let page = try await self.client.search(query: query, sort: sort, token: token)
+                let page = try await self.client.search(query: query, sort: sort, capabilities: capabilities, token: token)
                 try Task.checkCancellation()
                 self.buffer = page.models
                 self.nextPageURL = page.nextPageURL
