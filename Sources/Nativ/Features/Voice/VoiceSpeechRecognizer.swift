@@ -150,9 +150,10 @@ final class VoiceSpeechRecognizer: ObservableObject {
     }
 
     private func updateLevel(_ rms: Float) {
-        // Map RMS to a perceptual 0...1 with light smoothing.
-        let scaled = min(1.0, Double(rms) * 12.0)
-        level = level * 0.7 + scaled * 0.3
+        // Map RMS to a perceptual 0...1 with light smoothing. Snappy enough that the
+        // orb tracks the cadence of speech rather than lagging behind it.
+        let scaled = min(1.0, Double(rms) * 14.0)
+        level = level * 0.5 + scaled * 0.5
     }
 
     private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
