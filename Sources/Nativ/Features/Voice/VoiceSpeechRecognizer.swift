@@ -150,26 +150,38 @@ final class VoiceSpeechRecognizer: ObservableObject {
     }
 
     private func updateLevel(_ rms: Float) {
-        // Map RMS to a perceptual 0...1 with light smoothing. Snappy enough that the
-        // orb tracks the cadence of speech rather than lagging behind it.
-        let scaled = min(1.0, Double(rms) * 14.0)
-        level = level * 0.5 + scaled * 0.5
+        // Perceptual mapping so ordinary speech clearly drives the orb: quiet speech
+        // still registers and loud speech saturates. Snappy smoothing tracks the
+        // cadence of speech rather than lagging behind it.
+        let boosted = Double(rms) * 16.0
+        let scaled = min(1.0, pow(max(0.0, boosted), 0.7))
+        level = level * 0.4 + scaled * 0.6
     }
 
     private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
-        guard let channelData = buffer.floatChannelData else {
-            return 0
-        }
-        let channel = channelData[0]
         let count = Int(buffer.frameLength)
         guard count > 0 else {
             return 0
         }
-        var sum: Float = 0
-        for index in 0..<count {
-            let sample = channel[index]
-            sum += sample * sample
+        if let channelData = buffer.floatChannelData {
+            let channel = channelData[0]
+            var sum: Float = 0
+            for index in 0..<count {
+                let sample = channel[index]
+                sum += sample * sample
+            }
+            return (sum / Float(count)).squareRoot()
         }
-        return (sum / Float(count)).squareRoot()
+        // Fallback for non-float input formats so the level never silently stays at 0.
+        if let channelData = buffer.int16ChannelData {
+            let channel = channelData[0]
+            var sum: Float = 0
+            for index in 0..<count {
+                let sample = Float(channel[index]) / Float(Int16.max)
+                sum += sample * sample
+            }
+            return (sum / Float(count)).squareRoot()
+        }
+        return 0
     }
 }
