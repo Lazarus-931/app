@@ -43,7 +43,10 @@ struct ModelsView: View {
         }
         .background(Color.nativWindow)
         .task(id: modelScanPath) {
-            localLibrary.scan(path: model.settings.modelSearchPath)
+            localLibrary.scan(
+                path: model.settings.modelSearchPath,
+                additionalPaths: model.settings.normalized().additionalModelSearchPaths
+            )
         }
         .task(id: hubSearchTaskID) {
             guard section == .discover else { return }
@@ -131,13 +134,17 @@ struct ModelsView: View {
                 ModelsSearchField(prompt: "Filter installed models", text: $localQuery)
 
                 Button {
-                    localLibrary.scan(path: model.settings.modelSearchPath)
+                    localLibrary.scan(
+                        path: model.settings.modelSearchPath,
+                        additionalPaths: model.settings.normalized().additionalModelSearchPaths
+                    )
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.bordered)
                 .disabled(localLibrary.isScanning)
 
+                sourcesMenu
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 14)
@@ -267,7 +274,10 @@ struct ModelsView: View {
                                             cachePath: model.settings.modelSearchPath,
                                             token: model.effectiveHuggingFaceToken
                                         ) {
-                                            localLibrary.scan(path: model.settings.modelSearchPath)
+                                            localLibrary.scan(
+                                                path: model.settings.modelSearchPath,
+                                                additionalPaths: model.settings.normalized().additionalModelSearchPaths
+                                            )
                                             NotificationCenter.default.post(
                                                 name: .localModelLibraryDidChange,
                                                 object: nil
@@ -581,8 +591,58 @@ struct ModelsView: View {
         }
     }
 
+    private var sourcesMenu: some View {
+        Menu {
+            Section("Hugging Face cache") {
+                Text(abbreviatedPath(model.settings.normalized().modelSearchPath))
+            }
+            Section("Model folders") {
+                ForEach(model.settings.normalized().additionalModelSearchPaths, id: \.self) { path in
+                    Menu(abbreviatedPath(path)) {
+                        Button("Remove", role: .destructive) {
+                            removeModelSourceFolder(path)
+                        }
+                    }
+                }
+                Button {
+                    addModelSourceFolder()
+                } label: {
+                    Label("Add Folder…", systemImage: "plus")
+                }
+            }
+        } label: {
+            Label("Sources", systemImage: "folder")
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .help("Folders scanned for MLX models in addition to the Hugging Face cache")
+    }
+
+    private func addModelSourceFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add"
+        panel.message = "Choose a folder containing MLX models."
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+        model.settings.additionalModelSearchPaths.append(
+            (url.path as NSString).abbreviatingWithTildeInPath
+        )
+    }
+
+    private func removeModelSourceFolder(_ path: String) {
+        model.settings.additionalModelSearchPaths.removeAll { $0 == path }
+    }
+
+    private func abbreviatedPath(_ path: String) -> String {
+        (LocalModelDiscovery.expandedPath(path) as NSString).abbreviatingWithTildeInPath
+    }
+
     private var modelScanPath: String {
-        model.settings.normalized().expandedModelSearchPath
+        model.settings.normalized().modelScanKey
     }
 
     private var hubSearchTaskID: String {

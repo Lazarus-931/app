@@ -259,11 +259,17 @@ struct ChatComposer: View {
         .onDisappear {
             dictation.stop()
         }
-        .task(id: model.settings.modelSearchPath) {
-            localLibrary.scan(path: model.settings.modelSearchPath)
+        .task(id: model.settings.normalized().modelScanKey) {
+            localLibrary.scan(
+                path: model.settings.modelSearchPath,
+                additionalPaths: model.settings.normalized().additionalModelSearchPaths
+            )
         }
         .onReceive(NotificationCenter.default.publisher(for: .localModelLibraryDidChange)) { _ in
-            localLibrary.scan(path: model.settings.modelSearchPath)
+            localLibrary.scan(
+                path: model.settings.modelSearchPath,
+                additionalPaths: model.settings.normalized().additionalModelSearchPaths
+            )
         }
         .onChange(of: localLibrary.models) { _, models in
             disableThinkingIfUnsupported(modelID: selectedModelID, models: models)

@@ -128,6 +128,7 @@ private struct DashboardModelState: Equatable {
     let cpuIsRunning: Bool
     let cpuLoadedModelID: String?
     let modelSearchPath: String
+    let additionalModelSearchPaths: [String]
     let analyticsDatabaseURL: URL
     let cpuAnalyticsDatabaseURL: URL
     let loadedModelID: String?
@@ -139,6 +140,7 @@ private struct DashboardModelState: Equatable {
         cpuIsRunning = model.cpuIsRunning
         cpuLoadedModelID = model.cpuLoadedModelID
         modelSearchPath = model.settings.modelSearchPath
+        additionalModelSearchPaths = model.settings.normalized().additionalModelSearchPaths
         analyticsDatabaseURL = model.analyticsDatabaseURL
         cpuAnalyticsDatabaseURL = model.cpuAnalyticsDatabaseURL ?? NativAnalyticsStore.cpuDatabaseURL()
         loadedModelID = model.metrics?.server.loadedModel
@@ -201,6 +203,9 @@ private struct DashboardContentView: View, Equatable {
             syncDashboardState(scanModels: true, reloadHistory: true)
         }
         .onChange(of: modelState.modelSearchPath) { _, _ in
+            syncDashboardState(scanModels: true, reloadHistory: false)
+        }
+        .onChange(of: modelState.additionalModelSearchPaths) { _, _ in
             syncDashboardState(scanModels: true, reloadHistory: false)
         }
         .onChange(of: modelState.analyticsDatabaseURL) { _, _ in
@@ -498,7 +503,10 @@ private struct DashboardContentView: View, Equatable {
         dashboard.updateAnalyticsDatabaseURL(selectedAnalyticsDatabaseURL)
         dashboard.updatePreferredModelID(selectedLoadedModelID)
         if scanModels {
-            dashboard.scanModels(at: modelState.modelSearchPath)
+            dashboard.scanModels(
+                at: modelState.modelSearchPath,
+                additionalPaths: modelState.additionalModelSearchPaths
+            )
         }
         if reloadHistory {
             dashboard.reloadHistorical()
