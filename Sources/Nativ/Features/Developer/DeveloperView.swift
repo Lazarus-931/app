@@ -9,6 +9,7 @@ struct DeveloperView: View {
     @ObservedObject var runtime: SystemRuntimeMonitor
     @State private var logQuery = ""
     @State private var logLevelFilter: LogLevelFilter = .all
+    @State private var portAvailability: ServerEndpointAvailability = .available
 
     var body: some View {
         GeometryReader { geometry in
@@ -94,39 +95,49 @@ struct DeveloperView: View {
     }
 
     private var serverControlPanel: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "power")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(model.isRunning ? Color.green : Color.secondary)
-                .frame(width: 28, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill((model.isRunning ? Color.green : Color.secondary).opacity(0.12))
-                )
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 14) {
+                Image(systemName: "power")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(model.isRunning ? Color.green : Color.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill((model.isRunning ? Color.green : Color.secondary).opacity(0.12))
+                    )
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Server")
-                    .font(.callout.weight(.semibold))
-                Text(serverControlStatus)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 16)
-
-            portField("Port", value: $model.settings.serverPort)
-
-            if model.isRunning && model.settingsRequireRestart {
-                Button("Restart") {
-                    model.restartServer()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Server")
+                        .font(.callout.weight(.semibold))
+                    Text(serverControlStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+
+                Spacer(minLength: 16)
+
+                portField("Port", value: $model.settings.serverPort)
+
+                if model.isRunning && model.settingsRequireRestart {
+                    Button("Restart") {
+                        model.restartServer()
+                    }
+                }
+
+                Button(model.isRunning ? "Stop" : "Start") {
+                    model.toggleServer()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(model.isRunning ? .red : .accentColor)
             }
 
-            Button(model.isRunning ? "Stop" : "Start") {
-                model.toggleServer()
+            if let portInUseWarning {
+                Label(portInUseWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(model.isRunning ? .red : .accentColor)
         }
         .padding(12)
         .background(Color.nativPanel)
@@ -135,6 +146,35 @@ struct DeveloperView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         )
+        .task(id: model.settings.normalized().serverPort) {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            let port = model.settings.normalized().serverPort
+            let availability = await Task.detached {
+                ServerPortProbe.availability(port: port)
+            }.value
+            guard !Task.isCancelled else { return }
+            portAvailability = availability
+        }
+    }
+
+    /// Inline warning shown when the chosen server port can't be bound right now.
+    /// Suppressed while our own server already holds the current port (running and
+    /// no pending restart), so we don't flag the port Nativ itself is listening on.
+    private var portInUseWarning: String? {
+        guard !(model.isRunning && !model.settingsRequireRestart) else {
+            return nil
+        }
+
+        let port = model.settings.normalized().serverPort
+        switch portAvailability {
+        case .available:
+            return nil
+        case .addressInUse:
+            return "Port \(port) looks like it's already in use — Nativ may not be able to bind to it."
+        case .invalidAddress:
+            return "Port \(port) can't be used — choose a value between 1 and 65535."
+        }
     }
 
     private var serverControlStatus: String {
