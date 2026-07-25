@@ -20,7 +20,7 @@ struct WelcomeGateView: View {
     @ObservedObject var model: NativModel
     @ObservedObject var navigation: ControlPanelNavigation
     @ObservedObject var runtime: SystemRuntimeMonitor
-    let onComplete: (_ modelID: String?, _ serverAPIKey: String?) -> Void
+    let onComplete: (_ modelID: String?, _ serverAPIKey: String?, _ ttsModelID: String?) -> Void
 
     var body: some View {
         Group {
@@ -31,8 +31,8 @@ struct WelcomeGateView: View {
                     runtime: runtime
                 )
             } else {
-                WelcomeView(model: model) { modelID, serverAPIKey in
-                    onComplete(modelID, serverAPIKey)
+                WelcomeView(model: model) { modelID, serverAPIKey, ttsModelID in
+                    onComplete(modelID, serverAPIKey, ttsModelID)
                     hasCompletedWelcome = true
                 }
                 .transition(.opacity)
@@ -45,6 +45,7 @@ struct WelcomeGateView: View {
 private struct WelcomeView: View {
     private enum Step: Equatable {
         case model
+        case voice
         case apiKey
     }
 
@@ -58,19 +59,24 @@ private struct WelcomeView: View {
     @State private var didRequestRecommendedModels = false
     @State private var showsAPIKeyEditor = false
     @State private var serverAPIKey: String
+    @State private var selectedTTSModelID: String?
+    @State private var downloadedTTSModelID: String?
     @FocusState private var isAPIKeyFieldFocused: Bool
 
-    let onComplete: (_ modelID: String?, _ serverAPIKey: String?) -> Void
+    private static let recommendedTTSRepoID = "prince-canuma/Kokoro-82M"
+
+    let onComplete: (_ modelID: String?, _ serverAPIKey: String?, _ ttsModelID: String?) -> Void
 
     init(
         model: NativModel,
-        onComplete: @escaping (_ modelID: String?, _ serverAPIKey: String?) -> Void
+        onComplete: @escaping (_ modelID: String?, _ serverAPIKey: String?, _ ttsModelID: String?) -> Void
     ) {
         self.model = model
         self.onComplete = onComplete
         let settings = model.settings.normalized()
         _selectedModelID = State(initialValue: settings.languageModelID)
         _serverAPIKey = State(initialValue: settings.serverAPIKey ?? WelcomeAPIKeyGenerator.makeKey())
+        _selectedTTSModelID = State(initialValue: settings.textToSpeechModelID)
     }
 
     var body: some View {
@@ -84,6 +90,8 @@ private struct WelcomeView: View {
                     switch step {
                     case .model:
                         modelStep
+                    case .voice:
+                        voiceStep
                     case .apiKey:
                         apiKeyStep
                     }
@@ -121,9 +129,7 @@ private struct WelcomeView: View {
             VStack(spacing: 6) {
                 Text("Welcome to Nativ")
                     .font(.system(size: 32, weight: .semibold))
-                Text(step == .model
-                    ? "Choose how your local server should start."
-                    : "Optionally protect the server’s management endpoints.")
+                Text(headerSubtitle)
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -134,7 +140,11 @@ private struct WelcomeView: View {
                 Capsule()
                     .fill(Color.secondary.opacity(0.22))
                     .frame(width: 34, height: 1)
-                WelcomeStepIndicator(number: 2, title: "API Key", isActive: step == .apiKey)
+                WelcomeStepIndicator(number: 2, title: "Voice", isActive: step == .voice)
+                Capsule()
+                    .fill(Color.secondary.opacity(0.22))
+                    .frame(width: 34, height: 1)
+                WelcomeStepIndicator(number: 3, title: "API Key", isActive: step == .apiKey)
             }
         }
         .padding(.bottom, 24)
@@ -216,7 +226,7 @@ private struct WelcomeView: View {
                 Spacer()
                 Button("Continue") {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        step = .apiKey
+                        step = .voice
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -290,6 +300,151 @@ private struct WelcomeView: View {
         }
     }
 
+    private var voiceStep: some View {
+        VStack(spacing: 16) {
+            WelcomeCard {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .top, spacing: 14) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 26))
+                            .foregroundStyle(.purple)
+                            .frame(width: 38, height: 38)
+                            .background(Color.purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Add a voice")
+                                .font(.headline)
+                            Text("A text-to-speech model lets Nativ read any response aloud and powers spoken conversations with voice-capable models. Entirely optional — you can add or change it later in Settings.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    if !localTTSModels.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Installed voices")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(localTTSModels) { localModel in
+                                WelcomeModelPickerRow(
+                                    model: localModel,
+                                    isSelected: selectedTTSModelID == localModel.repoID
+                                ) {
+                                    selectedTTSModelID = localModel.repoID
+                                }
+                            }
+                        }
+                    }
+
+                    recommendedVoiceRow
+                }
+                .padding(20)
+            }
+
+            HStack {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        step = .model
+                    }
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .buttonStyle(.borderless)
+
+                Spacer()
+
+                Button("Skip") {
+                    selectedTTSModelID = nil
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        step = .apiKey
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(downloadManager.downloadingModelID != nil)
+
+                Button("Continue") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        step = .apiKey
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+                .disabled(downloadManager.downloadingModelID != nil)
+                .help(downloadManager.downloadingModelID == nil
+                    ? "Continue setup"
+                    : "Finish or cancel the download before continuing")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recommendedVoiceRow: some View {
+        let repoID = Self.recommendedTTSRepoID
+        let isDownloading = downloadManager.downloadingModelID == repoID
+        let isInstalled = downloadedTTSModelID == repoID
+            || localTTSModels.contains { $0.repoID == repoID }
+        let isSelected = selectedTTSModelID == repoID
+
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recommended voice")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 12) {
+                Image(systemName: "speaker.wave.2.fill")
+                    .foregroundStyle(.purple)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Kokoro")
+                        .font(.subheadline.weight(.medium))
+                    Text(repoID)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if isDownloading {
+                    HStack(spacing: 8) {
+                        ProgressView(value: downloadManager.downloadProgress)
+                            .frame(width: 90)
+                        Button("Cancel") {
+                            downloadManager.removeDownload()
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                } else if isInstalled {
+                    Button(isSelected ? "Selected" : "Use") {
+                        selectedTTSModelID = repoID
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isSelected)
+                } else {
+                    Button("Download") {
+                        downloadRecommendedVoice()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(downloadManager.downloadingModelID != nil)
+                }
+            }
+            .padding(10)
+            .background(
+                (isSelected ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.05)),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+
+            if let error = downloadManager.errorByModelID[repoID] {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
     private var apiKeyStep: some View {
         VStack(spacing: 16) {
             WelcomeCard {
@@ -345,7 +500,7 @@ private struct WelcomeView: View {
             HStack {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        step = .model
+                        step = .voice
                     }
                 } label: {
                     Label("Back", systemImage: "chevron.left")
@@ -423,6 +578,21 @@ private struct WelcomeView: View {
         .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var headerSubtitle: String {
+        switch step {
+        case .model:
+            return "Choose how your local server should start."
+        case .voice:
+            return "Optionally add a voice for reading responses aloud."
+        case .apiKey:
+            return "Optionally protect the server’s management endpoints."
+        }
+    }
+
+    private var localTTSModels: [LocalModel] {
+        modelLibrary.models.filter { $0.capabilities.contains(.textToSpeech) }
+    }
+
     private var pickerModels: [LocalModel] {
         modelLibrary.models.filter { localModel in
             localModel.repoID == selectedModelID
@@ -477,7 +647,22 @@ private struct WelcomeView: View {
     }
 
     private func finish(serverAPIKey: String?) {
-        onComplete(selectedModelID, serverAPIKey)
+        onComplete(selectedModelID, serverAPIKey, selectedTTSModelID)
+    }
+
+    private func downloadRecommendedVoice() {
+        let repoID = Self.recommendedTTSRepoID
+        downloadManager.download(
+            repoID: repoID,
+            sizeBytes: nil,
+            cachePath: model.settings.modelSearchPath,
+            token: model.effectiveHuggingFaceToken
+        ) {
+            downloadedTTSModelID = repoID
+            selectedTTSModelID = repoID
+            modelLibrary.scan(path: model.settings.modelSearchPath)
+            NotificationCenter.default.post(name: .localModelLibraryDidChange, object: nil)
+        }
     }
 
     private func refreshModelChoices() {
@@ -849,6 +1034,6 @@ private enum WelcomeAPIKeyGenerator {
 }
 
 #Preview {
-    WelcomeView(model: NativModel()) { _, _ in }
+    WelcomeView(model: NativModel()) { _, _, _ in }
         .frame(width: 1240, height: 720)
 }
