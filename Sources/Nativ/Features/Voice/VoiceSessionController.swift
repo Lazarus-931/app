@@ -114,7 +114,7 @@ final class VoiceSessionController: ObservableObject {
                 return
             }
             do {
-                let client = NativAudioClient(baseURL: baseURL)
+                let client = NativAudioClient(baseURL: baseURL, apiKey: appModel.settings.serverAPIKey)
                 let data = try await client.speech(MLXSpeechRequest(model: ttsModel, input: trimmed))
                 guard self.isActive else {
                     return

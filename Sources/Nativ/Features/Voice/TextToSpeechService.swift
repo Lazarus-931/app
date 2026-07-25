@@ -29,6 +29,7 @@ final class TextToSpeechService: ObservableObject {
         _ text: String,
         model: String,
         baseURL: URL,
+        apiKey: String? = nil,
         voice: String? = nil,
         messageID: UUID? = nil,
         onFinish: (() -> Void)? = nil
@@ -47,7 +48,7 @@ final class TextToSpeechService: ObservableObject {
                 return
             }
             do {
-                let client = NativAudioClient(baseURL: baseURL)
+                let client = NativAudioClient(baseURL: baseURL, apiKey: apiKey)
                 let data = try await client.speech(
                     MLXSpeechRequest(model: model, input: trimmed, voice: voice)
                 )

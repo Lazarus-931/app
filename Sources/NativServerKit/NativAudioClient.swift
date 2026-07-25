@@ -66,14 +66,17 @@ public final class NativAudioClient {
     private let baseURL: URL
     private let session: URLSession
     private let timeout: TimeInterval
+    private let apiKey: String?
     private let encoder = JSONEncoder()
 
     public init(
         baseURL: URL = URL(string: "http://127.0.0.1:8080")!,
-        timeout: TimeInterval = 300
+        timeout: TimeInterval = 300,
+        apiKey: String? = nil
     ) {
         self.baseURL = baseURL
         self.timeout = timeout
+        self.apiKey = apiKey
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = timeout
@@ -108,6 +111,9 @@ public final class NativAudioClient {
         urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("audio/*", forHTTPHeaderField: "Accept")
+        if let apiKey, !apiKey.isEmpty {
+            urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         urlRequest.httpBody = try encoder.encode(request)
 
         let (data, response) = try await session.data(for: urlRequest)
