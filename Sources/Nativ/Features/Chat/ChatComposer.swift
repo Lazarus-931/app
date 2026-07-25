@@ -162,14 +162,16 @@ struct ChatComposer: View {
                 }
 
                 HStack(spacing: 8) {
-                    ChatComposerActionMenu(
-                        isEnabled: true,
-                        onAttachImages: viewModel.chooseImageAttachments,
-                        onCaptureScreenshot: viewModel.captureScreenshotAttachment,
-                        onCaptureScreenRecording: viewModel.captureScreenRecordingAttachment
-                    )
-                    .frame(width: 30, height: 30)
-                    .help("Add attachment")
+                    if selectedModelSupportsImages {
+                        ChatComposerActionMenu(
+                            isEnabled: true,
+                            onAttachImages: viewModel.chooseImageAttachments,
+                            onCaptureScreenshot: viewModel.captureScreenshotAttachment,
+                            onCaptureScreenRecording: viewModel.captureScreenRecordingAttachment
+                        )
+                        .frame(width: 30, height: 30)
+                        .help("Add attachment")
+                    }
 
                     if selectedModelIsImageGeneration {
                         imageSizeMenu
@@ -363,6 +365,15 @@ struct ChatComposer: View {
 
     private var selectedModelSupportsVoice: Bool {
         selectedLocalModel?.capabilities.contains(.audio) == true
+    }
+
+    private var selectedModelSupportsImages: Bool {
+        // Unknown/on-demand model: don't hide (we can't tell). A resolved model must
+        // actually take images (vision, or video which subsumes image frames).
+        guard let model = selectedLocalModel else {
+            return true
+        }
+        return model.capabilities.contains(.vision) || model.capabilities.contains(.video)
     }
 
     private func syncImageGenerationMode() {
