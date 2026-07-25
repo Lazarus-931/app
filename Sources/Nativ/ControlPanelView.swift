@@ -65,46 +65,85 @@ private struct GlobalDownloadChip: View {
     var onOpen: () -> Void
     @State private var offset: CGSize = .zero
     @State private var dragOrigin: CGSize = .zero
+    @State private var isHovering = false
+    @State private var hiddenModelID: String?
 
     var body: some View {
-        if let modelID = downloads.downloadingModelID {
+        if let modelID = downloads.downloadingModelID, hiddenModelID != modelID {
             let percent = Int((downloads.downloadProgress * 100).rounded())
-            HStack(spacing: 10) {
-                progressCircle(percent: percent)
-                    .frame(width: 38, height: 38)
-                Text(shortName(modelID))
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
-            .contentShape(Capsule())
-            .offset(offset)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        offset = CGSize(
-                            width: dragOrigin.width + value.translation.width,
-                            height: dragOrigin.height + value.translation.height
-                        )
-                    }
-                    .onEnded { value in
-                        // Near-zero move = a click → open Models; a real drag keeps the new spot.
-                        if abs(value.translation.width) < 4, abs(value.translation.height) < 4 {
-                            offset = dragOrigin
-                            onOpen()
-                        } else {
-                            dragOrigin = offset
+            ZStack(alignment: .topTrailing) {
+                HStack(spacing: 10) {
+                    progressCircle(percent: percent)
+                        .frame(width: 38, height: 38)
+                    Text(shortName(modelID))
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
+                .contentShape(Capsule())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            offset = clampedOffset(
+                                width: dragOrigin.width + value.translation.width,
+                                height: dragOrigin.height + value.translation.height
+                            )
                         }
-                    }
-            )
-            .help("Drag to move \u{00b7} click to open the downloading model")
+                        .onEnded { value in
+                            // Near-zero move = a click → open Models; a real drag keeps the spot.
+                            if abs(value.translation.width) < 4, abs(value.translation.height) < 4 {
+                                offset = dragOrigin
+                                onOpen()
+                            } else {
+                                dragOrigin = offset
+                            }
+                        }
+                )
+
+                // Hovering the chip floats a small ✕ at the corner that hides the indicator
+                // for this download (it keeps downloading; the Models page still shows it).
+                dismissBadge(modelID: modelID)
+                    .offset(x: 2, y: -2)
+            }
+            // A generous hover region so gliding onto the floating ✕ doesn't drop the hover.
+            .padding(10)
+            .contentShape(Rectangle())
+            .offset(offset)
+            .onHover { isHovering = $0 }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isHovering)
+            .help("Drag to move \u{00b7} click to open \u{00b7} hover for \u{00d7} to hide")
             .accessibilityLabel("Downloading \(shortName(modelID)), \(percent) percent. Open the Models page.")
             .transition(.move(edge: .top).combined(with: .opacity))
         }
+    }
+
+    // The chip rests just under the title bar; it can be dragged down and sideways but
+    // never up above its resting spot (which would put it over the nav/title bar).
+    private func clampedOffset(width: CGFloat, height: CGFloat) -> CGSize {
+        CGSize(width: width, height: max(0, height))
+    }
+
+    private func dismissBadge(modelID: String) -> some View {
+        Button {
+            hiddenModelID = modelID
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 18, height: 18)
+                .background(.regularMaterial, in: Circle())
+                .overlay(Circle().stroke(Color.primary.opacity(0.10), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+        }
+        .buttonStyle(.plain)
+        .help("Hide this download indicator")
+        .accessibilityLabel("Hide download indicator")
+        .opacity(isHovering ? 1 : 0)
+        .allowsHitTesting(isHovering)
     }
 
     @ViewBuilder
