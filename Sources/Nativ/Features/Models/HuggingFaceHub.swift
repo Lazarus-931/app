@@ -484,19 +484,70 @@ final class HuggingFaceModelLibrary: ObservableObject {
 final class HuggingFaceDownloadManager: ObservableObject {
     static let shared = HuggingFaceDownloadManager()
 
-    @Published private(set) var downloadingModelID: String?
-    @Published private(set) var downloadProgress = 0.0
-    @Published private(set) var isDownloadPaused = false
+    enum DownloadState: Equatable {
+        case downloading
+        case paused
+    }
+
+    struct ActiveDownload: Identifiable, Equatable {
+        let modelID: String
+        let sizeBytes: Int64?
+        var progress: Double
+        var state: DownloadState
+
+        var id: String { modelID }
+    }
+
+    private final class DownloadContext {
+        let modelID: String
+        let cachePath: String
+        let token: String?
+        var onCompletion: (() -> Void)?
+        var operation: HuggingFaceDownloadOperation?
+        var task: Task<Void, Never>?
+
+        init(modelID: String, cachePath: String, token: String?, onCompletion: (() -> Void)?) {
+            self.modelID = modelID
+            self.cachePath = cachePath
+            self.token = token
+            self.onCompletion = onCompletion
+        }
+    }
+
+    @Published private(set) var downloads: [ActiveDownload] = []
     @Published private(set) var errorByModelID: [String: String] = [:]
 
-    private var downloadTask: Task<Void, Never>?
-    private var activeOperation: HuggingFaceDownloadOperation?
-    private var activeCachePath: String?
-    private var activeToken: String?
-    private var activeCompletion: (() -> Void)?
+    private var contexts: [String: DownloadContext] = [:]
 
     deinit {
-        downloadTask?.cancel()
+        contexts.values.forEach { $0.task?.cancel() }
+    }
+
+    var activeCount: Int { downloads.count }
+
+    var reservedBytes: Int64 {
+        downloads.reduce(Int64(0)) { total, download in
+            guard let sizeBytes = download.sizeBytes else { return total }
+            let remaining = Double(sizeBytes) * (1 - download.progress)
+            guard remaining > 0 else { return total }
+            return total + Int64(remaining)
+        }
+    }
+
+    func isDownloading(_ modelID: String) -> Bool {
+        contexts[modelID] != nil
+    }
+
+    func progress(for modelID: String) -> Double {
+        downloads.first { $0.modelID == modelID }?.progress ?? 0
+    }
+
+    func isPaused(for modelID: String) -> Bool {
+        downloads.first { $0.modelID == modelID }?.state == .paused
+    }
+
+    func state(for modelID: String) -> DownloadState? {
+        downloads.first { $0.modelID == modelID }?.state
     }
 
     func download(
@@ -506,28 +557,29 @@ final class HuggingFaceDownloadManager: ObservableObject {
         token: String? = nil,
         onCompletion: @escaping () -> Void
     ) {
-        guard downloadingModelID == nil else { return }
-        if let sizeBytes,
-            let blocker = Self.capacityBlocker(sizeBytes: sizeBytes, cachePath: cachePath)
-        {
+        guard contexts[repoID] == nil else { return }
+        if let blocker = capacityBlocker(sizeBytes: sizeBytes, cachePath: cachePath) {
             errorByModelID[repoID] = blocker
             return
         }
-        downloadingModelID = repoID
-        downloadProgress = 0
-        isDownloadPaused = false
-        errorByModelID[repoID] = nil
-        activeCachePath = LocalModelDiscovery.expandedPath(cachePath)
-        activeToken = HuggingFaceAuthentication.normalizedToken(token)
-        activeCompletion = onCompletion
 
-        startActiveDownload()
+        let context = DownloadContext(
+            modelID: repoID,
+            cachePath: LocalModelDiscovery.expandedPath(cachePath),
+            token: HuggingFaceAuthentication.normalizedToken(token),
+            onCompletion: onCompletion
+        )
+        contexts[repoID] = context
+        errorByModelID[repoID] = nil
+        downloads.append(
+            ActiveDownload(modelID: repoID, sizeBytes: sizeBytes, progress: 0, state: .downloading)
+        )
+
+        startDownload(context)
     }
 
-    /// Returns a user-facing message when the model cannot be downloaded or
-    /// run on this machine, or nil when capacity is fine. Weights must fit in
-    /// unified memory with working headroom, and on disk with download slack.
-    nonisolated static func capacityBlocker(sizeBytes: Int64, cachePath: String) -> String? {
+    func capacityBlocker(sizeBytes: Int64?, cachePath: String) -> String? {
+        guard let sizeBytes, sizeBytes > 0 else { return nil }
         let format = { (bytes: Int64) in
             ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         }
@@ -546,98 +598,109 @@ final class HuggingFaceDownloadManager: ObservableObject {
         if let values = try? probeURL.resourceValues(forKeys: [
             .volumeAvailableCapacityForImportantUsageKey
         ]),
-            let free = values.volumeAvailableCapacityForImportantUsage,
-            sizeBytes + (sizeBytes / 10) > free
+            let free = values.volumeAvailableCapacityForImportantUsage
         {
-            return
-                "Can't download: not enough disk space. The model needs \(format(sizeBytes)) plus working room, but only \(format(free)) is free."
+            let available = max(free - reservedBytes, 0)
+            if sizeBytes + (sizeBytes / 10) > available {
+                return
+                    "Can't download: not enough disk space. The model needs \(format(sizeBytes)) plus working room, but only \(format(available)) is free after reserving space for in-progress downloads."
+            }
         }
         return nil
     }
 
-    func pauseDownload() {
-        guard downloadingModelID != nil, !isDownloadPaused else { return }
-        activeOperation?.pause()
-        isDownloadPaused = true
+    func pauseDownload(_ modelID: String) {
+        guard let context = contexts[modelID], state(for: modelID) == .downloading else { return }
+        context.operation?.pause()
+        setState(modelID, .paused)
     }
 
-    func resumeDownload() {
-        guard downloadingModelID != nil, isDownloadPaused else { return }
-        activeOperation?.resume()
-        isDownloadPaused = false
+    func resumeDownload(_ modelID: String) {
+        guard let context = contexts[modelID], state(for: modelID) == .paused else { return }
+        context.operation?.resume()
+        setState(modelID, .downloading)
     }
 
-    func removeDownload() {
-        guard let repoID = downloadingModelID, let cachePath = activeCachePath else { return }
-        let task = downloadTask
+    func removeDownload(_ modelID: String) {
+        guard let context = contexts[modelID] else { return }
+        let task = context.task
+        let cachePath = context.cachePath
         task?.cancel()
-        downloadTask = nil
-        clearActiveDownload()
+        removeContext(modelID)
 
         Task {
             await task?.value
             await Task.detached(priority: .utility) {
-                HuggingFaceSnapshotDownloader.removeDownload(repoID: repoID, cachePath: cachePath)
+                HuggingFaceSnapshotDownloader.removeDownload(repoID: modelID, cachePath: cachePath)
             }.value
         }
     }
 
-    func cancelDownload() {
-        downloadTask?.cancel()
-        downloadTask = nil
-        clearActiveDownload()
-    }
-
-    private func startActiveDownload() {
-        guard let repoID = downloadingModelID, let cachePath = activeCachePath else { return }
-
+    private func startDownload(_ context: DownloadContext) {
+        let repoID = context.modelID
         let operation: HuggingFaceDownloadOperation
         do {
             operation = try HuggingFaceDownloadOperation(
                 repoID: repoID,
-                cachePath: cachePath,
-                token: activeToken
+                cachePath: context.cachePath,
+                token: context.token
             ) { progress in
                 Task { @MainActor [weak self] in
-                    guard self?.downloadingModelID == repoID else { return }
-                    self?.downloadProgress = progress
+                    self?.updateProgress(repoID, progress)
                 }
             }
-            activeOperation = operation
         } catch {
             errorByModelID[repoID] =
                 (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            clearActiveDownload()
+            removeContext(repoID)
             return
         }
 
-        downloadTask = Task { [weak self] in
+        context.operation = operation
+        context.task = Task { [weak self] in
             do {
                 try await HuggingFaceSnapshotDownloader.download(operation: operation)
                 guard !Task.isCancelled else { return }
-                self?.downloadProgress = 1
-                let completion = self?.activeCompletion
-                self?.clearActiveDownload()
-                completion?()
+                self?.finishDownload(repoID: repoID, error: nil)
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
-                self?.errorByModelID[repoID] =
-                    (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                self?.clearActiveDownload()
+                self?.finishDownload(repoID: repoID, error: error)
             }
         }
     }
 
-    private func clearActiveDownload() {
-        downloadingModelID = nil
-        downloadProgress = 0
-        isDownloadPaused = false
-        activeOperation = nil
-        activeCachePath = nil
-        activeToken = nil
-        activeCompletion = nil
+    private func finishDownload(repoID: String, error: Error?) {
+        guard let context = contexts[repoID] else { return }
+        let completion = context.onCompletion
+        if let error {
+            errorByModelID[repoID] =
+                (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+        removeContext(repoID)
+        if error == nil {
+            completion?()
+        }
+    }
+
+    private func updateProgress(_ modelID: String, _ progress: Double) {
+        guard contexts[modelID] != nil,
+              let index = downloads.firstIndex(where: { $0.modelID == modelID })
+        else {
+            return
+        }
+        downloads[index].progress = progress
+    }
+
+    private func setState(_ modelID: String, _ state: DownloadState) {
+        guard let index = downloads.firstIndex(where: { $0.modelID == modelID }) else { return }
+        downloads[index].state = state
+    }
+
+    private func removeContext(_ modelID: String) {
+        contexts.removeValue(forKey: modelID)
+        downloads.removeAll { $0.modelID == modelID }
     }
 }
 

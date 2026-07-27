@@ -60,21 +60,33 @@ final class ControlPanelNavigation: ObservableObject {
     }
 }
 
-/// A small pulsing download arrow shown next to the Models sidebar row while a model
-/// is downloading. When concurrent downloads are supported this can show the number of
-/// models still downloading beside the arrow.
+/// A small pulsing download arrow shown next to the Models sidebar row, with the
+/// number of models still downloading beside it.
 private struct ModelsDownloadArrow: View {
+    let count: Int
     @State private var pulse = false
 
     var body: some View {
-        Image(systemName: "arrow.down.circle.fill")
-            .font(.caption)
-            .foregroundStyle(.tint)
-            .opacity(pulse ? 0.4 : 1.0)
-            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
-            .onAppear { pulse = true }
-            .help("A model is downloading")
-            .accessibilityLabel("A model is downloading")
+        HStack(spacing: 4) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.tint)
+                .opacity(pulse ? 0.4 : 1.0)
+                .animation(
+                    .easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+                .onAppear { pulse = true }
+            if count > 0 {
+                Text("\(count)")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.tint)
+            }
+        }
+        .help(helpText)
+        .accessibilityLabel(helpText)
+    }
+
+    private var helpText: String {
+        count == 1 ? "A model is downloading" : "\(count) models are downloading"
     }
 }
 
@@ -295,8 +307,8 @@ struct ControlPanelView: View {
                     } label: {
                         HStack(spacing: 6) {
                             Label(tab.rawValue, systemImage: tab.systemImage)
-                            if tab == .models, downloads.downloadingModelID != nil {
-                                ModelsDownloadArrow()
+                            if tab == .models, downloads.activeCount > 0 {
+                                ModelsDownloadArrow(count: downloads.activeCount)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
