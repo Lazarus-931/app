@@ -7,6 +7,7 @@ enum HuggingFaceModelSort: String, CaseIterable, Identifiable, Sendable {
     case trending = "trendingScore"
     case likes
     case recentlyUpdated = "lastModified"
+    case size
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum HuggingFaceModelSort: String, CaseIterable, Identifiable, Sendable {
         case .trending: "Trending"
         case .likes: "Likes"
         case .recentlyUpdated: "Recently Updated"
+        case .size: "Size"
         }
     }
 
@@ -25,6 +27,7 @@ enum HuggingFaceModelSort: String, CaseIterable, Identifiable, Sendable {
         case .trending: "flame"
         case .likes: "heart"
         case .recentlyUpdated: "clock.arrow.circlepath"
+        case .size: "internaldrive"
         }
     }
 
@@ -34,8 +37,11 @@ enum HuggingFaceModelSort: String, CaseIterable, Identifiable, Sendable {
         case .trending: "trending"
         case .likes: "likes"
         case .recentlyUpdated: "modified"
+        case .size: "downloads"
         }
     }
+
+    var sortsBySize: Bool { self == .size }
 }
 
 struct HuggingFaceModel: Decodable, Identifiable, Equatable, Sendable {
@@ -337,6 +343,7 @@ final class HuggingFaceModelLibrary: ObservableObject {
     private let client = HuggingFaceHubClient()
     private var searchTask: Task<Void, Never>?
     private var buffer: [HuggingFaceModel] = []
+    private var activeSort: HuggingFaceModelSort = .downloads
     private var nextPageURL: URL?
     private let pageSize = 24
     private let maximumPageCount = 5
@@ -358,6 +365,7 @@ final class HuggingFaceModelLibrary: ObservableObject {
         buffer = []
         nextPageURL = nil
         pageNumber = 1
+        activeSort = sort
 
         searchTask = Task { [weak self] in
             do {
@@ -448,9 +456,21 @@ final class HuggingFaceModelLibrary: ObservableObject {
     }
 
     private func slice(forPage number: Int) -> [HuggingFaceModel] {
+        let ordered = orderedBuffer
         let start = (number - 1) * pageSize
-        guard start < buffer.count else { return [] }
-        return Array(buffer[start..<min(start + pageSize, buffer.count)])
+        guard start < ordered.count else { return [] }
+        return Array(ordered[start..<min(start + pageSize, ordered.count)])
+    }
+
+    private var orderedBuffer: [HuggingFaceModel] {
+        guard activeSort.sortsBySize else { return buffer }
+        return buffer.sorted { lhs, rhs in
+            switch (lhs.sizeBytes, rhs.sizeBytes) {
+            case let (lhsSize?, rhsSize?): return lhsSize < rhsSize
+            case (nil, _): return false
+            case (_, nil): return true
+            }
+        }
     }
 
     func cancel() {
