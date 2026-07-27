@@ -67,41 +67,24 @@ struct ModelsView: View {
 
     @ViewBuilder
     private var activeDownloadBanner: some View {
-        if let modelID = downloadManager.downloadingModelID {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(downloadBannerName(modelID))
-                        .font(.callout.weight(.semibold))
-                        .lineLimit(1)
-                    Text(downloadManager.isDownloadPaused
-                        ? "Download paused"
-                        : "Downloading… \(Int((downloadManager.downloadProgress * 100).rounded()))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                Spacer(minLength: 12)
-                Button(downloadManager.isDownloadPaused ? "Resume" : "Pause") {
-                    if downloadManager.isDownloadPaused {
-                        downloadManager.resumeDownload()
-                    } else {
-                        downloadManager.pauseDownload()
-                    }
-                }
-                Button("Cancel", role: .destructive) {
-                    downloadManager.cancelDownload()
+        if !downloadManager.downloads.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(downloadManager.downloads) { download in
+                    ActiveDownloadBannerRow(
+                        download: download,
+                        onPauseResume: {
+                            if download.state == .paused {
+                                downloadManager.resumeDownload(download.modelID)
+                            } else {
+                                downloadManager.pauseDownload(download.modelID)
+                            }
+                        },
+                        onCancel: { downloadManager.removeDownload(download.modelID) }
+                    )
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-            .background(Color.accentColor.opacity(0.08))
             Divider()
         }
-    }
-
-    private func downloadBannerName(_ modelID: String) -> String {
-        let shortName = modelID.split(separator: "/").last.map(String.init) ?? modelID
-        return NativFormatting.truncateModelName(shortName, maxLength: 44)
     }
 
     private var pageHeader: some View {
@@ -256,13 +239,13 @@ struct ModelsView: View {
                                 HubModelRow(
                                     model: hubModel,
                                     isInstalled: installedModelIDs.contains(hubModel.id),
-                                    isDownloading: downloadManager.downloadingModelID == hubModel.id,
-                                    downloadProgress: downloadManager.downloadingModelID == hubModel.id
-                                        ? downloadManager.downloadProgress
-                                        : 0,
-                                    isDownloadPaused: downloadManager.downloadingModelID == hubModel.id
-                                        && downloadManager.isDownloadPaused,
-                                    anotherDownloadIsActive: downloadManager.downloadingModelID != nil,
+                                    isDownloading: downloadManager.isDownloading(hubModel.id),
+                                    downloadProgress: downloadManager.progress(for: hubModel.id),
+                                    isDownloadPaused: downloadManager.isPaused(for: hubModel.id),
+                                    downloadBlockedReason: downloadManager.capacityBlocker(
+                                        sizeBytes: hubModel.sizeBytes,
+                                        cachePath: model.settings.modelSearchPath
+                                    ),
                                     downloadError: downloadManager.errorByModelID[hubModel.id],
                                     onDownload: {
                                         downloadManager.download(
@@ -282,14 +265,14 @@ struct ModelsView: View {
                                         }
                                     },
                                     onPauseResume: {
-                                        if downloadManager.isDownloadPaused {
-                                            downloadManager.resumeDownload()
+                                        if downloadManager.isPaused(for: hubModel.id) {
+                                            downloadManager.resumeDownload(hubModel.id)
                                         } else {
-                                            downloadManager.pauseDownload()
+                                            downloadManager.pauseDownload(hubModel.id)
                                         }
                                     },
                                     onRemoveDownload: {
-                                        downloadManager.removeDownload()
+                                        downloadManager.removeDownload(hubModel.id)
                                     }
                                 )
                             }
@@ -852,13 +835,51 @@ private struct InstalledModelRow: View {
     }
 }
 
+private struct ActiveDownloadBannerRow: View {
+    let download: HuggingFaceDownloadManager.ActiveDownload
+    let onPauseResume: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(NativFormatting.truncateModelName(
+                    download.modelID.split(separator: "/").last.map(String.init) ?? download.modelID,
+                    maxLength: 44
+                ))
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                Text(statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Spacer(minLength: 12)
+            Button(download.state == .paused ? "Resume" : "Pause", action: onPauseResume)
+            Button("Cancel", role: .destructive, action: onCancel)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(Color.accentColor.opacity(0.08))
+    }
+
+    private var statusText: String {
+        switch download.state {
+        case .downloading:
+            "Downloading… \(Int((download.progress * 100).rounded()))%"
+        case .paused:
+            "Download paused"
+        }
+    }
+}
+
 private struct HubModelRow: View {
     let model: HuggingFaceModel
     let isInstalled: Bool
     let isDownloading: Bool
     let downloadProgress: Double
     let isDownloadPaused: Bool
-    let anotherDownloadIsActive: Bool
+    let downloadBlockedReason: String?
     let downloadError: String?
     let onDownload: () -> Void
     let onPauseResume: () -> Void
@@ -928,8 +949,8 @@ private struct HubModelRow: View {
                         Label("Download", systemImage: "arrow.down.circle")
                     }
                         .buttonStyle(.borderedProminent)
-                        .disabled(anotherDownloadIsActive || model.isPrivate)
-                        .help(model.isGated ? "Gated models require Hugging Face authentication." : "Download to the configured cache")
+                        .disabled(downloadBlockedReason != nil || model.isPrivate)
+                        .help(downloadHelp)
                         .fixedSize()
                 }
             }
@@ -943,6 +964,15 @@ private struct HubModelRow: View {
         }
         .padding(14)
         .modelRowBackground(isHighlighted: false)
+    }
+
+    private var downloadHelp: String {
+        if let downloadBlockedReason {
+            return downloadBlockedReason
+        }
+        return model.isGated
+            ? "Gated models require Hugging Face authentication."
+            : "Download to the configured cache"
     }
 }
 
@@ -1109,7 +1139,10 @@ private struct ModelCapacityPills: View {
     }
 
     private var cpuCapable: Bool {
-        ModelCapacity.cpuCapable(
+        guard let kvElementsPerToken else {
+            return ModelCapacity.cpuCapable(weightBytes: weightBytes)
+        }
+        return ModelCapacity.cpuCapable(
             weightBytes: weightBytes,
             kvElementsPerToken: kvElementsPerToken,
             contextTokens: contextTokens,

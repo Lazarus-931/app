@@ -176,7 +176,7 @@ private struct WelcomeView: View {
                                 Image(systemName: "arrow.clockwise")
                             }
                             .buttonStyle(.borderless)
-                            .disabled(downloadManager.downloadingModelID != nil)
+                            .disabled(downloadManager.activeCount > 0)
                             .help("Refresh installed models")
                         }
                     }
@@ -233,10 +233,10 @@ private struct WelcomeView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
-                .disabled(downloadManager.downloadingModelID != nil)
-                .help(downloadManager.downloadingModelID == nil
+                .disabled(downloadManager.activeCount > 0)
+                .help(downloadManager.activeCount == 0
                     ? "Continue setup"
-                    : "Finish or cancel the model download before continuing")
+                    : "Finish or cancel the model downloads before continuing")
             }
         }
     }
@@ -286,15 +286,16 @@ private struct WelcomeView: View {
                         model: hubModel,
                         isDownloaded: downloadedRecommendedModelID == hubModel.id,
                         isSelected: selectedModelID == hubModel.id,
-                        isDownloading: downloadManager.downloadingModelID == hubModel.id,
-                        downloadProgress: downloadManager.downloadingModelID == hubModel.id
-                            ? downloadManager.downloadProgress
-                            : 0,
-                        anotherDownloadIsActive: downloadManager.downloadingModelID != nil,
+                        isDownloading: downloadManager.isDownloading(hubModel.id),
+                        downloadProgress: downloadManager.progress(for: hubModel.id),
+                        downloadBlockedReason: downloadManager.capacityBlocker(
+                            sizeBytes: hubModel.sizeBytes,
+                            cachePath: model.settings.modelSearchPath
+                        ),
                         downloadError: downloadManager.errorByModelID[hubModel.id],
                         onSelect: { selectedModelID = hubModel.id },
                         onDownload: { downloadRecommendedModel(hubModel) },
-                        onCancel: { downloadManager.removeDownload() }
+                        onCancel: { downloadManager.removeDownload(hubModel.id) }
                     )
                 }
             }
@@ -363,7 +364,7 @@ private struct WelcomeView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                .disabled(downloadManager.downloadingModelID != nil)
+                .disabled(downloadManager.activeCount > 0)
 
                 Button("Continue") {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -373,10 +374,10 @@ private struct WelcomeView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
-                .disabled(downloadManager.downloadingModelID != nil)
-                .help(downloadManager.downloadingModelID == nil
+                .disabled(downloadManager.activeCount > 0)
+                .help(downloadManager.activeCount == 0
                     ? "Continue setup"
-                    : "Finish or cancel the download before continuing")
+                    : "Finish or cancel the downloads before continuing")
             }
         }
     }
@@ -384,7 +385,7 @@ private struct WelcomeView: View {
     @ViewBuilder
     private var recommendedVoiceRow: some View {
         let repoID = Self.recommendedTTSRepoID
-        let isDownloading = downloadManager.downloadingModelID == repoID
+        let isDownloading = downloadManager.isDownloading(repoID)
         let isInstalled = downloadedTTSModelID == repoID
             || localTTSModels.contains { $0.repoID == repoID }
         let isSelected = selectedTTSModelID == repoID
@@ -411,10 +412,10 @@ private struct WelcomeView: View {
 
                 if isDownloading {
                     HStack(spacing: 8) {
-                        ProgressView(value: downloadManager.downloadProgress)
+                        ProgressView(value: downloadManager.progress(for: repoID))
                             .frame(width: 90)
                         Button("Cancel") {
-                            downloadManager.removeDownload()
+                            downloadManager.removeDownload(repoID)
                         }
                         .buttonStyle(.borderless)
                     }
@@ -429,7 +430,6 @@ private struct WelcomeView: View {
                         downloadRecommendedVoice()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(downloadManager.downloadingModelID != nil)
                 }
             }
             .padding(10)
@@ -862,7 +862,7 @@ private struct WelcomeDownloadModelRow: View {
     let isSelected: Bool
     let isDownloading: Bool
     let downloadProgress: Double
-    let anotherDownloadIsActive: Bool
+    let downloadBlockedReason: String?
     let downloadError: String?
     let onSelect: () -> Void
     let onDownload: () -> Void
@@ -933,8 +933,8 @@ private struct WelcomeDownloadModelRow: View {
                     Button("Download", action: onDownload)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .disabled(anotherDownloadIsActive)
-                        .help("Download \(model.id) to the configured cache")
+                        .disabled(downloadBlockedReason != nil)
+                        .help(downloadBlockedReason ?? "Download \(model.id) to the configured cache")
                 }
             }
 

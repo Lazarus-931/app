@@ -15,6 +15,8 @@ enum ModelCapacity {
 
     static let cpuWeightCeiling: Int64 = 6 << 30
 
+    static let conservativeKVReserveFraction: Double = 0.25
+
     static func effectiveContextTokens(maxKVSize: Int, modelContextSize: Int?) -> Int {
         if maxKVSize > 0 {
             return maxKVSize
@@ -77,7 +79,12 @@ enum ModelCapacity {
     }
 
     static func cpuCapable(weightBytes: Int64) -> Bool {
-        cpuCapable(weightBytes: weightBytes, kvElementsPerToken: nil, contextTokens: 0, kvBits: nil)
+        guard weightBytes <= cpuWeightCeiling else {
+            return false
+        }
+        let kvReserve = Int64(Double(weightBytes) * conservativeKVReserveFraction)
+        let footprint = weightBytes + kvReserve + activationReserveBytes
+        return footprint <= unifiedMemory / 4
     }
 
     static func cpuCapable(
