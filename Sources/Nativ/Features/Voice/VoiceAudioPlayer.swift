@@ -11,6 +11,8 @@ final class VoiceAudioPlayer: NSObject, ObservableObject {
     private var player: AVAudioPlayer?
     private var meterTimer: Timer?
     private var completion: (() -> Void)?
+    /// Auto-gain: decaying running peak of the playback amplitude.
+    private var peakLevel: Double = 0.2
 
     /// Play the given audio data. `onFinish` fires when playback completes naturally
     /// (not when `stop()` is called).
@@ -55,9 +57,12 @@ final class VoiceAudioPlayer: NSObject, ObservableObject {
         player.updateMeters()
         let power = player.averagePower(forChannel: 0)
         let amplitude = pow(10.0, Double(power) / 20.0)
-        // Perceptual boost so the model's speech visibly pulses the orb, with light
-        // smoothing so it pulses rather than jitters.
-        let scaled = min(1.0, pow(amplitude, 0.6) * 1.4)
+        // Auto-gain: normalize against a decaying running peak so the model's speech
+        // spans the orb's full range regardless of TTS loudness.
+        peakLevel = max(amplitude, peakLevel * 0.995)
+        let span = max(peakLevel - 0.01, 0.05)
+        let norm = min(1.0, max(0.0, (amplitude - 0.01) / span))
+        let scaled = pow(norm, 0.7)
         level = level * 0.5 + scaled * 0.5
     }
 }
