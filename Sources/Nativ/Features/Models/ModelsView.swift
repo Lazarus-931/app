@@ -1109,7 +1109,10 @@ private struct ModelCapacityPills: View {
     }
 
     private var cpuCapable: Bool {
-        ModelCapacity.cpuCapable(
+        guard let kvElementsPerToken else {
+            return ModelCapacity.cpuCapable(weightBytes: weightBytes)
+        }
+        return ModelCapacity.cpuCapable(
             weightBytes: weightBytes,
             kvElementsPerToken: kvElementsPerToken,
             contextTokens: contextTokens,
