@@ -22,6 +22,11 @@ final class VoiceSpeechRecognizer: ObservableObject {
     private var latestTranscript = ""
     private var isListening = false
 
+    /// Auto-gain: a slowly-decaying running peak of the raw RMS, so the level normalizes
+    /// to recent loudness regardless of this Mac's mic gain.
+    private var peakLevel: Double = 0.05
+    private let noiseFloor: Double = 0.006
+
     /// The pause (seconds) after the last recognized speech that ends a turn.
     private let endOfTurnSilence: TimeInterval = 1.3
 
@@ -150,11 +155,14 @@ final class VoiceSpeechRecognizer: ObservableObject {
     }
 
     private func updateLevel(_ rms: Float) {
-        // Perceptual mapping so ordinary speech clearly drives the orb: quiet speech
-        // still registers and loud speech saturates. Snappy smoothing tracks the
-        // cadence of speech rather than lagging behind it.
-        let boosted = Double(rms) * 16.0
-        let scaled = min(1.0, pow(max(0.0, boosted), 0.7))
+        // Auto-gain: normalize the raw RMS against a slowly-decaying running peak so
+        // ordinary speech reliably spans 0...1 on any mic, with a noise floor so ambient
+        // quiet stays near zero. Snappy smoothing tracks the cadence of speech.
+        let x = Double(rms)
+        peakLevel = max(x, peakLevel * 0.997)
+        let span = max(peakLevel - noiseFloor, 0.02)
+        let norm = min(1.0, max(0.0, (x - noiseFloor) / span))
+        let scaled = pow(norm, 0.7)
         level = level * 0.4 + scaled * 0.6
     }
 
