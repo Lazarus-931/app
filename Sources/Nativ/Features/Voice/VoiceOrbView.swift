@@ -1,110 +1,90 @@
 import SwiftUI
 
-/// A voice orb: a soft circle whose membrane vibrates with whoever is speaking. Your
-/// microphone tints it warm, the model's speech tints it cool. When both are quiet it
-/// rests as a calm circle; as either of you speaks it ripples outward with amplitude.
-///
-/// The ripple is time-driven (60fps) and the level only modulates its intensity, so the
-/// vibration stays fluid even though the audio level arrives in coarser 30fps steps.
+/// A floating, fluid cloud of soft particles that reads like drifting sand rather
+/// than a hard circle. Two lobes visualize the two voices at once: the model's
+/// speech pulses a cool lobe toward the top-left (`modelLevel`), and your own
+/// speech pulses a warm lobe toward the bottom-right (`userLevel`).
 struct VoiceOrbView: View {
     var userLevel: Double
     var modelLevel: Double
     var size: CGFloat = 210
 
-    private var coolColor: Color { Color(hue: 0.60, saturation: 0.85, brightness: 1.0) }
+    private let particleCount = 26
+
+    // Cool (model) points top-left; warm (you) points bottom-right. Screen y is down.
+    private let modelLobeAngle = 5.0 * .pi / 4.0
+    private let userLobeAngle = .pi / 4.0
+
+    private var coolColor: Color { Color(hue: 0.62, saturation: 0.82, brightness: 1.0) }
     private var warmColor: Color { Color(hue: 0.045, saturation: 0.85, brightness: 1.0) }
 
     var body: some View {
-        let user = max(0.0, min(1.0, userLevel))
-        let model = max(0.0, min(1.0, modelLevel))
-        let level = max(user, model)
-        let tint = user >= model ? warmColor : coolColor
+        let user = max(0, min(1, userLevel))
+        let model = max(0, min(1, modelLevel))
 
         TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
-            Canvas { context, canvasSize in
-                let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
-                let baseRadius = min(canvasSize.width, canvasSize.height) * 0.33
-                let membrane = Self.membranePath(
-                    center: center, baseRadius: baseRadius, level: level, time: time
-                )
 
-                // Soft glow fill inside the vibrating membrane.
-                context.fill(
-                    membrane,
-                    with: .radialGradient(
-                        Gradient(colors: [
-                            tint.opacity(0.30 + 0.45 * level),
-                            tint.opacity(0.05)
-                        ]),
-                        center: center,
-                        startRadius: 0,
-                        endRadius: baseRadius * 1.3
+            ZStack {
+                // Soft idle core so the orb stays visible when both voices are quiet.
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(hue: 0.63, saturation: 0.5, brightness: 1.0).opacity(0.32),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: size * 0.42
+                        )
                     )
-                )
-                // Crisp vibrating outline.
-                context.stroke(
-                    membrane,
-                    with: .color(tint.opacity(0.85)),
-                    lineWidth: 2.0 + CGFloat(1.6 * level)
-                )
+                    .blur(radius: size * 0.06)
 
-                // Inner core that brightens and grows with amplitude.
-                let coreRadius = baseRadius * CGFloat(0.16 + 0.32 * level)
-                let coreRect = CGRect(
-                    x: center.x - coreRadius,
-                    y: center.y - coreRadius,
-                    width: coreRadius * 2,
-                    height: coreRadius * 2
-                )
-                context.fill(
-                    Path(ellipseIn: coreRect),
-                    with: .radialGradient(
-                        Gradient(colors: [
-                            Color.white.opacity(0.55 + 0.4 * level),
-                            tint.opacity(0.55),
-                            tint.opacity(0.0)
-                        ]),
-                        center: center,
-                        startRadius: 0,
-                        endRadius: coreRadius
-                    )
-                )
+                Canvas { context, canvasSize in
+                    let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+                    let baseRadius = min(canvasSize.width, canvasSize.height) * 0.22
+
+                    for index in 0..<particleCount {
+                        let isModel = index.isMultiple(of: 2)
+                        let level: Double = isModel ? model : user
+                        let lobeAngle: Double = isModel ? modelLobeAngle : userLobeAngle
+                        let phase = Double(index)
+
+                        // Drifting position on a wobbling ring, biased toward the lobe.
+                        let ringAngle: Double = (phase / Double(particleCount)) * 2.0 * .pi
+                        let wobble: Double = sin(time * 1.25 + phase) * 0.16
+                            + cos(time * 0.85 + phase * 1.7) * 0.10
+                        let ringFraction: Double = 0.72 + 0.28 * (0.5 + 0.5 * sin(time * 0.8 + phase))
+                        let ring = baseRadius * CGFloat(ringFraction)
+                        let bias = baseRadius * CGFloat(0.30 + 0.55 * level)
+
+                        let ringX = CGFloat(cos(ringAngle) * (1.0 + wobble))
+                        let ringY = CGFloat(sin(ringAngle) * (1.0 + wobble))
+                        let px = center.x + ringX * ring + CGFloat(cos(lobeAngle)) * bias
+                        let py = center.y + ringY * ring + CGFloat(sin(lobeAngle)) * bias
+
+                        let blobFraction: Double = 0.11 + 0.16 * level + 0.03 * (0.5 + 0.5 * sin(time + phase))
+                        let blob = size * CGFloat(blobFraction)
+                        let rect = CGRect(x: px - blob / 2, y: py - blob / 2, width: blob, height: blob)
+                        let opacity: Double = 0.22 + 0.6 * level
+                        let color = isModel ? coolColor : warmColor
+                        context.fill(Path(ellipseIn: rect), with: .color(color.opacity(opacity)))
+                    }
+                }
+                .blur(radius: size * 0.05)
             }
             .frame(width: size, height: size)
-            .shadow(color: tint.opacity(0.25 + 0.4 * level), radius: size * 0.1)
+            .shadow(
+                color: coolColor.opacity(0.28 + 0.3 * model),
+                radius: size * 0.11
+            )
+            .shadow(
+                color: warmColor.opacity(0.22 + 0.3 * user),
+                radius: size * 0.11
+            )
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
-    }
-
-    /// A closed radial waveform. Its radius ripples with `level` via a few harmonics; a
-    /// tiny idle wobble keeps it alive when quiet.
-    private static func membranePath(
-        center: CGPoint, baseRadius: CGFloat, level: Double, time: Double
-    ) -> Path {
-        var path = Path()
-        let steps = 140
-        let amplitude = 0.02 + 0.24 * level
-        for index in 0...steps {
-            let theta = Double(index) / Double(steps) * 2.0 * .pi
-            let wobble =
-                sin(theta * 3.0 + time * 3.0) * 0.5
-                + sin(theta * 5.0 - time * 2.3) * 0.3
-                + sin(theta * 8.0 + time * 4.1) * 0.2
-            let idle = sin(theta * 2.0 + time * 0.9) * 0.02
-            let radius = baseRadius * CGFloat(1.0 + idle + amplitude * wobble)
-            let point = CGPoint(
-                x: center.x + CGFloat(cos(theta)) * radius,
-                y: center.y + CGFloat(sin(theta)) * radius
-            )
-            if index == 0 {
-                path.move(to: point)
-            } else {
-                path.addLine(to: point)
-            }
-        }
-        path.closeSubpath()
-        return path
     }
 }
