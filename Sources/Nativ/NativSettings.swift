@@ -103,7 +103,8 @@ struct NativSettings: Codable, Equatable {
     var imageGenerationModelID: String?
     var textToSpeechModelID: String?
     var speechToTextModelID: String?
-    var runTextToSpeechOnCPU: Bool
+    var textToSpeechDevice: ChatInferenceDevice
+    var speechToTextDevice: ChatInferenceDevice
     var serverAPIKey: String?
     var huggingFaceToken: String?
     var maxTokens: Int
@@ -146,7 +147,8 @@ struct NativSettings: Codable, Equatable {
         imageGenerationModelID: String? = nil,
         textToSpeechModelID: String? = nil,
         speechToTextModelID: String? = nil,
-        runTextToSpeechOnCPU: Bool = false,
+        textToSpeechDevice: ChatInferenceDevice = .gpu,
+        speechToTextDevice: ChatInferenceDevice = .gpu,
         serverAPIKey: String? = nil,
         huggingFaceToken: String? = nil,
         maxTokens: Int = 2048,
@@ -188,7 +190,8 @@ struct NativSettings: Codable, Equatable {
         self.imageGenerationModelID = imageGenerationModelID
         self.textToSpeechModelID = textToSpeechModelID
         self.speechToTextModelID = speechToTextModelID
-        self.runTextToSpeechOnCPU = runTextToSpeechOnCPU
+        self.textToSpeechDevice = textToSpeechDevice
+        self.speechToTextDevice = speechToTextDevice
         self.serverAPIKey = serverAPIKey
         self.huggingFaceToken = huggingFaceToken
         self.maxTokens = maxTokens
@@ -232,7 +235,8 @@ struct NativSettings: Codable, Equatable {
         case imageGenerationModelID
         case textToSpeechModelID
         case speechToTextModelID
-        case runTextToSpeechOnCPU
+        case textToSpeechDevice
+        case speechToTextDevice
         case serverAPIKey
         case huggingFaceToken
         case selectedModelID
@@ -280,7 +284,8 @@ struct NativSettings: Codable, Equatable {
         imageGenerationModelID = try container.decodeIfPresent(String.self, forKey: .imageGenerationModelID) ?? defaults.imageGenerationModelID
         textToSpeechModelID = try container.decodeIfPresent(String.self, forKey: .textToSpeechModelID) ?? defaults.textToSpeechModelID
         speechToTextModelID = try container.decodeIfPresent(String.self, forKey: .speechToTextModelID) ?? defaults.speechToTextModelID
-        runTextToSpeechOnCPU = try container.decodeIfPresent(Bool.self, forKey: .runTextToSpeechOnCPU) ?? defaults.runTextToSpeechOnCPU
+        textToSpeechDevice = try container.decodeIfPresent(ChatInferenceDevice.self, forKey: .textToSpeechDevice) ?? defaults.textToSpeechDevice
+        speechToTextDevice = try container.decodeIfPresent(ChatInferenceDevice.self, forKey: .speechToTextDevice) ?? defaults.speechToTextDevice
         serverAPIKey = try container.decodeIfPresent(String.self, forKey: .serverAPIKey) ?? defaults.serverAPIKey
         huggingFaceToken = try container.decodeIfPresent(String.self, forKey: .huggingFaceToken) ?? defaults.huggingFaceToken
         maxTokens = try container.decodeIfPresent(Int.self, forKey: .maxTokens) ?? defaults.maxTokens
@@ -325,7 +330,8 @@ struct NativSettings: Codable, Equatable {
         try container.encodeIfPresent(imageGenerationModelID, forKey: .imageGenerationModelID)
         try container.encodeIfPresent(textToSpeechModelID, forKey: .textToSpeechModelID)
         try container.encodeIfPresent(speechToTextModelID, forKey: .speechToTextModelID)
-        try container.encode(runTextToSpeechOnCPU, forKey: .runTextToSpeechOnCPU)
+        try container.encode(textToSpeechDevice, forKey: .textToSpeechDevice)
+        try container.encode(speechToTextDevice, forKey: .speechToTextDevice)
         try container.encodeIfPresent(huggingFaceToken, forKey: .huggingFaceToken)
         try container.encode(maxTokens, forKey: .maxTokens)
         try container.encode(maxKVSize, forKey: .maxKVSize)
@@ -577,8 +583,8 @@ struct NativSettings: Codable, Equatable {
     var requiresCPUServer: Bool {
         let settings = normalized()
         return settings.cpuLanguageModelID != nil
-            || settings.runTextToSpeechOnCPU
-            || settings.speechToTextModelID != nil
+            || (settings.textToSpeechModelID != nil && settings.textToSpeechDevice == .cpu)
+            || (settings.speechToTextModelID != nil && settings.speechToTextDevice == .cpu)
     }
 
     var structuredOutputValidationError: String? {
