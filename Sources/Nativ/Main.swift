@@ -88,7 +88,7 @@ enum Main {
 
 private struct NativApplication: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    private let softwareUpdater = SoftwareUpdater()
+    private let softwareUpdater = SoftwareUpdater.shared
 
     var body: some Scene {
         Window("Nativ", id: "main") {
