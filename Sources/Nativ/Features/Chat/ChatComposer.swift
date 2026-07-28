@@ -294,7 +294,7 @@ struct ChatComposer: View {
             cpuModels: cpuCapableModels,
             maxKVSize: model.settings.normalized().maxKVSize,
             kvBits: model.settings.normalized().kvQuantizationEnabled ? model.settings.normalized().kvBits : nil,
-            showsDeviceSections: model.cpuIsRunning,
+            showsDeviceSections: true,
             activeDevice: targetDevice,
             selectedModelID: selectedModelID,
             gpuSelectedModelID: model.settings.normalized().languageModelID,
@@ -316,7 +316,7 @@ struct ChatComposer: View {
     }
 
     private var targetDevice: ChatInferenceDevice {
-        model.cpuIsRunning ? viewModel.targetDevice : .gpu
+        viewModel.targetDevice
     }
 
     private var cpuCapableModels: [LocalModel] {
