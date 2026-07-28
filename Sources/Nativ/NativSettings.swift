@@ -103,6 +103,7 @@ struct NativSettings: Codable, Equatable {
     var imageGenerationModelID: String?
     var textToSpeechModelID: String?
     var speechToTextModelID: String?
+    var runTextToSpeechOnCPU: Bool
     var serverAPIKey: String?
     var huggingFaceToken: String?
     var maxTokens: Int
@@ -145,6 +146,7 @@ struct NativSettings: Codable, Equatable {
         imageGenerationModelID: String? = nil,
         textToSpeechModelID: String? = nil,
         speechToTextModelID: String? = nil,
+        runTextToSpeechOnCPU: Bool = false,
         serverAPIKey: String? = nil,
         huggingFaceToken: String? = nil,
         maxTokens: Int = 2048,
@@ -186,6 +188,7 @@ struct NativSettings: Codable, Equatable {
         self.imageGenerationModelID = imageGenerationModelID
         self.textToSpeechModelID = textToSpeechModelID
         self.speechToTextModelID = speechToTextModelID
+        self.runTextToSpeechOnCPU = runTextToSpeechOnCPU
         self.serverAPIKey = serverAPIKey
         self.huggingFaceToken = huggingFaceToken
         self.maxTokens = maxTokens
@@ -229,6 +232,7 @@ struct NativSettings: Codable, Equatable {
         case imageGenerationModelID
         case textToSpeechModelID
         case speechToTextModelID
+        case runTextToSpeechOnCPU
         case serverAPIKey
         case huggingFaceToken
         case selectedModelID
@@ -276,6 +280,7 @@ struct NativSettings: Codable, Equatable {
         imageGenerationModelID = try container.decodeIfPresent(String.self, forKey: .imageGenerationModelID) ?? defaults.imageGenerationModelID
         textToSpeechModelID = try container.decodeIfPresent(String.self, forKey: .textToSpeechModelID) ?? defaults.textToSpeechModelID
         speechToTextModelID = try container.decodeIfPresent(String.self, forKey: .speechToTextModelID) ?? defaults.speechToTextModelID
+        runTextToSpeechOnCPU = try container.decodeIfPresent(Bool.self, forKey: .runTextToSpeechOnCPU) ?? defaults.runTextToSpeechOnCPU
         serverAPIKey = try container.decodeIfPresent(String.self, forKey: .serverAPIKey) ?? defaults.serverAPIKey
         huggingFaceToken = try container.decodeIfPresent(String.self, forKey: .huggingFaceToken) ?? defaults.huggingFaceToken
         maxTokens = try container.decodeIfPresent(Int.self, forKey: .maxTokens) ?? defaults.maxTokens
@@ -320,6 +325,7 @@ struct NativSettings: Codable, Equatable {
         try container.encodeIfPresent(imageGenerationModelID, forKey: .imageGenerationModelID)
         try container.encodeIfPresent(textToSpeechModelID, forKey: .textToSpeechModelID)
         try container.encodeIfPresent(speechToTextModelID, forKey: .speechToTextModelID)
+        try container.encode(runTextToSpeechOnCPU, forKey: .runTextToSpeechOnCPU)
         try container.encodeIfPresent(huggingFaceToken, forKey: .huggingFaceToken)
         try container.encode(maxTokens, forKey: .maxTokens)
         try container.encode(maxKVSize, forKey: .maxKVSize)
@@ -468,6 +474,7 @@ struct NativSettings: Codable, Equatable {
         return lhs.modelSearchPath == rhs.modelSearchPath
             && lhs.serverPort == rhs.serverPort
             && lhs.cpuLanguageModelID == rhs.cpuLanguageModelID
+            && lhs.requiresCPUServer == rhs.requiresCPUServer
             && lhs.cpuServerPort == rhs.cpuServerPort
             && lhs.languageModelID == rhs.languageModelID
             && lhs.serverAPIKey == rhs.serverAPIKey
@@ -565,6 +572,13 @@ struct NativSettings: Codable, Equatable {
             arguments.append(contentsOf: ["--model", cpuLanguageModelID])
         }
         return arguments
+    }
+
+    var requiresCPUServer: Bool {
+        let settings = normalized()
+        return settings.cpuLanguageModelID != nil
+            || settings.runTextToSpeechOnCPU
+            || settings.speechToTextModelID != nil
     }
 
     var structuredOutputValidationError: String? {

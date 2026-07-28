@@ -62,6 +62,10 @@ public struct MLXSpeechRequest: Encodable, Equatable, Sendable {
     }
 }
 
+private struct TranscriptionResponse: Decodable {
+    let text: String
+}
+
 public final class NativAudioClient {
     private let baseURL: URL
     private let session: URLSession
@@ -102,6 +106,57 @@ public final class NativAudioClient {
             }
         }
         throw fallbackError ?? NativAudioError.invalidResponse
+    }
+
+    public func transcribe(_ audio: Data, fileName: String, model: String) async throws -> String {
+        var fallbackError: NativAudioError?
+        for path in ["v1/audio/transcriptions", "audio/transcriptions"] {
+            do {
+                return try await transcribe(audio, fileName: fileName, model: model, path: path)
+            } catch let error as NativAudioError where error.statusCode == 404 || error.statusCode == 405 {
+                fallbackError = error
+                continue
+            }
+        }
+        throw fallbackError ?? NativAudioError.invalidResponse
+    }
+
+    private func transcribe(_ audio: Data, fileName: String, model: String, path: String) async throws -> String {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var body = Data()
+        func appendField(_ name: String, _ value: String) {
+            body.append(Data("--\(boundary)\r\n".utf8))
+            body.append(Data("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
+            body.append(Data("\(value)\r\n".utf8))
+        }
+        appendField("model", model)
+        body.append(Data("--\(boundary)\r\n".utf8))
+        body.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".utf8))
+        body.append(Data("Content-Type: audio/wav\r\n\r\n".utf8))
+        body.append(audio)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+
+        var urlRequest = URLRequest(url: baseURL.appendingPathComponent(path))
+        urlRequest.httpMethod = "POST"
+        urlRequest.timeoutInterval = timeout
+        urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
+        urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let apiKey, !apiKey.isEmpty {
+            urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        urlRequest.httpBody = body
+
+        let (data, response) = try await session.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NativAudioError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw NativAudioError.httpStatus(httpResponse.statusCode, String(decoding: data, as: UTF8.self))
+        }
+        if let decoded = try? JSONDecoder().decode(TranscriptionResponse.self, from: data) {
+            return decoded.text
+        }
+        return String(decoding: data, as: UTF8.self)
     }
 
     private func speech(_ request: MLXSpeechRequest, path: String) async throws -> Data {
