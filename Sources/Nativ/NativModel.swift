@@ -326,12 +326,50 @@ final class NativModel: ObservableObject {
     }
 
     func switchCPUModel(to modelID: String?) {
-        settings.cpuLanguageModelID = modelID
-        guard isRunning else {
+        guard !modelSwitchInProgress else {
             return
         }
+
+        var nextSettings = settings
+        nextSettings.cpuLanguageModelID = modelID
+        let normalizedModelID = nextSettings.normalized().cpuLanguageModelID
+        let selectionIsAlreadyApplied = settings.normalized().cpuLanguageModelID == normalizedModelID
+            && server.isRunning
+            && !settingsRequireRestart
+        guard !selectionIsAlreadyApplied else {
+            return
+        }
+
+        settings.cpuLanguageModelID = normalizedModelID
         cpuMetrics = nil
+        modelSwitchInProgress = true
         notifyMenuStateChanged()
+
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            if self.server.isRunning {
+                self.isStoppingForModelSwitch = true
+                self.stopServer(preserveSessionStats: true)
+                await Task.yield()
+                self.isStoppingForModelSwitch = false
+            }
+
+            guard !self.server.isRunning else {
+                self.modelSwitchInProgress = false
+                self.clearPreservedSessionStats()
+                self.notifyMenuStateChanged()
+                return
+            }
+            self.startServer()
+            if !self.server.isRunning {
+                self.modelSwitchInProgress = false
+                self.clearPreservedSessionStats()
+                self.notifyMenuStateChanged()
+            }
+        }
     }
 
     func applicationWillTerminate() {
