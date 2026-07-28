@@ -41,10 +41,16 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
 final class ControlPanelNavigation: ObservableObject {
     @Published private(set) var requestedTab: ControlPanelTab?
     @Published private(set) var newChatRequest = 0
+    @Published private(set) var speechModelDiscoveryRequest = 0
     private var consumedNewChatRequest = 0
 
     func open(_ tab: ControlPanelTab) {
         requestedTab = tab
+    }
+
+    func openSpeechModelDiscovery() {
+        speechModelDiscoveryRequest += 1
+        requestedTab = .models
     }
 
     func createChat() {

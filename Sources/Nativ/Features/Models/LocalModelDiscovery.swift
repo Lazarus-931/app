@@ -151,6 +151,22 @@ enum LocalModelDiscovery {
         }.value
     }
 
+    static func speechToTextModelID(
+        in models: [LocalModel],
+        selectedModelID: String?
+    ) -> String? {
+        let speechModels = models.filter {
+            $0.capabilities.contains(.speechToText)
+        }
+        if let selectedModelID,
+           speechModels.contains(where: { $0.repoID == selectedModelID }) {
+            return selectedModelID
+        }
+        return speechModels.sorted {
+            $0.repoID.localizedCaseInsensitiveCompare($1.repoID) == .orderedAscending
+        }.first?.repoID
+    }
+
     static func expandedPath(_ path: String) -> String {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         let effectivePath = trimmed.isEmpty ? NativSettings.defaultModelSearchPath : trimmed

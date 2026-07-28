@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// A two-voice metaball fluid: cool droplets ripple and wave with the model's
-/// speech (biased top-left), warm droplets with yours (bottom-right). They orbit,
-/// merge like liquid, and glint. Rendered on the GPU via `VoiceOrb.metal`.
+/// A simple circle that vibrates with the voices: it swells with speech and
+/// shivers continuously so it always feels alive. Cool when the model speaks,
+/// warm when you do.
 struct VoiceOrbView: View {
     var userLevel: Double
     var modelLevel: Double
@@ -14,24 +14,26 @@ struct VoiceOrbView: View {
     var body: some View {
         let user = max(0, min(1, userLevel))
         let model = max(0, min(1, modelLevel))
+        let level = max(user, model)
+        let tint = model >= user ? coolColor : warmColor
 
         TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
-                .truncatingRemainder(dividingBy: 1000)
+            let shiver = sin(time * 21.0) * 0.010 + sin(time * 13.3) * 0.006
+            let scale = 1.0 + level * 0.32 + shiver * (0.5 + level)
 
-            Rectangle()
-                .fill(.black)
-                .colorEffect(
-                    ShaderLibrary.voiceOrb(
-                        .float(Float(size)),
-                        .float(Float(time)),
-                        .float(Float(user)),
-                        .float(Float(model))
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [tint.opacity(0.95), tint.opacity(0.5)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: size * 0.5
                     )
                 )
                 .frame(width: size, height: size)
-                .shadow(color: coolColor.opacity(0.28 + 0.3 * model), radius: size * 0.11)
-                .shadow(color: warmColor.opacity(0.22 + 0.3 * user), radius: size * 0.11)
+                .scaleEffect(scale)
+                .shadow(color: tint.opacity(0.35 + 0.4 * level), radius: size * 0.12)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
