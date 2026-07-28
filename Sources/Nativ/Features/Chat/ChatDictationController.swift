@@ -12,9 +12,10 @@ final class ChatDictationController: ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var baseText = ""
     private var onTranscript: ((String) -> Void)?
+    private var wantsRecording = false
 
     func toggle(baseText: String, onTranscript: @escaping (String) -> Void) {
-        if isRecording {
+        if isRecording || wantsRecording {
             stop()
         } else {
             start(baseText: baseText, onTranscript: onTranscript)
@@ -22,6 +23,7 @@ final class ChatDictationController: ObservableObject {
     }
 
     func stop() {
+        wantsRecording = false
         recognitionRequest?.endAudio()
         if audioEngine.isRunning {
             audioEngine.stop()
@@ -37,10 +39,11 @@ final class ChatDictationController: ObservableObject {
         errorMessage = nil
         self.baseText = baseText
         self.onTranscript = onTranscript
+        wantsRecording = true
 
         SFSpeechRecognizer.requestAuthorization { [weak self] status in
             Task { @MainActor [weak self] in
-                guard let self else {
+                guard let self, self.wantsRecording else {
                     return
                 }
                 guard status == .authorized else {
@@ -50,6 +53,9 @@ final class ChatDictationController: ObservableObject {
                 let granted = await AVCaptureDevice.requestAccess(for: .audio)
                 guard granted else {
                     self.errorMessage = "Microphone permission was declined. Enable it in System Settings > Privacy & Security."
+                    return
+                }
+                guard self.wantsRecording else {
                     return
                 }
                 self.beginRecognition()
