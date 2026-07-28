@@ -2,6 +2,65 @@ import AppKit
 import Foundation
 import NativServerKit
 
+enum IssueReportCategory: String, CaseIterable, Identifiable {
+    case modelDownload
+    case modelInference
+    case appUI
+    case appInteraction
+    case crash
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .modelDownload: "Model download"
+        case .modelInference: "Model inference"
+        case .appUI: "App UI"
+        case .appInteraction: "App interaction"
+        case .crash: "Crash"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .modelDownload: "arrow.down.circle"
+        case .modelInference: "cpu"
+        case .appUI: "macwindow"
+        case .appInteraction: "cursorarrow.click.2"
+        case .crash: "exclamationmark.octagon"
+        }
+    }
+
+    var issueTitle: String {
+        switch self {
+        case .modelDownload: "Model download issue"
+        case .modelInference: "Model inference issue"
+        case .appUI: "App UI issue"
+        case .appInteraction: "App interaction issue"
+        case .crash: "App crash report"
+        }
+    }
+
+    var githubLabel: String {
+        "bug"
+    }
+
+    var detailPrompt: String {
+        switch self {
+        case .modelDownload:
+            "Which model were you downloading, and what happened? Include the point where it failed or stalled."
+        case .modelInference:
+            "Which model was loaded, and what did you send? Describe what you expected and what you got instead."
+        case .appUI:
+            "What looks wrong, and on which page? Describe what you saw and what you expected."
+        case .appInteraction:
+            "What were you trying to do, and what got in the way? List the steps you took."
+        case .crash:
+            "What were you doing when the app crashed? Recent crash reports are attached automatically."
+        }
+    }
+}
+
 @MainActor
 enum IssueReport {
     static let newIssueURL = "https://github.com/Lazarus-931/app/issues/new"
@@ -32,6 +91,18 @@ enum IssueReport {
         NSWorkspace.shared.open(url)
     }
 
+    static func open(category: IssueReportCategory, model: NativModel, runtime: SystemRuntimeMonitor) {
+        let crash = category == .crash ? latestCrashReport() : nil
+        if let crash {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(crash.raw, forType: .string)
+        }
+        guard let url = url(category: category, model: model, runtime: runtime, crash: crash) else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
     static func unseenCrashReport() -> CrashReport? {
         guard let crash = latestCrashReport() else {
             return nil
@@ -51,51 +122,105 @@ enum IssueReport {
         return components?.url
     }
 
+    static func url(
+        category: IssueReportCategory,
+        model: NativModel,
+        runtime: SystemRuntimeMonitor,
+        crash: CrashReport? = nil
+    ) -> URL? {
+        var components = URLComponents(string: newIssueURL)
+        components?.queryItems = [
+            URLQueryItem(name: "title", value: category.issueTitle),
+            URLQueryItem(name: "labels", value: category.githubLabel),
+            URLQueryItem(name: "body", value: body(category: category, model: model, runtime: runtime, crash: crash))
+        ]
+        return components?.url
+    }
+
     private static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.1"
     }
 
     private static func body(model: NativModel, runtime: SystemRuntimeMonitor, crash: CrashReport?) -> String {
-        let settings = model.settings.normalized()
+        var sections = [
+            whatHappenedSection(prompt: "_Describe the issue._"),
+            environmentSection(runtime: runtime),
+            serverStateSection(model: model)
+        ]
+        if let crash {
+            sections.append(crashSection(crash))
+        }
+        sections.append(contentsOf: supplementarySections(model: model))
+        return assemble(sections)
+    }
+
+    private static func body(
+        category: IssueReportCategory,
+        model: NativModel,
+        runtime: SystemRuntimeMonitor,
+        crash: CrashReport?
+    ) -> String {
+        var sections = [
+            "### Category\n\(category.displayName)",
+            whatHappenedSection(prompt: category.detailPrompt),
+            environmentSection(runtime: runtime),
+            serverStateSection(model: model)
+        ]
+        if let crash {
+            sections.append(crashSection(crash))
+        }
+        sections.append(contentsOf: supplementarySections(model: model))
+        return assemble(sections)
+    }
+
+    private static func whatHappenedSection(prompt: String) -> String {
+        """
+        ### What happened
+
+        \(prompt)
+        """
+    }
+
+    private static func environmentSection(runtime: SystemRuntimeMonitor) -> String {
         let ram = ByteCountFormatter.string(
             fromByteCount: Int64(clamping: runtime.totalMemoryBytes),
             countStyle: .memory
         )
+        return """
+        ### Environment
+        - App: Nativ v\(appVersion)
+        - macOS: \(runtime.macOSVersion) (\(runtime.macOSBuild))
+        - Chip: \(runtime.chipName), \(ram) RAM
+        - Memory in use: \(memoryUsage(runtime))
+        - mlx-vlm: \(runtime.mlxVLMVersion)
+        """
+    }
+
+    private static func serverStateSection(model: NativModel) -> String {
+        let settings = model.settings.normalized()
         let gpuModel = model.isRunning ? model.loadedModelDisplay : "none"
         let cpuModel = model.cpuIsRunning ? model.cpuMenuModelDisplay : "none"
+        return """
+        ### Server state
+        - Running: \(model.isRunning), CPU instance: \(model.cpuIsRunning)
+        - GPU model: \(gpuModel)
+        - CPU model: \(cpuModel)
+        - Port: \(settings.serverPort)
+        """
+    }
 
-        var sections: [String] = [
-            """
-            ### What happened
+    private static func crashSection(_ crash: CrashReport) -> String {
+        "### Crash report\n"
+            + "- Report: \(crash.fileName)\n"
+            + "- When: \(crash.displayDate)\n\n"
+            + "```\n\(crash.summary)\n```\n\n"
+            + "_The full Apple crash report was copied to your clipboard — paste it below._"
+    }
 
-            _Describe the issue._
+    private static func supplementarySections(model: NativModel) -> [String] {
+        var sections: [String] = []
 
-            ### Environment
-            - App: Nativ v\(appVersion)
-            - macOS: \(runtime.macOSVersion) (\(runtime.macOSBuild))
-            - Chip: \(runtime.chipName), \(ram) RAM
-            - Memory in use: \(memoryUsage(runtime))
-            - mlx-vlm: \(runtime.mlxVLMVersion)
-
-            ### Server state
-            - Running: \(model.isRunning), CPU instance: \(model.cpuIsRunning)
-            - GPU model: \(gpuModel)
-            - CPU model: \(cpuModel)
-            - Port: \(settings.serverPort)
-            """
-        ]
-
-        if let crash {
-            sections.append(
-                "### Crash report\n"
-                    + "- Report: \(crash.fileName)\n"
-                    + "- When: \(crash.displayDate)\n\n"
-                    + "```\n\(crash.summary)\n```\n\n"
-                    + "_The full Apple crash report was copied to your clipboard — paste it below._"
-            )
-        }
-
-        let launchArguments = redactHomeDirectory(settings.launchArguments.joined(separator: " "))
+        let launchArguments = redactHomeDirectory(model.settings.normalized().launchArguments.joined(separator: " "))
         if !launchArguments.isEmpty {
             sections.append("### Server configuration\n```\n\(launchArguments)\n```")
         }
@@ -109,7 +234,7 @@ enum IssueReport {
             sections.append("### Recent server output\n```\n\(tail)\n```")
         }
 
-        return assemble(sections)
+        return sections
     }
 
     private static func assemble(_ sections: [String]) -> String {
