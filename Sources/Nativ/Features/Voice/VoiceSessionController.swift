@@ -131,6 +131,14 @@ final class VoiceSessionController: ObservableObject {
         guard isActive, !trimmed.isEmpty, let chat, let appModel else {
             return
         }
+        // Minimized: dictate into the composer instead of sending, so you can edit,
+        // attach images, and send it yourself. Keep listening so speech accumulates.
+        if isMinimized {
+            let existing = chat.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+            chat.draft = existing.isEmpty ? trimmed : existing + " " + trimmed
+            beginListening()
+            return
+        }
         // Pause the mic while the model thinks and speaks (prevents echo capture).
         if usesModelSTT {
             modelRecognizer.stop()

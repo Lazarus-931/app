@@ -322,6 +322,7 @@ private final class ModelMenuSectionHeaderView: NSView {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let model = NativModel()
     private let controlPanelNavigation = ControlPanelNavigation()
+    private let voiceCapture = VoiceCaptureCoordinator()
     private let runtime = SystemRuntimeMonitor()
     private let systemMenuBarPreferences = SystemMenuBarPreferences.shared
     private var mainWindowOpener: (() -> Void)?
@@ -366,7 +367,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if WelcomePreferences.hasCompleted {
             model.startServer()
         }
+        configureVoiceCapture()
         promptForCrashReportIfNeeded()
+    }
+
+    private func configureVoiceCapture() {
+        voiceCapture.transcriptionConfigurationProvider = { [weak self] in
+            guard let self else {
+                return nil
+            }
+            let settings = self.model.settings.normalized()
+            return VoiceTranscriptionConfiguration(
+                modelSearchPath: settings.modelSearchPath,
+                additionalModelSearchPaths: settings.additionalModelSearchPaths,
+                selectedModelID: settings.speechToTextModelID,
+                serverBaseURL: URL(string: "http://127.0.0.1:\(settings.serverPort)")
+                    ?? URL(string: "http://127.0.0.1:8080")!,
+                serverAPIKey: settings.serverAPIKey,
+                serverIsRunning: self.model.isRunning
+            )
+        }
+        voiceCapture.onOpenSpeechModels = { [weak self] in
+            guard let self else {
+                return
+            }
+            self.controlPanelNavigation.openSpeechModelDiscovery()
+            self.showMainWindow()
+        }
+        voiceCapture.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -385,6 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         modelScanTask?.cancel()
         runtime.onUpdate = nil
         systemMenuBarPreferences.onChange = nil
+        voiceCapture.stop()
         runtime.stop()
         model.applicationWillTerminate()
     }
