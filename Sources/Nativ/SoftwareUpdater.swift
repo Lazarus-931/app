@@ -25,6 +25,8 @@ enum NativApplicationIcon {
 
 @MainActor
 final class SoftwareUpdater {
+    static let shared = SoftwareUpdater()
+
     private let updaterController: SPUStandardUpdaterController
 
     var updater: SPUUpdater {
