@@ -91,7 +91,7 @@ private struct ModelsDownloadArrow: View {
 }
 
 struct ControlPanelView: View {
-    let model: NativModel
+    @ObservedObject var model: NativModel
     @ObservedObject var navigation: ControlPanelNavigation
     @ObservedObject var runtime: SystemRuntimeMonitor
     @StateObject private var chat = ChatViewModel()
@@ -108,6 +108,7 @@ struct ControlPanelView: View {
     @State private var isChatConfigurationVisible = false
     @State private var isFullScreen = false
     @State private var isNewChatHovering = false
+    @State private var hoveredFooterControl: FooterControl?
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
 
     var body: some View {
@@ -223,47 +224,136 @@ struct ControlPanelView: View {
 
             Divider()
 
-            HStack {
-                Button {
-                    applySidebarSelection(.tab(.settings))
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 14, weight: .medium))
-                        .frame(width: 28, height: 28)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Settings")
-
-                Button {
-                    pinNavigationPanel.toggle()
-                } label: {
-                    Image(systemName: pinNavigationPanel ? "pin.fill" : "pin")
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 28, height: 28)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(pinNavigationPanel ? Color.accentColor : .secondary)
-                .help(pinNavigationPanel ? "Auto-hide the sidebar" : "Keep the sidebar visible")
+            HStack(spacing: 4) {
+                settingsButton
+                pinButton
 
                 Spacer(minLength: 0)
 
-                Button {
-                    IssueReport.open(model: model, runtime: runtime)
-                } label: {
-                    Image(systemName: "ladybug")
-                        .font(.system(size: 14, weight: .medium))
-                        .frame(width: 28, height: 28)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Report an issue")
+                supportButton
+                serverToggleButton
+                issueReportMenu
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var settingsButton: some View {
+        footerControl(.settings, tooltip: "Settings") {
+            Button {
+                applySidebarSelection(.tab(.settings))
+            } label: {
+                footerIcon(systemName: "gearshape")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var pinButton: some View {
+        footerControl(
+            .pin,
+            tooltip: pinNavigationPanel ? "Auto-hide the sidebar" : "Keep the sidebar visible"
+        ) {
+            Button {
+                pinNavigationPanel.toggle()
+            } label: {
+                Image(systemName: pinNavigationPanel ? "pin.fill" : "pin")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(pinNavigationPanel ? Color.accentColor : .secondary)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var supportButton: some View {
+        footerControl(.support, tooltip: "Star Nativ on GitHub") {
+            Button {
+                guard let url = URL(string: "https://github.com/Blaizzy/nativ") else {
+                    return
+                }
+                NSWorkspace.shared.open(url)
+            } label: {
+                footerIcon(systemName: hoveredFooterControl == .support ? "heart.fill" : "heart")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var serverToggleButton: some View {
+        footerControl(
+            .server,
+            tooltip: model.isRunning ? "Stop Server" : "Start Server"
+        ) {
+            Button {
+                model.toggleServer()
+            } label: {
+                footerIcon(systemName: model.isRunning ? "stop.circle" : "play.circle")
+            }
+            .buttonStyle(.plain)
+            .disabled(model.modelSwitchInProgress)
+        }
+    }
+
+    private var issueReportMenu: some View {
+        footerControl(.reportIssue, tooltip: "Report an Issue") {
+            Menu {
+                ForEach(IssueReportCategory.allCases) { category in
+                    Button {
+                        IssueReport.open(category: category, model: model, runtime: runtime)
+                    } label: {
+                        Label(category.displayName, systemImage: category.systemImage)
+                    }
+                }
+            } label: {
+                footerIcon(systemName: "ladybug")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .tint(.secondary)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func footerIcon(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(.secondary)
+            .frame(width: 40, height: 40)
+            .contentShape(Rectangle())
+    }
+
+    private func footerControl<Content: View>(
+        _ control: FooterControl,
+        tooltip: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(width: 40, height: 40)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(hoveredFooterControl == control ? 0.08 : 0))
+            }
+            .overlay {
+                FooterControlTrackingView(
+                    tooltip: tooltip,
+                    onHover: { isHovering in
+                        updateFooterHover(control, isHovering: isHovering)
+                    }
+                )
+            }
+            .contentShape(Rectangle())
+            .accessibilityLabel(tooltip)
+            .animation(.easeOut(duration: 0.12), value: hoveredFooterControl == control)
+    }
+
+    private func updateFooterHover(_ control: FooterControl, isHovering: Bool) {
+        if isHovering {
+            hoveredFooterControl = control
+        } else if hoveredFooterControl == control {
+            hoveredFooterControl = nil
         }
     }
 
@@ -609,6 +699,72 @@ private struct ControlPanelDetailSafeArea: ViewModifier {
 
     func body(content: Content) -> some View {
         content.ignoresSafeArea(.container, edges: isFullScreen ? [] : .top)
+    }
+}
+
+private enum FooterControl {
+    case settings
+    case pin
+    case support
+    case server
+    case reportIssue
+}
+
+private struct FooterControlTrackingView: NSViewRepresentable {
+    let tooltip: String
+    let onHover: (Bool) -> Void
+
+    func makeNSView(context: Context) -> FooterControlTrackingNSView {
+        FooterControlTrackingNSView(tooltip: tooltip, onHover: onHover)
+    }
+
+    func updateNSView(_ view: FooterControlTrackingNSView, context: Context) {
+        view.toolTip = tooltip
+        view.onHover = onHover
+    }
+}
+
+@MainActor
+private final class FooterControlTrackingNSView: NSView {
+    var onHover: (Bool) -> Void
+    private var hoverTrackingArea: NSTrackingArea?
+
+    init(tooltip: String, onHover: @escaping (Bool) -> Void) {
+        self.onHover = onHover
+        super.init(frame: .zero)
+        toolTip = tooltip
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.activeInActiveApp, .inVisibleRect, .mouseEnteredAndExited],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onHover(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onHover(false)
     }
 }
 
