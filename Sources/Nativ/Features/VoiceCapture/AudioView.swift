@@ -73,7 +73,7 @@ struct AudioView: View {
             page
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color.nativMainContentBackground)
+        .background(Color.nativWindow)
         .onAppear {
             refreshLocalModels()
             importExistingTranscripts()
@@ -754,15 +754,11 @@ struct AudioView: View {
                     return
                 }
                 if newValue.isEmpty {
-                    model.switchPreloadedModel(to: nil, for: .speechToText)
+                    model.settings.speechToTextModelID = nil
                 } else if let localModel = speechModels.first(where: {
                     $0.repoID == newValue
                 }) {
-                    model.requestPreloadedModelSwitch(
-                        to: localModel,
-                        for: .speechToText,
-                        availableModels: localLibrary.models
-                    )
+                    model.settings.speechToTextModelID = localModel.repoID
                 }
             }
         )
