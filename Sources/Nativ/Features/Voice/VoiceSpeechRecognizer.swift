@@ -21,6 +21,7 @@ final class VoiceSpeechRecognizer: ObservableObject {
     private var silenceTimer: Timer?
     private var latestTranscript = ""
     private var isListening = false
+    private var isRunning = false
 
     /// Auto-gain: a slowly-decaying running peak of the raw RMS, so the level normalizes
     /// to recent loudness regardless of this Mac's mic gain.
@@ -34,10 +35,11 @@ final class VoiceSpeechRecognizer: ObservableObject {
         guard !isListening else {
             return
         }
+        isRunning = true
         errorMessage = nil
         SFSpeechRecognizer.requestAuthorization { [weak self] status in
             Task { @MainActor [weak self] in
-                guard let self else {
+                guard let self, self.isRunning else {
                     return
                 }
                 guard status == .authorized else {
@@ -49,6 +51,9 @@ final class VoiceSpeechRecognizer: ObservableObject {
                     self.errorMessage = "Microphone permission was declined. Enable it in System Settings › Privacy & Security."
                     return
                 }
+                guard self.isRunning else {
+                    return
+                }
                 self.beginCycle()
             }
         }
@@ -56,6 +61,7 @@ final class VoiceSpeechRecognizer: ObservableObject {
 
     /// Stop the current capture cycle without reporting an utterance.
     func stop() {
+        isRunning = false
         endCycle()
         level = 0
     }

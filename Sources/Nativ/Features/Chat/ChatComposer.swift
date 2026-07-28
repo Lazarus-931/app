@@ -323,6 +323,12 @@ struct ChatComposer: View {
         let settings = model.settings.normalized()
         let kvBits = settings.kvQuantizationEnabled ? settings.kvBits : nil
         return localLibrary.models.filter { localModel in
+            guard localModel.capabilities.contains(.text)
+                || (localModel.capabilities.contains(.vision)
+                    && !localModel.capabilities.contains(.imageGeneration))
+            else {
+                return false
+            }
             guard let weightBytes = localModel.sizeBytes else {
                 return false
             }

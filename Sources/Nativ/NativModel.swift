@@ -250,6 +250,10 @@ final class NativModel: ObservableObject {
         }
     }
 
+    func dismissModelPreloadFailureNotice() {
+        modelPreloadFailureNotice = nil
+    }
+
     func switchLanguageModel(to modelID: String?) {
         guard !modelSwitchInProgress else {
             return
