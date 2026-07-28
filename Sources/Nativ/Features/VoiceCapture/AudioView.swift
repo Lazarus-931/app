@@ -727,11 +727,12 @@ struct AudioView: View {
     }
 
     private var speechModels: [LocalModel] {
-        localLibrary.models
-            .filter { $0.capabilities.contains(.speechToText) }
-            .sorted {
-                $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
-            }
+        let matches = localLibrary.models.filter { model in
+            model.capabilities.contains(.speechToText)
+        }
+        return matches.sorted { lhs, rhs in
+            lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+        }
     }
 
     private var selectedModelID: String? {
