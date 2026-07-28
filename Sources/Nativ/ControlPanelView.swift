@@ -90,6 +90,50 @@ private struct ModelsDownloadArrow: View {
     }
 }
 
+private struct GlobalModelLoadFailureBanner: View {
+    let message: String
+    let onOpenModels: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Model didn’t load")
+                    .font(.callout.weight(.semibold))
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 12)
+
+            Button("Open Models", action: onOpenModels)
+                .buttonStyle(.bordered)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss model loading error")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 680)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 0.75)
+        }
+        .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 struct ControlPanelView: View {
     @ObservedObject var model: NativModel
     @ObservedObject var navigation: ControlPanelNavigation
@@ -126,6 +170,18 @@ struct ControlPanelView: View {
             }
         }
         .frame(minWidth: 1040, minHeight: 600)
+        .overlay(alignment: .top) {
+            if selectedTab != .models, let notice = model.modelPreloadFailureNotice {
+                GlobalModelLoadFailureBanner(
+                    message: notice,
+                    onOpenModels: { navigation.open(.models) },
+                    onDismiss: { model.dismissModelPreloadFailureNotice() }
+                )
+                .padding(.top, 10)
+                .padding(.horizontal, 16)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: model.modelPreloadFailureNotice)
         .background {
             ControlPanelWindowStateReader(isFullScreen: $isFullScreen)
                 .frame(width: 0, height: 0)
