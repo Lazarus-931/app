@@ -50,8 +50,12 @@ struct ChatView: View {
         return (trimmed?.isEmpty == false) ? trimmed : nil
     }
 
-    private var serverBaseURL: URL {
-        URL(string: "http://127.0.0.1:\(model.settings.normalized().serverPort)")
+    private var textToSpeechBaseURL: URL {
+        let settings = model.settings.normalized()
+        let port = settings.runTextToSpeechOnCPU && model.cpuIsRunning
+            ? settings.cpuServerPort
+            : settings.serverPort
+        return URL(string: "http://127.0.0.1:\(port)")
             ?? URL(string: "http://127.0.0.1:8080")!
     }
 
@@ -210,7 +214,7 @@ struct ChatView: View {
                             message: message,
                             tts: tts,
                             ttsModelID: readAloudModelID,
-                            serverBaseURL: serverBaseURL,
+                            serverBaseURL: textToSpeechBaseURL,
                             serverAPIKey: model.settings.serverAPIKey
                         )
                         .id(message.id)

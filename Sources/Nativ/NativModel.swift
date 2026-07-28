@@ -157,25 +157,23 @@ final class NativModel: ObservableObject {
             baseURL: URL(string: "http://127.0.0.1:\(applied.serverPort)")!
         )
         cpuMetricsClient = NativMetricsClient(
-            baseURL: URL(string: "http://127.0.0.1:\(applied.serverPort)")!
+            baseURL: URL(string: "http://127.0.0.1:\(applied.cpuServerPort)")!
         )
         IntegrationProfileManager.serverPort = applied.serverPort
+        var launchEnvironment = settings.launchEnvironment
+        launchEnvironment["MLX_PLATFORM_ANALYTICS_DB_PATH"] = currentAnalyticsDatabaseURL().path
+        launchEnvironment["MLX_PLATFORM_CPU_ANALYTICS_DB_PATH"] = NativAnalyticsStore.cpuDatabaseURL().path
         do {
-            var launchEnvironment = settings.launchEnvironment
-            launchEnvironment["MLX_PLATFORM_ANALYTICS_DB_PATH"] = currentAnalyticsDatabaseURL().path
-            launchEnvironment["MLX_PLATFORM_CPU_ANALYTICS_DB_PATH"] = NativAnalyticsStore.cpuDatabaseURL().path
             try server.start(
                 arguments: launchArguments,
                 environment: launchEnvironment
             )
             isRunning = true
-            cpuIsRunning = true
             settingsAppliedAtServerStart = settings.normalized()
             appendLog("\nStarted mlx-vlm-server.\n")
             shouldStartMetrics = true
         } catch NativError.alreadyRunning {
             isRunning = true
-            cpuIsRunning = true
             settingsAppliedAtServerStart = settings.normalized()
             appendLog("\nmlx-vlm-server is already running.\n")
             shouldStartMetrics = true
@@ -183,10 +181,34 @@ final class NativModel: ObservableObject {
             appendLog("\nFailed to start mlx-vlm-server: \(error)\n")
         }
 
+        if isRunning {
+            startCPUServerIfNeeded(applied, environment: launchEnvironment)
+        }
+
         if shouldStartMetrics {
             startMetricsPolling()
         }
         notifyMenuStateChanged()
+    }
+
+    private func startCPUServerIfNeeded(_ applied: NativSettings, environment: [String: String]) {
+        guard applied.requiresCPUServer else {
+            cpuIsRunning = false
+            return
+        }
+        do {
+            try cpuServer.start(
+                arguments: applied.cpuLaunchArguments,
+                environment: environment
+            )
+            cpuIsRunning = true
+            appendLog("\nStarted CPU mlx-vlm-server.\n")
+        } catch NativError.alreadyRunning {
+            cpuIsRunning = true
+        } catch {
+            cpuIsRunning = false
+            appendLog("\nFailed to start CPU mlx-vlm-server: \(error)\n")
+        }
     }
 
     /// Launch arguments with model pre-loads removed, so the server can start
@@ -227,8 +249,10 @@ final class NativModel: ObservableObject {
             appendLog("\nFailed to stop mlx-vlm-server: \(error)\n")
         }
 
+        try? cpuServer.stop()
+
         isRunning = server.isRunning
-        cpuIsRunning = isRunning
+        cpuIsRunning = cpuServer.isRunning
         if !isRunning {
             cpuMetrics = nil
             settingsAppliedAtServerStart = nil
@@ -365,7 +389,7 @@ final class NativModel: ObservableObject {
     }
 
     private func refreshCPUMetricsIfRunning() {
-        cpuIsRunning = server.isRunning
+        cpuIsRunning = cpuServer.isRunning
         guard cpuIsRunning else {
             cpuMetrics = nil
             return

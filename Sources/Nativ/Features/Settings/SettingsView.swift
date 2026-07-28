@@ -53,6 +53,7 @@ struct SettingsView: View {
                     textToSpeechLibrary.scan(path: model.settings.modelSearchPath)
                 }
                 TextField("Speech-to-text model", text: optionalString($model.settings.speechToTextModelID))
+                Toggle("Run text-to-speech on CPU", isOn: $model.settings.runTextToSpeechOnCPU)
             }
 
             Section("Hugging Face") {

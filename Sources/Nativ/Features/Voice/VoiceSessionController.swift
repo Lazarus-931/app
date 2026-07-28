@@ -25,6 +25,8 @@ final class VoiceSessionController: ObservableObject {
     let recognizer = VoiceSpeechRecognizer()
     let player = VoiceAudioPlayer()
 
+    private let modelRecognizer = ModelSpeechRecognizer()
+    private var usesModelSTT = false
     private weak var chat: ChatViewModel?
     private weak var appModel: NativModel?
     private var levelTimer: Timer?
@@ -38,9 +40,12 @@ final class VoiceSessionController: ObservableObject {
         isActive = true
         isMinimized = false
 
-        recognizer.onUtterance = { [weak self] text in
+        usesModelSTT = configureModelRecognizer(model)
+        let handleUtterance: (String) -> Void = { [weak self] text in
             self?.handleUtterance(text)
         }
+        recognizer.onUtterance = handleUtterance
+        modelRecognizer.onUtterance = handleUtterance
         chat.onAssistantResponseFinished = { [weak self] text in
             self?.speak(text)
         }
@@ -51,7 +56,9 @@ final class VoiceSessionController: ObservableObject {
 
     func stop() {
         recognizer.onUtterance = nil
+        modelRecognizer.onUtterance = nil
         recognizer.stop()
+        modelRecognizer.stop()
         player.stop()
         chat?.onAssistantResponseFinished = nil
         levelTimer?.invalidate()
@@ -74,7 +81,23 @@ final class VoiceSessionController: ObservableObject {
         }
         phase = .listening
         statusText = "Listening…"
-        recognizer.start()
+        if usesModelSTT {
+            modelRecognizer.start()
+        } else {
+            recognizer.start()
+        }
+    }
+
+    private func configureModelRecognizer(_ appModel: NativModel) -> Bool {
+        let settings = appModel.settings.normalized()
+        guard let sttModel = settings.speechToTextModelID, appModel.cpuIsRunning else {
+            return false
+        }
+        modelRecognizer.model = sttModel
+        modelRecognizer.apiKey = settings.serverAPIKey
+        modelRecognizer.baseURL = URL(string: "http://127.0.0.1:\(settings.cpuServerPort)")
+            ?? URL(string: "http://127.0.0.1:8081")!
+        return true
     }
 
     private func handleUtterance(_ text: String) {
@@ -83,7 +106,11 @@ final class VoiceSessionController: ObservableObject {
             return
         }
         // Pause the mic while the model thinks and speaks (prevents echo capture).
-        recognizer.stop()
+        if usesModelSTT {
+            modelRecognizer.stop()
+        } else {
+            recognizer.stop()
+        }
         phase = .thinking
         statusText = "Thinking…"
         chat.draft = trimmed
@@ -108,7 +135,7 @@ final class VoiceSessionController: ObservableObject {
 
         phase = .speaking
         statusText = "Speaking…"
-        let baseURL = serverBaseURL(appModel)
+        let baseURL = textToSpeechBaseURL(appModel)
         Task { [weak self] in
             guard let self else {
                 return
@@ -136,8 +163,12 @@ final class VoiceSessionController: ObservableObject {
         return (id?.isEmpty == false) ? id : nil
     }
 
-    private func serverBaseURL(_ appModel: NativModel) -> URL {
-        URL(string: "http://127.0.0.1:\(appModel.settings.normalized().serverPort)")
+    private func textToSpeechBaseURL(_ appModel: NativModel) -> URL {
+        let settings = appModel.settings.normalized()
+        let port = settings.runTextToSpeechOnCPU && appModel.cpuIsRunning
+            ? settings.cpuServerPort
+            : settings.serverPort
+        return URL(string: "http://127.0.0.1:\(port)")
             ?? URL(string: "http://127.0.0.1:8080")!
     }
 
@@ -149,7 +180,7 @@ final class VoiceSessionController: ObservableObject {
                 }
                 // Track the two voices independently so the orb can show both at once.
                 self.userLevel = self.phase == .listening
-                    ? self.recognizer.level
+                    ? (self.usesModelSTT ? self.modelRecognizer.level : self.recognizer.level)
                     : self.userLevel * 0.85
                 self.modelLevel = self.phase == .speaking
                     ? self.player.level
