@@ -208,7 +208,7 @@ final class VoiceSessionController: ObservableObject {
                     ? (self.usesModelSTT ? self.modelRecognizer.level : self.recognizer.level)
                     : self.userLevel * 0.85
                 self.modelLevel = self.phase == .speaking
-                    ? self.player.level
+                    ? max(self.player.level, self.modelLevel * 0.85)
                     : self.modelLevel * 0.85
             }
         }
