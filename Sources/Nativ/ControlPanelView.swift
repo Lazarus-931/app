@@ -92,6 +92,7 @@ private struct ModelsDownloadArrow: View {
 
 private struct GlobalModelLoadFailureBanner: View {
     let message: String
+    let showsOpenModels: Bool
     let onOpenModels: () -> Void
     let onDismiss: () -> Void
 
@@ -111,8 +112,10 @@ private struct GlobalModelLoadFailureBanner: View {
 
             Spacer(minLength: 12)
 
-            Button("Open Models", action: onOpenModels)
-                .buttonStyle(.bordered)
+            if showsOpenModels {
+                Button("Open Models", action: onOpenModels)
+                    .buttonStyle(.bordered)
+            }
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
@@ -171,9 +174,10 @@ struct ControlPanelView: View {
         }
         .frame(minWidth: 1040, minHeight: 600)
         .overlay(alignment: .top) {
-            if selectedTab != .models, let notice = model.modelPreloadFailureNotice {
+            if let notice = model.modelPreloadFailureNotice {
                 GlobalModelLoadFailureBanner(
                     message: notice,
+                    showsOpenModels: selectedTab != .models,
                     onOpenModels: { navigation.open(.models) },
                     onDismiss: { model.dismissModelPreloadFailureNotice() }
                 )

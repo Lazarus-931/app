@@ -12,7 +12,7 @@ struct ChatQueuedPrompt: Identifiable, Equatable {
     let position: Int
 }
 
-enum ChatInferenceDevice: String, CaseIterable, Identifiable {
+enum ChatInferenceDevice: String, CaseIterable, Identifiable, Codable {
     case gpu
     case cpu
 
@@ -52,7 +52,7 @@ struct ChatView: View {
 
     private var textToSpeechBaseURL: URL {
         let settings = model.settings.normalized()
-        let port = settings.runTextToSpeechOnCPU && model.cpuIsRunning
+        let port = settings.textToSpeechDevice == .cpu && model.cpuIsRunning
             ? settings.cpuServerPort
             : settings.serverPort
         return URL(string: "http://127.0.0.1:\(port)")

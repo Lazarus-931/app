@@ -7,11 +7,17 @@ struct SettingsView: View {
     @AppStorage("sidebarPinned") private var pinNavigationPanel = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchAtLoginError: String?
-    @StateObject private var textToSpeechLibrary = LocalModelLibrary()
+    @StateObject private var voiceLibrary = LocalModelLibrary()
 
     private var textToSpeechModels: [LocalModel] {
-        textToSpeechLibrary.models.filter {
+        voiceLibrary.models.filter {
             $0.capabilities.contains(.textToSpeech) || $0.capabilities.contains(.audio)
+        }
+    }
+
+    private var speechToTextModels: [LocalModel] {
+        voiceLibrary.models.filter {
+            $0.capabilities.contains(.speechToText) || $0.capabilities.contains(.audio)
         }
     }
 
@@ -31,29 +37,34 @@ struct SettingsView: View {
                 TextField("Model search path", text: $model.settings.modelSearchPath)
                 TextField("Language model", text: optionalString($model.settings.languageModelID))
                 TextField("Image generation model", text: optionalString($model.settings.imageGenerationModelID))
-                Menu {
-                    Button("None") {
-                        model.settings.textToSpeechModelID = nil
-                    }
-                    if !textToSpeechModels.isEmpty {
-                        Divider()
-                        ForEach(textToSpeechModels, id: \.repoID) { ttsModel in
-                            Button(ttsModel.repoID) {
-                                model.settings.textToSpeechModelID = ttsModel.repoID
-                            }
-                        }
-                    }
+            }
+
+            Section("Voice") {
+                LabeledContent {
+                    modelMenu($model.settings.textToSpeechModelID, models: textToSpeechModels)
                 } label: {
-                    LabeledContent("Text-to-speech model") {
-                        Text(model.settings.textToSpeechModelID ?? "None")
-                            .foregroundStyle(.secondary)
+                    settingLabel("speaker.wave.2", "Text-to-speech model", "Voice used to read replies aloud.")
+                }
+                if model.settings.textToSpeechModelID != nil {
+                    LabeledContent {
+                        devicePicker($model.settings.textToSpeechDevice)
+                    } label: {
+                        settingLabel("cpu", "Text-to-speech device", "GPU is fastest; CPU keeps the GPU free for the model.")
                     }
                 }
-                .onAppear {
-                    textToSpeechLibrary.scan(path: model.settings.modelSearchPath)
+
+                LabeledContent {
+                    modelMenu($model.settings.speechToTextModelID, models: speechToTextModels)
+                } label: {
+                    settingLabel("waveform", "Speech-to-text model", "Optional — Apple's on-device voice input is used otherwise.")
                 }
-                TextField("Speech-to-text model", text: optionalString($model.settings.speechToTextModelID))
-                Toggle("Run text-to-speech on CPU", isOn: $model.settings.runTextToSpeechOnCPU)
+                if model.settings.speechToTextModelID != nil {
+                    LabeledContent {
+                        devicePicker($model.settings.speechToTextDevice)
+                    } label: {
+                        settingLabel("cpu", "Speech-to-text device", "Where transcription runs when a model is selected.")
+                    }
+                }
             }
 
             Section("Hugging Face") {
@@ -124,14 +135,31 @@ struct SettingsView: View {
                 }
             }
 
-            Section("App") {
-                Picker("Appearance", selection: $appearanceRaw) {
-                    ForEach(AppAppearance.allCases) { appearance in
-                        Text(appearance.title).tag(appearance.rawValue)
+            Section("General") {
+                LabeledContent {
+                    Picker("", selection: $appearanceRaw) {
+                        ForEach(AppAppearance.allCases) { appearance in
+                            Text(appearance.title).tag(appearance.rawValue)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                } label: {
+                    settingLabel("circle.lefthalf.filled", "Appearance", "Match your Mac's appearance.")
                 }
-                Toggle("Pin navigation panel", isOn: $pinNavigationPanel)
-                Toggle("Launch at login", isOn: $launchAtLogin)
+
+                LabeledContent {
+                    Toggle("", isOn: $pinNavigationPanel).labelsHidden()
+                } label: {
+                    settingLabel("sidebar.left", "Pin navigation panel", "Keep the sidebar docked open.")
+                }
+
+                LabeledContent {
+                    Toggle("", isOn: $launchAtLogin).labelsHidden()
+                } label: {
+                    settingLabel("person.crop.circle.badge.checkmark", "Start at Login", "Open Nativ automatically when you log in.")
+                }
                 if let launchAtLoginError {
                     Text(launchAtLoginError)
                         .font(.footnote)
@@ -141,11 +169,56 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
+        .onAppear {
+            voiceLibrary.scan(path: model.settings.modelSearchPath)
+        }
         .onChange(of: appearanceRaw) { _, newValue in
             (AppAppearance(rawValue: newValue) ?? .system).apply()
         }
         .onChange(of: launchAtLogin) { _, enabled in
             updateLaunchAtLogin(enabled)
+        }
+    }
+
+    private func settingLabel(_ icon: String, _ title: String, _ subtitle: String? = nil) -> some View {
+        HStack(spacing: 11) {
+            Image(systemName: icon)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func devicePicker(_ selection: Binding<ChatInferenceDevice>) -> some View {
+        Picker("", selection: selection) {
+            Text("GPU").tag(ChatInferenceDevice.gpu)
+            Text("CPU").tag(ChatInferenceDevice.cpu)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+    }
+
+    private func modelMenu(_ selection: Binding<String?>, models: [LocalModel]) -> some View {
+        Menu {
+            Button("None") { selection.wrappedValue = nil }
+            if !models.isEmpty {
+                Divider()
+                ForEach(models, id: \.repoID) { localModel in
+                    Button(localModel.repoID) { selection.wrappedValue = localModel.repoID }
+                }
+            }
+        } label: {
+            Text(selection.wrappedValue ?? "None")
+                .foregroundStyle(.secondary)
         }
     }
 

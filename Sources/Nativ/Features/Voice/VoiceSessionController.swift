@@ -90,13 +90,18 @@ final class VoiceSessionController: ObservableObject {
 
     private func configureModelRecognizer(_ appModel: NativModel) -> Bool {
         let settings = appModel.settings.normalized()
-        guard let sttModel = settings.speechToTextModelID, appModel.cpuIsRunning else {
+        guard let sttModel = settings.speechToTextModelID else {
             return false
         }
+        let onCPU = settings.speechToTextDevice == .cpu
+        guard !onCPU || appModel.cpuIsRunning else {
+            return false
+        }
+        let port = onCPU ? settings.cpuServerPort : settings.serverPort
         modelRecognizer.model = sttModel
         modelRecognizer.apiKey = settings.serverAPIKey
-        modelRecognizer.baseURL = URL(string: "http://127.0.0.1:\(settings.cpuServerPort)")
-            ?? URL(string: "http://127.0.0.1:8081")!
+        modelRecognizer.baseURL = URL(string: "http://127.0.0.1:\(port)")
+            ?? URL(string: "http://127.0.0.1:\(settings.serverPort)")!
         return true
     }
 
@@ -165,7 +170,7 @@ final class VoiceSessionController: ObservableObject {
 
     private func textToSpeechBaseURL(_ appModel: NativModel) -> URL {
         let settings = appModel.settings.normalized()
-        let port = settings.runTextToSpeechOnCPU && appModel.cpuIsRunning
+        let port = settings.textToSpeechDevice == .cpu && appModel.cpuIsRunning
             ? settings.cpuServerPort
             : settings.serverPort
         return URL(string: "http://127.0.0.1:\(port)")
