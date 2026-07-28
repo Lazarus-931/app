@@ -481,6 +481,9 @@ enum LocalModelDiscovery {
     }
 
     private static func isLikelyMLXModelSnapshot(_ snapshotURL: URL, fileManager: FileManager) -> Bool {
+        if hasDiffusionPipelineLayout(snapshotURL, fileManager: fileManager) {
+            return true
+        }
         let configURL = snapshotURL.appendingPathComponent("config.json")
         let tokenizerConfigURL = snapshotURL.appendingPathComponent("tokenizer_config.json")
         let modelIndexURL = snapshotURL.appendingPathComponent("model_index.json")
@@ -502,6 +505,31 @@ enum LocalModelDiscovery {
             return false
         }
         return contents.contains { $0.pathExtension == "safetensors" }
+    }
+
+    /// Diffusers image-generation models (Flux, Stable Diffusion) ship a multi-folder
+    /// layout with no root manifest — the weights live in a `transformer/` (or `unet/`)
+    /// subfolder — so the standard root-config check misses them.
+    private static func hasDiffusionPipelineLayout(_ snapshotURL: URL, fileManager: FileManager) -> Bool {
+        for component in ["transformer", "unet"] {
+            let subdirectory = snapshotURL.appendingPathComponent(component)
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: subdirectory.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else {
+                continue
+            }
+            if fileManager.fileExists(atPath: subdirectory.appendingPathComponent("model.safetensors.index.json").path) {
+                return true
+            }
+            if let contents = try? fileManager.contentsOfDirectory(
+                at: subdirectory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ), contents.contains(where: { $0.pathExtension == "safetensors" }) {
+                return true
+            }
+        }
+        return false
     }
 
     private static func snapshotSize(at snapshotURL: URL, fileManager: FileManager) -> Int64? {
@@ -784,7 +812,8 @@ enum LocalModelDiscovery {
         let imageGenerationDescriptors = [
             "diffusion", "stable_diffusion", "fluxpipeline", "imagegeneration"
         ]
-        if imageGenerationDescriptors.contains(where: descriptors.contains) {
+        if imageGenerationDescriptors.contains(where: descriptors.contains)
+            || hasDiffusionPipelineLayout(snapshotURL, fileManager: fileManager) {
             capabilities.insert(.imageGeneration)
         }
 
