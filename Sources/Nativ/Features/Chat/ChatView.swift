@@ -294,6 +294,7 @@ final class ChatViewModel: ObservableObject {
     @Published var draft = ""
     /// Fired with the final assistant text when a response finishes (used by the voice session for TTS).
     var onAssistantResponseFinished: ((String) -> Void)?
+    var onAssistantResponsePartial: ((String) -> Void)?
     @Published private(set) var activeRequestSessionID: UUID?
     @Published private(set) var sendingStartedAt: Date?
     @Published private(set) var scrollToken = 0
@@ -896,6 +897,7 @@ final class ChatViewModel: ObservableObject {
         }
         if let content = event.content, !content.isEmpty {
             pendingStreamContent[id, default: ""] += content
+            onAssistantResponsePartial?(content)
         }
         if shouldRefreshLiveDecodeRate(event.decodeTokensPerSecond, for: id),
            let decodeTokensPerSecond = event.decodeTokensPerSecond {

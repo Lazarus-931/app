@@ -30,6 +30,9 @@ final class VoiceSessionController: ObservableObject {
     private weak var chat: ChatViewModel?
     private weak var appModel: NativModel?
     private var levelTimer: Timer?
+    private lazy var speechQueue = VoiceSpeechQueue(player: player)
+    private var chunker = SentenceChunker()
+    private var streamingTTS = false
 
     func start(chat: ChatViewModel, model: NativModel) {
         guard !isActive else {
@@ -46,8 +49,24 @@ final class VoiceSessionController: ObservableObject {
         }
         recognizer.onUtterance = handleUtterance
         modelRecognizer.onUtterance = handleUtterance
-        chat.onAssistantResponseFinished = { [weak self] text in
-            self?.speak(text)
+        chat.onAssistantResponsePartial = { [weak self] delta in
+            self?.handlePartial(delta)
+        }
+        chat.onAssistantResponseFinished = { [weak self] _ in
+            self?.handleResponseFinished()
+        }
+        speechQueue.synthesize = { [weak self] sentence in
+            guard let self else {
+                return nil
+            }
+            return await self.synthesizeSpeech(sentence)
+        }
+        speechQueue.onSpeakingStarted = { [weak self] in
+            self?.phase = .speaking
+            self?.statusText = "Speaking…"
+        }
+        speechQueue.onFinished = { [weak self] in
+            self?.beginListening()
         }
 
         startLevelTracking()
@@ -60,7 +79,9 @@ final class VoiceSessionController: ObservableObject {
         recognizer.stop()
         modelRecognizer.stop()
         player.stop()
+        speechQueue.stop()
         chat?.onAssistantResponseFinished = nil
+        chat?.onAssistantResponsePartial = nil
         levelTimer?.invalidate()
         levelTimer = nil
         isActive = false
@@ -118,48 +139,47 @@ final class VoiceSessionController: ObservableObject {
         }
         phase = .thinking
         statusText = "Thinking…"
+        streamingTTS = resolvedTTSModel(appModel) != nil
+        chunker = SentenceChunker()
+        if streamingTTS {
+            speechQueue.begin()
+        }
         chat.draft = trimmed
         chat.send(using: appModel)
     }
 
-    private func speak(_ text: String) {
+    private func handlePartial(_ delta: String) {
+        guard isActive, streamingTTS else {
+            return
+        }
+        for sentence in chunker.push(delta) {
+            speechQueue.enqueue(sentence)
+        }
+    }
+
+    private func handleResponseFinished() {
         guard isActive else {
             return
         }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        guard streamingTTS else {
             beginListening()
             return
         }
-        guard let appModel,
-              let ttsModel = resolvedTTSModel(appModel) else {
-            // No TTS model configured — keep the conversation going without audio.
-            beginListening()
-            return
+        if let tail = chunker.flush() {
+            speechQueue.enqueue(tail)
         }
+        speechQueue.finishGeneration()
+    }
 
-        phase = .speaking
-        statusText = "Speaking…"
-        let baseURL = textToSpeechBaseURL(appModel)
-        Task { [weak self] in
-            guard let self else {
-                return
-            }
-            do {
-                let client = NativAudioClient(baseURL: baseURL, apiKey: appModel.settings.serverAPIKey)
-                let data = try await client.speech(MLXSpeechRequest(model: ttsModel, input: trimmed))
-                guard self.isActive else {
-                    return
-                }
-                try self.player.play(data) { [weak self] in
-                    self?.beginListening()
-                }
-            } catch {
-                if self.isActive {
-                    self.beginListening()
-                }
-            }
+    private func synthesizeSpeech(_ sentence: String) async -> Data? {
+        guard let appModel, let ttsModel = resolvedTTSModel(appModel) else {
+            return nil
         }
+        let client = NativAudioClient(
+            baseURL: textToSpeechBaseURL(appModel),
+            apiKey: appModel.settings.serverAPIKey
+        )
+        return try? await client.speech(MLXSpeechRequest(model: ttsModel, input: sentence))
     }
 
     private func resolvedTTSModel(_ appModel: NativModel) -> String? {
