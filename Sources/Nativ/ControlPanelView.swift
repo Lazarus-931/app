@@ -183,6 +183,10 @@ struct ControlPanelView: View {
                 )
                 .padding(.top, 10)
                 .padding(.horizontal, 16)
+                .task(id: notice) {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    model.dismissModelPreloadFailureNotice()
+                }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: model.modelPreloadFailureNotice)
