@@ -252,6 +252,7 @@ struct ChatComposer: View {
             )
         ) {
             Button("OK", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text(dictation.errorMessage ?? "")
         }
