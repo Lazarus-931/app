@@ -315,10 +315,6 @@ final class VoiceCaptureCoordinator {
     }
 
     private static func isEmptyTranscriptionError(_ error: Error) -> Bool {
-        if case NativAudioTranscriptionError.emptyTranscript = error {
-            return true
-        }
-
         let message = [
             error.localizedDescription,
             String(describing: error),
