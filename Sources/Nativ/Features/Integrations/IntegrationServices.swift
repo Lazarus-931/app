@@ -18,12 +18,13 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
     case cursor
     case cline
     case jetbrains
+    case buzz
 
     var id: String { rawValue }
 
     var isGuidedSetup: Bool {
         switch self {
-        case .vscode, .cursor, .cline, .jetbrains: true
+        case .vscode, .cursor, .cline, .jetbrains, .buzz: true
         default: false
         }
     }
@@ -46,6 +47,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .cursor: "Cursor"
         case .cline: "Cline"
         case .jetbrains: "JetBrains"
+        case .buzz: "Buzz"
         }
     }
 
@@ -67,6 +69,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .cursor: "cursor"
         case .cline: "cline"
         case .jetbrains: "jetbrains"
+        case .buzz: "buzz"
         }
     }
 
@@ -90,6 +93,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .cursor: "AI-first editor via an OpenAI-compatible provider"
         case .cline: "Autonomous coding agent for VS Code"
         case .jetbrains: "IntelliJ-family IDEs via AI Assistant"
+        case .buzz: "Self-hostable workspace for people and AI agents"
         }
     }
 
@@ -118,6 +122,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .cursor: URL(string: "https://cursor.com/")!
         case .cline: URL(string: "https://cline.bot/")!
         case .jetbrains: URL(string: "https://www.jetbrains.com/")!
+        case .buzz: URL(string: "https://github.com/block/buzz")!
         }
     }
 
@@ -153,6 +158,13 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
                 "AI Assistant → Settings → Models → add a custom OpenAI-compatible server.",
                 "Enter the Base URL and API key below and pick a model id."
             ]
+        case .buzz:
+            return [
+                "Start Nativ's server and load a model from the Models page.",
+                "Install Buzz from github.com/block/buzz, then set the variables below where its agent runs.",
+                "Set BUZZ_AGENT_PROVIDER to \u{201C}openai\u{201D}, OPENAI_COMPAT_BASE_URL to the Base URL above, and OPENAI_COMPAT_API_KEY to the API key above.",
+                "Set OPENAI_COMPAT_MODEL to your model ID, then start Buzz \u{2014} its agent will use your local model."
+            ]
         default:
             return []
         }
@@ -162,6 +174,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         switch self {
         case .vscode: "The community extension is still WIP; the Copilot BYOK path works today."
         case .cline: "Cline is heavy on tool calls — use a tool-capable model."
+        case .buzz: "These variables configure Buzz's agent runtime; set them where Buzz runs its agent."
         default: nil
         }
     }
@@ -325,7 +338,7 @@ struct IntegrationProfileManager {
                 let openAICompatible = languageModels["openai_compatible"] as? [String: Any]
             else { return false }
             return openAICompatible[Self.providerID] != nil
-        case .vscode, .cursor, .cline, .jetbrains:
+        case .vscode, .cursor, .cline, .jetbrains, .buzz:
             return false
         }
     }
@@ -368,7 +381,7 @@ struct IntegrationProfileManager {
             try configureZed(models: models)
         case .continueDev:
             try configureContinue(selectedModelID: selectedModelID, models: models)
-        case .vscode, .cursor, .cline, .jetbrains:
+        case .vscode, .cursor, .cline, .jetbrains, .buzz:
             break
         }
     }
@@ -488,7 +501,7 @@ struct IntegrationProfileManager {
             return home.appendingPathComponent(".config/zed/settings.json")
         case .continueDev:
             return integrationsSupportURL.appendingPathComponent("continue-config.yaml")
-        case .vscode, .cursor, .cline, .jetbrains:
+        case .vscode, .cursor, .cline, .jetbrains, .buzz:
             return integrationsSupportURL.appendingPathComponent("\(tool.rawValue)-guided-unused.json")
         }
     }
@@ -912,7 +925,7 @@ struct IntegrationProfileManager {
             return (["."], ["NATIV_API_KEY": "nativ"])
         case .continueDev:
             return (["--config", configurationURL(for: tool).path], [:])
-        case .vscode, .cursor, .cline, .jetbrains:
+        case .vscode, .cursor, .cline, .jetbrains, .buzz:
             return ([], [:])
         }
     }
