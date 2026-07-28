@@ -62,6 +62,10 @@ enum LocalModelSource: Equatable, Sendable {
 struct LocalModel: Identifiable, Equatable, Sendable {
     var id: String { repoID }
 
+    var displayName: String {
+        repoID.split(separator: "/").last.map(String.init) ?? repoID
+    }
+
     let repoID: String
     let snapshotURL: URL?
     let modifiedAt: Date?
