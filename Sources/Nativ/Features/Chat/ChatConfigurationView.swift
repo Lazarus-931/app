@@ -20,10 +20,11 @@ struct ChatConfigurationView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     modelContextSection
-
-                    Text("Generation, KV cache, thinking, and other options live in Settings.")
-                        .configurationHintStyle()
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    generationSection
+                    kvCacheSection
+                    thinkingSection
+                    speculativeSection
+                    advancedSection
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 18)
@@ -112,6 +113,74 @@ struct ChatConfigurationView: View {
 
                 Text(systemPromptHint)
                     .configurationHintStyle()
+            }
+        }
+    }
+
+    private var generationSection: some View {
+        ChatConfigurationSection(title: "Generation") {
+            ConfigurationDoubleField(title: "Temperature", value: $settings.temperature)
+            ConfigurationIntegerField(title: "Top K", value: $settings.topK, range: 0...1000)
+            ConfigurationDoubleField(title: "Top P", value: $settings.topP)
+            ConfigurationDoubleField(title: "Min P", value: $settings.minP)
+            Toggle("Repetition penalty", isOn: $settings.repetitionPenaltyEnabled)
+            if settings.repetitionPenaltyEnabled {
+                ConfigurationDoubleField(title: "Penalty", value: $settings.repetitionPenalty)
+            }
+        }
+    }
+
+    private var kvCacheSection: some View {
+        ChatConfigurationSection(title: "KV Cache") {
+            Toggle("KV cache quantization", isOn: $settings.kvQuantizationEnabled)
+            if settings.kvQuantizationEnabled {
+                ConfigurationDoubleField(title: "KV bits", value: $settings.kvBits)
+                ConfigurationIntegerField(title: "Group size", value: $settings.kvGroupSize, range: 1...1024)
+                ConfigurationIntegerField(title: "Quantized KV start", value: $settings.quantizedKVStart, range: 0...1_048_576)
+                Toggle("TurboQuant", isOn: $settings.turboQuantEnabled)
+            }
+        }
+    }
+
+    private var thinkingSection: some View {
+        ChatConfigurationSection(title: "Thinking") {
+            Toggle("Enable thinking", isOn: $settings.thinkingEnabled)
+            if settings.thinkingEnabled {
+                Toggle("Thinking budget", isOn: $settings.thinkingBudgetEnabled)
+                if settings.thinkingBudgetEnabled {
+                    ConfigurationIntegerField(title: "Budget (tokens)", value: $settings.thinkingBudget, range: 0...1_048_576)
+                }
+                ConfigurationTextRow(title: "Start token", text: $settings.thinkingStartToken)
+                ConfigurationTextRow(title: "End token", text: $settings.thinkingEndToken)
+            }
+        }
+    }
+
+    private var speculativeSection: some View {
+        ChatConfigurationSection(title: "Speculative Decoding") {
+            Toggle("Enable speculative decoding", isOn: $settings.speculativeDecodingEnabled)
+            if settings.speculativeDecodingEnabled {
+                ConfigurationTextRow(title: "Draft model", text: $settings.draftModelID)
+                ConfigurationTextRow(title: "Draft kind", text: $settings.draftKind)
+                ConfigurationIntegerField(title: "Draft block size", value: $settings.draftBlockSize, range: 0...4096)
+            }
+        }
+    }
+
+    private var advancedSection: some View {
+        ChatConfigurationSection(title: "Advanced") {
+            Toggle("Structured output", isOn: $settings.structuredOutputEnabled)
+            if settings.structuredOutputEnabled {
+                ConfigurationTextRow(title: "Schema name", text: $settings.structuredOutputName)
+                TextField("Schema (JSON)", text: $settings.structuredOutputSchema, axis: .vertical)
+                    .lineLimit(3...8)
+                    .font(.system(.body, design: .monospaced))
+                    .textFieldStyle(.roundedBorder)
+            }
+            Toggle("Prefix caching", isOn: $settings.prefixCachingEnabled)
+            if settings.prefixCachingEnabled {
+                ConfigurationIntegerField(title: "Cache blocks", value: $settings.prefixCacheBlocks, range: 0...100_000)
+                ConfigurationIntegerField(title: "Block size", value: $settings.prefixCacheBlockSize, range: 1...4096)
             }
         }
     }
@@ -225,6 +294,42 @@ private struct ConfigurationIntegerField: View {
                 .onChange(of: value) { _, newValue in
                     value = min(max(newValue, range.lowerBound), range.upperBound)
                 }
+        }
+    }
+}
+
+private struct ConfigurationDoubleField: View {
+    let title: String
+    @Binding var value: Double
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            TextField("", value: $value, format: .number)
+                .font(.body)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 104)
+        }
+    }
+}
+
+private struct ConfigurationTextRow: View {
+    let title: String
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            TextField("", text: $text)
+                .font(.body)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 140)
         }
     }
 }
