@@ -995,6 +995,8 @@ private struct ControlPanelRecentSessionRow: View {
                 Button {
                     if NSEvent.modifierFlags.contains(.shift) {
                         onTogglePin()
+                    } else if isSelected {
+                        beginRename()
                     } else {
                         onSelect()
                     }
@@ -1040,11 +1042,6 @@ private struct ControlPanelRecentSessionRow: View {
         }
         .sidebarRowSelectionStyle(isSelected: isSelected)
         .opacity(isSelectionDisabled && !isCurrent ? 0.55 : 1)
-        .simultaneousGesture(
-            TapGesture(count: 2).onEnded {
-                beginRename()
-            }
-        )
         .onHover { isHovering = $0 }
         .animation(.easeInOut, value: isHovering)
         .contextMenu {
