@@ -15,6 +15,10 @@ final class VoiceSpeechRecognizer: ObservableObject {
     /// Fired with the finalized transcript once the speaker pauses.
     var onUtterance: ((String) -> Void)?
 
+    /// Fired when a capture cycle ends without any transcript (silence or a failed
+    /// recognition), so the session can decide whether to keep listening.
+    var onTurnEnd: (() -> Void)?
+
     private let audioEngine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
@@ -137,10 +141,15 @@ final class VoiceSpeechRecognizer: ObservableObject {
     }
 
     private func finishTurn() {
+        guard isListening else {
+            return
+        }
         let transcript = latestTranscript
         endCycle()
         level = 0
-        if !transcript.isEmpty {
+        if transcript.isEmpty {
+            onTurnEnd?()
+        } else {
             onUtterance?(transcript)
         }
     }
