@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 enum ControlPanelTab: String, CaseIterable, Identifiable {
     case chat = "Chat"
+    case audio = "Audio"
     case dashboard = "Dashboard"
     case system = "System"
     case models = "Models"
@@ -12,7 +13,7 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     case settings = "Settings"
 
     static var allCases: [ControlPanelTab] {
-        [.chat, .dashboard, .system, .models, .integrations, .developer]
+        [.chat, .audio, .dashboard, .system, .models, .integrations, .developer]
     }
 
     var id: String { rawValue }
@@ -21,6 +22,8 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
         switch self {
         case .chat:
             "bubble.left.and.bubble.right"
+        case .audio:
+            "waveform.badge.mic"
         case .dashboard:
             "chart.bar.xaxis"
         case .system:
@@ -566,12 +569,22 @@ struct ControlPanelView: View {
                         showsConfiguration: $isChatConfigurationVisible,
                         isFullScreen: isFullScreen
                     )
+                case .audio:
+                    AudioView(
+                        model: model,
+                        onOpenSpeechModels: {
+                            navigation.openSpeechModelDiscovery()
+                        }
+                    )
                 case .dashboard:
                     StatsView(model: model, dashboard: dashboard)
                 case .system:
                     SystemMonitorView(store: systemMonitor, menuBarPreferences: .shared)
                 case .models:
-                    ModelsView(model: model)
+                    ModelsView(
+                        model: model,
+                        speechModelDiscoveryRequest: navigation.speechModelDiscoveryRequest
+                    )
                 case .integrations:
                     IntegrationsView(model: model)
                 case .developer:
