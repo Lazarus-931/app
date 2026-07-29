@@ -9,6 +9,10 @@ final class ModelSpeechRecognizer: ObservableObject {
 
     var onUtterance: ((String) -> Void)?
 
+    /// Fired when a capture cycle ends without any transcript (silence or a failed
+    /// transcription), so the session can decide whether to keep listening.
+    var onTurnEnd: (() -> Void)?
+
     var model: String?
     var apiKey: String?
     var baseURL = URL(string: "http://127.0.0.1:8081")!
@@ -120,6 +124,7 @@ final class ModelSpeechRecognizer: ObservableObject {
         endCycle()
         level = 0
         guard spoke, let model, !wav.isEmpty else {
+            onTurnEnd?()
             return
         }
         let baseURL = baseURL
@@ -129,10 +134,14 @@ final class ModelSpeechRecognizer: ObservableObject {
             let text = try? await client.transcribe(wav, fileName: "speech.wav", model: model)
             let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             await MainActor.run { [weak self] in
-                guard let self, self.isRunning, !trimmed.isEmpty else {
+                guard let self, self.isRunning else {
                     return
                 }
-                self.onUtterance?(trimmed)
+                if trimmed.isEmpty {
+                    self.onTurnEnd?()
+                } else {
+                    self.onUtterance?(trimmed)
+                }
             }
         }
     }

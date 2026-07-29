@@ -49,6 +49,11 @@ final class VoiceSessionController: ObservableObject {
         }
         recognizer.onUtterance = handleUtterance
         modelRecognizer.onUtterance = handleUtterance
+        let handleTurnEnd: () -> Void = { [weak self] in
+            self?.handleTurnEnd()
+        }
+        recognizer.onTurnEnd = handleTurnEnd
+        modelRecognizer.onTurnEnd = handleTurnEnd
         chat.onAssistantResponsePartial = { [weak self] delta in
             self?.handlePartial(delta)
         }
@@ -76,6 +81,8 @@ final class VoiceSessionController: ObservableObject {
     func stop() {
         recognizer.onUtterance = nil
         modelRecognizer.onUtterance = nil
+        recognizer.onTurnEnd = nil
+        modelRecognizer.onTurnEnd = nil
         recognizer.stop()
         modelRecognizer.stop()
         player.stop()
@@ -94,6 +101,17 @@ final class VoiceSessionController: ObservableObject {
 
     func toggleMinimized() {
         isMinimized.toggle()
+        guard isActive else {
+            return
+        }
+        if isMinimized {
+            // Minimized is a dictation mode: the model never replies, so silence any
+            // in-flight speech and keep the microphone live so speech lands in the draft.
+            speechQueue.stop()
+            player.stop()
+            streamingTTS = false
+            beginListening()
+        }
     }
 
     private func beginListening() {
@@ -154,6 +172,17 @@ final class VoiceSessionController: ObservableObject {
         }
         chat.draft = trimmed
         chat.send(using: appModel)
+    }
+
+    private func handleTurnEnd() {
+        guard isActive else {
+            return
+        }
+        // The turn produced no text (silence or a failed transcription). Keep the mic
+        // live so dictation and conversation continue instead of silently stopping.
+        if isMinimized || phase == .listening {
+            beginListening()
+        }
     }
 
     private func handlePartial(_ delta: String) {
