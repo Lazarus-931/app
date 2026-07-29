@@ -484,36 +484,31 @@ struct ControlPanelView: View {
             }
 
             Section {
-                ForEach(recentSessions) { recent in
-                    ControlPanelRecentSessionRow(
-                        recent: recent,
-                        isSelected: sidebarSelection == recent.selection,
-                        isCurrent: isCurrentRecent(recent),
-                        isSelectionDisabled: isRecentSelectionDisabled(recent),
-                        isDeleteDisabled: isRecentDeleteDisabled(recent),
-                        canRename: canRenameRecent(recent),
-                        canExport: canExportRecent(recent),
-                        onSelect: {
-                            applySidebarSelection(recent.selection)
-                        },
-                        onDelete: {
-                            deleteRecentSession(recent)
-                        },
-                        onRename: { newTitle in
-                            renameRecentSession(recent, to: newTitle)
-                        },
-                        onCopyConversation: {
-                            copyRecentConversation(recent)
-                        },
-                        onExportFile: {
-                            exportRecentConversation(recent)
-                        }
-                    )
-                    .listRowInsets(sidebarItemInsets)
+                if pinnedSessions.isEmpty {
+                    Label("Shift-click a chat to pin", systemImage: "pin")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary.opacity(0.6))
+                        .listRowInsets(sidebarItemInsets)
+                } else {
+                    ForEach(pinnedSessions) { recent in
+                        recentSessionRow(recent)
+                    }
+                }
+            } header: {
+                Text("Pinned")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(.secondary.opacity(0.7))
+                    .textCase(nil)
+                    .padding(.horizontal, 7)
+            }
+
+            Section {
+                ForEach(unpinnedSessions) { recent in
+                    recentSessionRow(recent)
                 }
             } header: {
                 HStack(spacing: 8) {
-                    Text("Recents")
+                    Text("Sessions")
                         .font(.system(size: 15, weight: .regular))
                         .foregroundStyle(.secondary.opacity(0.7))
 
@@ -546,6 +541,58 @@ struct ControlPanelView: View {
         chat.sessions
             .map(ControlPanelRecentSession.init(chat:))
             .sorted(by: ControlPanelRecentSession.recencySort)
+    }
+
+    private var pinnedSessions: [ControlPanelRecentSession] {
+        recentSessions.filter(\.pinned)
+    }
+
+    private var unpinnedSessions: [ControlPanelRecentSession] {
+        recentSessions.filter { !$0.pinned }
+    }
+
+    @ViewBuilder
+    private func recentSessionRow(_ recent: ControlPanelRecentSession) -> some View {
+        ControlPanelRecentSessionRow(
+            recent: recent,
+            isSelected: sidebarSelection == recent.selection,
+            isCurrent: isCurrentRecent(recent),
+            isSelectionDisabled: isRecentSelectionDisabled(recent),
+            isDeleteDisabled: isRecentDeleteDisabled(recent),
+            canRename: canRenameRecent(recent),
+            canExport: canExportRecent(recent),
+            onSelect: {
+                applySidebarSelection(recent.selection)
+            },
+            onDelete: {
+                deleteRecentSession(recent)
+            },
+            onRename: { newTitle in
+                renameRecentSession(recent, to: newTitle)
+            },
+            onCopyConversation: {
+                copyRecentConversation(recent)
+            },
+            onExportFile: {
+                exportRecentConversation(recent)
+            },
+            onNewChat: {
+                createRecentSession()
+            },
+            onTogglePin: {
+                togglePinRecent(recent)
+            }
+        )
+        .listRowInsets(sidebarItemInsets)
+    }
+
+    private func togglePinRecent(_ recent: ControlPanelRecentSession) {
+        guard case .chat(let sessionID) = recent.id else {
+            return
+        }
+        withAnimation(.snappy(duration: 0.2)) {
+            chat.setPinned(sessionID, pinned: !recent.pinned)
+        }
     }
 
     private var detail: some View {
@@ -866,6 +913,7 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
     let inferenceDevice: String?
     let createdAt: Date
     let updatedAt: Date
+    let pinned: Bool
 
     init(chat session: ChatSessionSummary) {
         id = .chat(session.id)
@@ -873,6 +921,7 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
         inferenceDevice = session.lastInferenceDevice
         createdAt = session.createdAt
         updatedAt = session.updatedAt
+        pinned = session.isPinned
     }
 
     var selection: ControlPanelSidebarSelection {
@@ -903,6 +952,8 @@ private struct ControlPanelRecentSessionRow: View {
     let onRename: (String) -> Void
     let onCopyConversation: () -> Void
     let onExportFile: () -> Void
+    let onNewChat: () -> Void
+    let onTogglePin: () -> Void
     @State private var isHovering = false
     @State private var isDeleteHovering = false
     @State private var isRenaming = false
@@ -941,7 +992,13 @@ private struct ControlPanelRecentSessionRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                Button(action: onSelect) {
+                Button {
+                    if NSEvent.modifierFlags.contains(.shift) {
+                        onTogglePin()
+                    } else {
+                        onSelect()
+                    }
+                } label: {
                     HStack(spacing: 7) {
                         Circle()
                             .fill(recentDotColor)
@@ -992,30 +1049,34 @@ private struct ControlPanelRecentSessionRow: View {
         .animation(.easeInOut, value: isHovering)
         .contextMenu {
             Button {
-                onSelect()
+                onNewChat()
             } label: {
-                Label("Open", systemImage: "arrow.up.right.square")
+                Label("New", systemImage: "square.and.pencil")
             }
-            .disabled(isSelectionDisabled)
+
+            Divider()
 
             if canRename {
                 Button {
                     beginRename()
                 } label: {
-                    Label("Rename\u{2026}", systemImage: "pencil")
+                    Label("Rename", systemImage: "pencil")
                 }
             }
 
+            Button {
+                onTogglePin()
+            } label: {
+                Label(recent.pinned ? "Unpin" : "Pin", systemImage: recent.pinned ? "pin.slash" : "pin")
+            }
+
+            Divider()
+
             if canExport {
-                Button {
-                    onCopyConversation()
-                } label: {
-                    Label("Copy Conversation", systemImage: "doc.on.doc")
-                }
                 Button {
                     onExportFile()
                 } label: {
-                    Label("Export as Text\u{2026}", systemImage: "square.and.arrow.up")
+                    Label("Export", systemImage: "square.and.arrow.up")
                 }
             }
 

@@ -10,6 +10,7 @@ struct ChatSession: Identifiable, Equatable, Codable {
     var createdAt: Date
     var updatedAt: Date
     var messages: [ChatTranscriptMessage]
+    var pinned: Bool?
 
     var summary: ChatSessionSummary {
         ChatSessionSummary(
@@ -18,7 +19,8 @@ struct ChatSession: Identifiable, Equatable, Codable {
             lastInferenceDevice: lastInferenceDevice,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            messageCount: messages.count
+            messageCount: messages.count,
+            isPinned: pinned ?? false
         )
     }
 
@@ -99,6 +101,7 @@ struct ChatSessionSummary: Identifiable, Equatable {
     let createdAt: Date
     let updatedAt: Date
     let messageCount: Int
+    let isPinned: Bool
 
     static func recencySort(_ lhs: ChatSessionSummary, _ rhs: ChatSessionSummary) -> Bool {
         if lhs.updatedAt == rhs.updatedAt {
