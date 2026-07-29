@@ -18,6 +18,7 @@ private enum HubAccessFilter: String, CaseIterable, Identifiable {
 
 struct ModelsView: View {
     @ObservedObject var model: NativModel
+    var speechModelDiscoveryRequest = 0
     @StateObject private var localLibrary = LocalModelLibrary()
     @StateObject private var hubLibrary = HuggingFaceModelLibrary()
     @ObservedObject private var downloadManager = HuggingFaceDownloadManager.shared
@@ -27,6 +28,7 @@ struct ModelsView: View {
     @State private var hubSort: HuggingFaceModelSort = .downloads
     @State private var hubCapabilityFilters = Set<LocalModelCapability>()
     @State private var hubAccessFilter: HubAccessFilter = .all
+    @State private var handledSpeechModelDiscoveryRequest = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,6 +65,23 @@ struct ModelsView: View {
             localLibrary.cancel()
             hubLibrary.cancel()
         }
+        .onAppear {
+            openSpeechModelDiscoveryIfRequested()
+        }
+        .onChange(of: speechModelDiscoveryRequest) { _, _ in
+            openSpeechModelDiscoveryIfRequested()
+        }
+    }
+
+    private func openSpeechModelDiscoveryIfRequested() {
+        guard speechModelDiscoveryRequest > handledSpeechModelDiscoveryRequest else {
+            return
+        }
+        handledSpeechModelDiscoveryRequest = speechModelDiscoveryRequest
+        section = .discover
+        hubQuery = ""
+        hubCapabilityFilters = [.speechToText]
+        hubAccessFilter = .all
     }
 
     @ViewBuilder

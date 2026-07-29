@@ -471,6 +471,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showMainWindow()
     }
 
+    @objc private func openAudioFromMenu(_ sender: Any?) {
+        controlPanelNavigation.open(.audio)
+        showMainWindow()
+    }
+
+    @objc private func openVoiceRecordingsFromMenu(_ sender: Any?) {
+        voiceCapture.showRecordingsInFinder()
+    }
+
     @objc private func openSettingsFromMenu(_ sender: Any?) {
         openSettings()
     }
@@ -976,6 +985,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         modelsMenuItem.keyEquivalentModifierMask = [.command]
         modelsMenuItem.image = menuIcon("cube.transparent", description: "Models")
         menu.addItem(modelsMenuItem)
+
+        let audioMenuItem = NSMenuItem(
+            title: "Audio\u{2026}",
+            action: #selector(openAudioFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        audioMenuItem.target = self
+        audioMenuItem.image = menuIcon("waveform.badge.mic", description: "Audio")
+        menu.addItem(audioMenuItem)
+
+        let recordingsMenuItem = NSMenuItem(
+            title: "Show Voice Recordings",
+            action: #selector(openVoiceRecordingsFromMenu(_:)),
+            keyEquivalent: ""
+        )
+        recordingsMenuItem.target = self
+        recordingsMenuItem.image = menuIcon("waveform", description: "Voice recordings")
+        menu.addItem(recordingsMenuItem)
 
         let settingsMenuItem = NSMenuItem(
             title: "Settings\u{2026}",
