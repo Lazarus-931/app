@@ -36,7 +36,7 @@ mlx-lm==0.31.3
 # mlx-vlm with --device selection (CPU+GPU dual inference) plus the /v1/embeddings
 # endpoint. Source builds include the Metal backend, so mlx-metal is not pinned.
 mlx @ git+https://github.com/Lazarus-931/mlx.git@pr/cpu-fast-path
-mlx-vlm @ git+https://github.com/Lazarus-931/mlx-vlm.git@8c3ae3815e488858b3a0f452be07f69ca247a27c
+mlx-vlm @ git+https://github.com/Lazarus-931/mlx-vlm.git@d530835feb2b8bcf70c912abc5f5a5324f5f11aa
 multidict==6.7.1
 multiprocess==0.70.19
 numpy==2.4.4
