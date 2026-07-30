@@ -663,12 +663,12 @@ struct ControlPanelView: View {
         } else {
             order.append(draggedID)
         }
-        withAnimation(.snappy(duration: 0.2)) {
-            if isPinnedRow {
-                chat.applyPinnedOrder(order)
-            } else {
-                chat.applySessionOrder(order)
-            }
+        reorderTargetID = nil
+        reorderInsertAfter = false
+        if isPinnedRow {
+            chat.applyPinnedOrder(order)
+        } else {
+            chat.applySessionOrder(order)
         }
     }
 
@@ -698,7 +698,6 @@ struct ControlPanelView: View {
             .frame(height: 2)
             .padding(.horizontal, 8)
             .opacity(visible ? 1 : 0)
-            .animation(.easeOut(duration: 0.12), value: visible)
     }
 
     private func selectableRow(_ recent: ControlPanelRecentSession) -> some View {
@@ -796,9 +795,9 @@ struct ControlPanelView: View {
             return false
         }
         order.append(draggedID)
-        withAnimation(.snappy(duration: 0.2)) {
-            chat.applyPinnedOrder(order)
-        }
+        reorderTargetID = nil
+        reorderInsertAfter = false
+        chat.applyPinnedOrder(order)
         return true
     }
 
@@ -808,9 +807,9 @@ struct ControlPanelView: View {
               pinnedSessions.contains(where: { $0.chatID == draggedID }) else {
             return false
         }
-        withAnimation(.snappy(duration: 0.2)) {
-            chat.setPinned(draggedID, pinned: false)
-        }
+        reorderTargetID = nil
+        reorderInsertAfter = false
+        chat.setPinned(draggedID, pinned: false)
         return true
     }
 
@@ -850,12 +849,10 @@ struct ControlPanelView: View {
         guard !ids.isEmpty else {
             return
         }
-        withAnimation(.snappy(duration: 0.2)) {
-            for id in ids {
-                chat.setPinned(id, pinned: shouldPin)
-            }
-            exitSelectMode()
+        for id in ids {
+            chat.setPinned(id, pinned: shouldPin)
         }
+        exitSelectMode()
     }
 
     private func bulkDeleteSelected() {
@@ -924,9 +921,7 @@ struct ControlPanelView: View {
         guard case .chat(let sessionID) = recent.id else {
             return
         }
-        withAnimation(.snappy(duration: 0.2)) {
-            chat.setPinned(sessionID, pinned: !recent.pinned)
-        }
+        chat.setPinned(sessionID, pinned: !recent.pinned)
     }
 
     private var detail: some View {
