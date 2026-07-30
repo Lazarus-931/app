@@ -19,6 +19,7 @@ final class ModelSpeechRecognizer: ObservableObject {
 
     private let audioEngine = AVAudioEngine()
     private let samples = RecordedSampleBuffer()
+    private let muteGate = MuteGate()
     private var silenceTimer: Timer?
     private var isListening = false
     private var isRunning = false
@@ -54,8 +55,22 @@ final class ModelSpeechRecognizer: ObservableObject {
 
     func stop() {
         isRunning = false
+        muteGate.set(false)
         endCycle()
         level = 0
+    }
+
+    /// Discard microphone input without tearing down the engine, so the audio device
+    /// stays warm for clean TTS playback and never transcribes the model's own voice.
+    func setMuted(_ muted: Bool) {
+        muteGate.set(muted)
+        if muted {
+            silenceTimer?.invalidate()
+            silenceTimer = nil
+            samples.reset()
+            hasSpoken = false
+            level = 0
+        }
     }
 
     private func beginCycle() {
@@ -69,8 +84,12 @@ final class ModelSpeechRecognizer: ObservableObject {
         let format = inputNode.outputFormat(forBus: 0)
         sampleRate = format.sampleRate
         let samples = samples
+        let muteGate = muteGate
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            guard !muteGate.isMuted else {
+                return
+            }
             samples.append(buffer)
             let rms = RecordedSampleBuffer.rms(buffer)
             Task { @MainActor [weak self] in
@@ -155,6 +174,23 @@ final class ModelSpeechRecognizer: ObservableObject {
         audioEngine.inputNode.removeTap(onBus: 0)
         isListening = false
         hasSpoken = false
+    }
+}
+
+private final class MuteGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var muted = false
+
+    var isMuted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return muted
+    }
+
+    func set(_ value: Bool) {
+        lock.lock()
+        muted = value
+        lock.unlock()
     }
 }
 
