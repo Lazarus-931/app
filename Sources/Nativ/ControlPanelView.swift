@@ -170,6 +170,7 @@ struct ControlPanelView: View {
     @State private var selectedRecentIDs: Set<ControlPanelRecentSession.ID> = []
     @State private var pendingDeleteRecent: ControlPanelRecentSession?
     @State private var isConfirmingBulkDelete = false
+    @State private var reorderTargetID: ControlPanelRecentSession.ID?
     @State private var hoveredFooterControl: FooterControl?
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
 
@@ -497,14 +498,11 @@ struct ControlPanelView: View {
                         .listRowInsets(sidebarItemInsets)
                 } else {
                     ForEach(pinnedSessions) { recent in
-                        if isSelectingRecents {
-                            selectableRow(recent)
-                        } else {
-                            recentSessionRow(recent)
+                        VStack(alignment: .leading, spacing: 0) {
+                            pinnedInsertionLine(visible: reorderTargetID == recent.id)
+                            draggableRow(recent, isPinnedRow: true)
                         }
-                    }
-                    .onMove { source, destination in
-                        movePinned(from: source, to: destination)
+                        .listRowInsets(sidebarItemInsets)
                     }
                 }
             } header: {
@@ -614,17 +612,54 @@ struct ControlPanelView: View {
         } else if let payload = recent.dragPayload {
             if isPinnedRow {
                 recentSessionRow(recent)
-                    .draggable(payload)
+                    .draggable(payload) { dragPreview(recent) }
                     .dropDestination(for: String.self) { items, _ in
-                        handlePinnedRowDrop(items, target: recent)
+                        let handled = handlePinnedRowDrop(items, target: recent)
+                        reorderTargetID = nil
+                        return handled
+                    } isTargeted: { targeted in
+                        if targeted {
+                            reorderTargetID = recent.id
+                        } else if reorderTargetID == recent.id {
+                            reorderTargetID = nil
+                        }
                     }
             } else {
                 recentSessionRow(recent)
-                    .draggable(payload)
+                    .draggable(payload) { dragPreview(recent) }
             }
         } else {
             recentSessionRow(recent)
         }
+    }
+
+    private func dragPreview(_ recent: ControlPanelRecentSession) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "bubble.left")
+                .font(.system(size: 11))
+            Text(recent.title)
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    private func pinnedInsertionLine(visible: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 1)
+            .fill(Color.accentColor)
+            .frame(height: 2)
+            .padding(.horizontal, 8)
+            .opacity(visible ? 1 : 0)
+            .animation(.easeOut(duration: 0.12), value: visible)
     }
 
     private func selectableRow(_ recent: ControlPanelRecentSession) -> some View {
@@ -695,13 +730,6 @@ struct ControlPanelView: View {
         return nil
     }
 
-    private func movePinned(from source: IndexSet, to destination: Int) {
-        var ids = pinnedSessions.compactMap(\.chatID)
-        ids.move(fromOffsets: source, toOffset: destination)
-        withAnimation(.snappy(duration: 0.2)) {
-            chat.applyPinnedOrder(ids)
-        }
-    }
 
     @discardableResult
     private func handlePinDrop(_ items: [String]) -> Bool {
