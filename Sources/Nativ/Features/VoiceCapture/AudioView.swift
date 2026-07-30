@@ -353,6 +353,58 @@ struct AudioView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 3) {
+                Label("Text-to-speech model", systemImage: "speaker.wave.2")
+                    .font(.headline)
+                Text("The selected model is used when Nativ speaks responses aloud.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                if localLibrary.isScanning && ttsModels.isEmpty {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Scanning installed models…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(height: 30)
+                } else {
+                    Picker("Text-to-speech model", selection: ttsModelSelection) {
+                        Text("Automatic").tag("")
+                        if let selectedTTSModelID,
+                           !ttsModels.contains(where: { $0.repoID == selectedTTSModelID })
+                        {
+                            Text(selectedTTSModelID).tag(selectedTTSModelID)
+                        }
+                        ForEach(ttsModels) { localModel in
+                            Text(localModel.displayName).tag(localModel.repoID)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+                    .disabled(model.modelSwitchInProgress)
+                }
+
+                if ttsModels.isEmpty && !localLibrary.isScanning {
+                    Button("Find speech models", action: onOpenSpeechModels)
+                        .buttonStyle(.link)
+                } else if let effectiveTTSModel {
+                    Text("Using \(effectiveTTSModel.displayName)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Text("Automatic uses the first compatible text-to-speech model found in your configured local model paths.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
         .audioPanelStyle()
@@ -774,6 +826,44 @@ struct AudioView: View {
                     $0.repoID == newValue
                 }) {
                     model.settings.speechToTextModelID = localModel.repoID
+                }
+            }
+        )
+    }
+
+    private var ttsModels: [LocalModel] {
+        localLibrary.models
+            .filter { $0.capabilities.contains(.textToSpeech) }
+            .sorted {
+                $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            }
+    }
+
+    private var selectedTTSModelID: String? {
+        model.settings.normalized().textToSpeechModelID
+    }
+
+    private var effectiveTTSModel: LocalModel? {
+        let resolvedID = LocalModelDiscovery.textToSpeechModelID(
+            in: ttsModels,
+            selectedModelID: selectedTTSModelID
+        )
+        return ttsModels.first { $0.repoID == resolvedID }
+    }
+
+    private var ttsModelSelection: Binding<String> {
+        Binding(
+            get: { selectedTTSModelID ?? "" },
+            set: { newValue in
+                guard newValue != selectedTTSModelID ?? "" else {
+                    return
+                }
+                if newValue.isEmpty {
+                    model.settings.textToSpeechModelID = nil
+                } else if let localModel = ttsModels.first(where: {
+                    $0.repoID == newValue
+                }) {
+                    model.settings.textToSpeechModelID = localModel.repoID
                 }
             }
         )
