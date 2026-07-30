@@ -368,7 +368,11 @@ struct ChatComposer: View {
     }
 
     private var selectedModelSupportsVoice: Bool {
-        selectedLocalModel?.capabilities.contains(.audio) == true
+        let settings = model.settings.normalized()
+        let hasVoiceModels = settings.speechToTextModelID?.isEmpty == false
+            && settings.textToSpeechModelID?.isEmpty == false
+        return hasVoiceModels
+            || selectedLocalModel?.capabilities.contains(.audio) == true
     }
 
     private func syncImageGenerationMode() {
