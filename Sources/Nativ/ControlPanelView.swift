@@ -495,7 +495,14 @@ struct ControlPanelView: View {
                         .listRowInsets(sidebarItemInsets)
                 } else {
                     ForEach(pinnedSessions) { recent in
-                        draggableRow(recent, isPinnedRow: true)
+                        if isSelectingRecents {
+                            selectableRow(recent)
+                        } else {
+                            recentSessionRow(recent)
+                        }
+                    }
+                    .onMove { source, destination in
+                        movePinned(from: source, to: destination)
                     }
                 }
             } header: {
@@ -655,6 +662,14 @@ struct ControlPanelView: View {
             }
         }
         return nil
+    }
+
+    private func movePinned(from source: IndexSet, to destination: Int) {
+        var ids = pinnedSessions.compactMap(\.chatID)
+        ids.move(fromOffsets: source, toOffset: destination)
+        withAnimation(.snappy(duration: 0.2)) {
+            chat.applyPinnedOrder(ids)
+        }
     }
 
     @discardableResult
