@@ -1434,6 +1434,8 @@ private extension LocalModelProvider {
             .primary
         case .zAI:
             .primary
+        case .blackForestLabs:
+            .primary
         }
     }
 }
