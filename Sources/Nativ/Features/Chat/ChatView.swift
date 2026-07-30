@@ -186,9 +186,7 @@ struct ChatView: View {
     }
 
     private var canCompose: Bool {
-        chatTargetIsRunning
-            && selectedModelID?.isEmpty == false
-            && model.settings.structuredOutputValidationError == nil
+        model.settings.structuredOutputValidationError == nil
     }
 
     private var unavailableReason: String? {
@@ -260,10 +258,34 @@ struct ChatView: View {
             followsLatestMessage = true
             transcriptScrollPosition.scrollTo(edge: .bottom)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .readLastAssistantMessage)) { _ in
+            readLastAssistantMessage()
+        }
     }
 
     private func isAtTranscriptBottom(_ geometry: ScrollGeometry) -> Bool {
         geometry.visibleRect.maxY >= geometry.contentSize.height - 8
+    }
+
+    private func readLastAssistantMessage() {
+        guard let ttsModelID = readAloudModelID,
+              let message = chat.visibleMessages.last(where: {
+                  $0.role == .assistant && !$0.isStreaming && !$0.content.isEmpty
+              })
+        else {
+            return
+        }
+        if tts.isSpeaking(messageID: message.id) {
+            tts.stop()
+        } else {
+            tts.speak(
+                message.content,
+                model: ttsModelID,
+                baseURL: textToSpeechBaseURL,
+                apiKey: model.settings.serverAPIKey,
+                messageID: message.id
+            )
+        }
     }
 }
 
