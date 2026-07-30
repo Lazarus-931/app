@@ -164,6 +164,10 @@ struct ControlPanelView: View {
     @State private var isChatConfigurationVisible = false
     @State private var isFullScreen = false
     @State private var isNewChatHovering = false
+    @State private var isPinnedDropTargeted = false
+    @State private var isSessionsDropTargeted = false
+    @State private var isSelectingRecents = false
+    @State private var selectedRecentIDs: Set<ControlPanelRecentSession.ID> = []
     @State private var hoveredFooterControl: FooterControl?
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
 
@@ -485,13 +489,13 @@ struct ControlPanelView: View {
 
             Section {
                 if pinnedSessions.isEmpty {
-                    Label("Shift-click a chat to pin", systemImage: "pin")
+                    Label("Drag a chat here to pin", systemImage: "pin")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary.opacity(0.6))
                         .listRowInsets(sidebarItemInsets)
                 } else {
                     ForEach(pinnedSessions) { recent in
-                        recentSessionRow(recent)
+                        draggableRow(recent, isPinnedRow: true)
                     }
                 }
             } header: {
@@ -501,10 +505,13 @@ struct ControlPanelView: View {
                     .textCase(nil)
                     .padding(.horizontal, 7)
             }
+            .dropDestination(for: String.self) { items, _ in
+                handlePinDrop(items)
+            } isTargeted: { isPinnedDropTargeted = $0 }
 
             Section {
                 ForEach(unpinnedSessions) { recent in
-                    recentSessionRow(recent)
+                    draggableRow(recent, isPinnedRow: false)
                 }
             } header: {
                 HStack(spacing: 8) {
@@ -513,6 +520,20 @@ struct ControlPanelView: View {
                         .foregroundStyle(.secondary.opacity(0.7))
 
                     Spacer(minLength: 0)
+
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            isSelectingRecents ? exitSelectMode() : enterSelectMode()
+                        }
+                    } label: {
+                        Image(systemName: isSelectingRecents ? "checkmark.circle" : "checklist")
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 28, height: 28)
+                            .foregroundStyle(isSelectingRecents ? Color.accentColor : Color.secondary.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .help(isSelectingRecents ? "Done selecting" : "Select chats")
+                    .disabled(recentSessions.isEmpty)
 
                     Button {
                         withAnimation(.snappy(duration: 0.2)) {
@@ -532,9 +553,216 @@ struct ControlPanelView: View {
                 .textCase(nil)
                 .padding(.horizontal, 7)
             }
+            .dropDestination(for: String.self) { items, _ in
+                handleUnpinDrop(items)
+            } isTargeted: { isSessionsDropTargeted = $0 }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
+        .safeAreaInset(edge: .bottom) {
+            if isSelectingRecents {
+                bulkSelectionBar
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func draggableRow(
+        _ recent: ControlPanelRecentSession,
+        isPinnedRow: Bool
+    ) -> some View {
+        if isSelectingRecents {
+            selectableRow(recent)
+        } else if let payload = recent.dragPayload {
+            if isPinnedRow {
+                recentSessionRow(recent)
+                    .draggable(payload)
+                    .dropDestination(for: String.self) { items, _ in
+                        handlePinnedRowDrop(items, target: recent)
+                    }
+            } else {
+                recentSessionRow(recent)
+                    .draggable(payload)
+            }
+        } else {
+            recentSessionRow(recent)
+        }
+    }
+
+    private func selectableRow(_ recent: ControlPanelRecentSession) -> some View {
+        let isChecked = selectedRecentIDs.contains(recent.id)
+        return HStack(spacing: 8) {
+            Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 15))
+                .foregroundStyle(isChecked ? Color.accentColor : Color.secondary.opacity(0.6))
+            Text(recent.title)
+                .font(.system(size: 13))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .contentShape(.rect)
+        .onTapGesture {
+            toggleRecentSelection(recent)
+        }
+        .listRowInsets(sidebarItemInsets)
+    }
+
+    private var bulkSelectionBar: some View {
+        HStack(spacing: 10) {
+            Text(selectedRecentIDs.isEmpty ? "Select chats" : "\(selectedRecentIDs.count) selected")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 0)
+
+            Button {
+                bulkTogglePinSelected()
+            } label: {
+                Image(systemName: allSelectedChatsPinned ? "pin.slash" : "pin")
+            }
+            .help(allSelectedChatsPinned ? "Unpin selected" : "Pin selected")
+            .disabled(!hasSelectedChats)
+
+            Button(role: .destructive) {
+                bulkDeleteSelected()
+            } label: {
+                Image(systemName: "trash")
+            }
+            .help("Delete selected")
+            .disabled(selectedRecentIDs.isEmpty)
+
+            Button("Done") {
+                withAnimation(.snappy(duration: 0.2)) {
+                    exitSelectMode()
+                }
+            }
+            .font(.system(size: 12, weight: .medium))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.regularMaterial)
+    }
+
+    private func draggedChatID(from items: [String]) -> UUID? {
+        for item in items {
+            if let id = UUID(uuidString: item),
+               chat.sessions.contains(where: { $0.id == id }) {
+                return id
+            }
+        }
+        return nil
+    }
+
+    @discardableResult
+    private func handlePinDrop(_ items: [String]) -> Bool {
+        guard let draggedID = draggedChatID(from: items) else {
+            return false
+        }
+        var order = pinnedSessions.compactMap(\.chatID)
+        guard !order.contains(draggedID) else {
+            return false
+        }
+        order.append(draggedID)
+        withAnimation(.snappy(duration: 0.2)) {
+            chat.applyPinnedOrder(order)
+        }
+        return true
+    }
+
+    @discardableResult
+    private func handlePinnedRowDrop(
+        _ items: [String],
+        target: ControlPanelRecentSession
+    ) -> Bool {
+        guard let draggedID = draggedChatID(from: items),
+              let targetID = target.chatID,
+              draggedID != targetID else {
+            return false
+        }
+        var order = pinnedSessions.compactMap(\.chatID)
+        order.removeAll { $0 == draggedID }
+        if let targetIndex = order.firstIndex(of: targetID) {
+            order.insert(draggedID, at: targetIndex)
+        } else {
+            order.append(draggedID)
+        }
+        withAnimation(.snappy(duration: 0.2)) {
+            chat.applyPinnedOrder(order)
+        }
+        return true
+    }
+
+    @discardableResult
+    private func handleUnpinDrop(_ items: [String]) -> Bool {
+        guard let draggedID = draggedChatID(from: items),
+              pinnedSessions.contains(where: { $0.chatID == draggedID }) else {
+            return false
+        }
+        withAnimation(.snappy(duration: 0.2)) {
+            chat.setPinned(draggedID, pinned: false)
+        }
+        return true
+    }
+
+    private func enterSelectMode() {
+        selectedRecentIDs = []
+        isSelectingRecents = true
+    }
+
+    private func exitSelectMode() {
+        isSelectingRecents = false
+        selectedRecentIDs = []
+    }
+
+    private func toggleRecentSelection(_ recent: ControlPanelRecentSession) {
+        if selectedRecentIDs.contains(recent.id) {
+            selectedRecentIDs.remove(recent.id)
+        } else {
+            selectedRecentIDs.insert(recent.id)
+        }
+    }
+
+    private var selectedChats: [ControlPanelRecentSession] {
+        recentSessions.filter { $0.isChat && selectedRecentIDs.contains($0.id) }
+    }
+
+    private var hasSelectedChats: Bool {
+        !selectedChats.isEmpty
+    }
+
+    private var allSelectedChatsPinned: Bool {
+        hasSelectedChats && selectedChats.allSatisfy(\.pinned)
+    }
+
+    private func bulkTogglePinSelected() {
+        let shouldPin = !allSelectedChatsPinned
+        let ids = selectedChats.compactMap(\.chatID)
+        guard !ids.isEmpty else {
+            return
+        }
+        withAnimation(.snappy(duration: 0.2)) {
+            for id in ids {
+                chat.setPinned(id, pinned: shouldPin)
+            }
+            exitSelectMode()
+        }
+    }
+
+    private func bulkDeleteSelected() {
+        let targets = selectedChats
+        guard !targets.isEmpty else {
+            return
+        }
+        withAnimation(.snappy(duration: 0.2)) {
+            for recent in targets {
+                deleteRecentSession(recent)
+            }
+            exitSelectMode()
+        }
     }
 
     private var recentSessions: [ControlPanelRecentSession] {
@@ -544,7 +772,7 @@ struct ControlPanelView: View {
     }
 
     private var pinnedSessions: [ControlPanelRecentSession] {
-        recentSessions.filter(\.pinned)
+        recentSessions.filter(\.pinned).sorted(by: ControlPanelRecentSession.pinnedSort)
     }
 
     private var unpinnedSessions: [ControlPanelRecentSession] {
@@ -914,6 +1142,7 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
     let createdAt: Date
     let updatedAt: Date
     let pinned: Bool
+    let pinnedOrder: Int?
 
     init(chat session: ChatSessionSummary) {
         id = .chat(session.id)
@@ -922,6 +1151,25 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
         createdAt = session.createdAt
         updatedAt = session.updatedAt
         pinned = session.isPinned
+        pinnedOrder = session.pinnedOrder
+    }
+
+    var chatID: UUID? {
+        if case .chat(let sessionID) = id {
+            return sessionID
+        }
+        return nil
+    }
+
+    var dragPayload: String? {
+        chatID?.uuidString
+    }
+
+    var isChat: Bool {
+        if case .chat = id {
+            return true
+        }
+        return false
     }
 
     var selection: ControlPanelSidebarSelection {
@@ -936,6 +1184,19 @@ private struct ControlPanelRecentSession: Identifiable, Equatable {
             return lhs.createdAt > rhs.createdAt
         }
         return lhs.updatedAt > rhs.updatedAt
+    }
+
+    static func pinnedSort(_ lhs: ControlPanelRecentSession, _ rhs: ControlPanelRecentSession) -> Bool {
+        switch (lhs.pinnedOrder, rhs.pinnedOrder) {
+        case let (left?, right?):
+            return left == right ? recencySort(lhs, rhs) : left < right
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            return recencySort(lhs, rhs)
+        }
     }
 }
 
