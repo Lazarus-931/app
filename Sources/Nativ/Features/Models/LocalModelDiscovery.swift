@@ -173,6 +173,22 @@ enum LocalModelDiscovery {
         }.first?.repoID
     }
 
+    static func textToSpeechModelID(
+        in models: [LocalModel],
+        selectedModelID: String?
+    ) -> String? {
+        let speechModels = models.filter {
+            $0.capabilities.contains(.textToSpeech)
+        }
+        if let selectedModelID,
+           speechModels.contains(where: { $0.repoID == selectedModelID }) {
+            return selectedModelID
+        }
+        return speechModels.sorted {
+            $0.repoID.localizedCaseInsensitiveCompare($1.repoID) == .orderedAscending
+        }.first?.repoID
+    }
+
     static func expandedPath(_ path: String) -> String {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         let effectivePath = trimmed.isEmpty ? NativSettings.defaultModelSearchPath : trimmed
@@ -256,7 +272,7 @@ enum LocalModelDiscovery {
                             snapshotURL: modelURL,
                             fileManager: fileManager
                         ),
-                        capabilities: modelCapabilities(at: modelURL, fileManager: fileManager),
+                        capabilities: modelCapabilities(at: modelURL, fileManager: fileManager, repoID: repoID),
                         source: .lmStudio
                     ))
                 }
@@ -315,7 +331,7 @@ enum LocalModelDiscovery {
                     snapshotURL: snapshotURL,
                     fileManager: fileManager
                 ),
-                capabilities: modelCapabilities(at: snapshotURL, fileManager: fileManager)
+                capabilities: modelCapabilities(at: snapshotURL, fileManager: fileManager, repoID: repoID)
             )
         }
 
@@ -412,7 +428,7 @@ enum LocalModelDiscovery {
                 snapshotURL: modelURL,
                 fileManager: fileManager
             ),
-            capabilities: modelCapabilities(at: modelURL, fileManager: fileManager),
+            capabilities: modelCapabilities(at: modelURL, fileManager: fileManager, repoID: hubStyleID),
             source: .external
         )
     }
@@ -772,9 +788,54 @@ enum LocalModelDiscovery {
         return normalized
     }
 
+    private static let textToSpeechModelFamilies: Set<String> = [
+        "audiodit", "bailingmm", "bark", "chatterbox", "chatterboxturbo",
+        "confucius4", "csm", "dia", "dramabox", "dramaboxtts", "echotts",
+        "fishqwen3omni", "higgsaudio", "higgsaudiov3", "higgsmultimodalqwen3",
+        "indextts", "irodoritts", "kitten", "kittentts", "kokoro", "kugelaudio",
+        "longcat", "longcataudiodit", "marvis", "melotts", "mosstts",
+        "mossttsdelay", "mossttslocal", "mossttsnano", "omnivoice", "outetts",
+        "pockettts", "qwen3tts", "sesame", "soprano", "spark", "tada",
+        "vibevoice", "vibevoicestreaming", "voxcpm", "voxcpm15", "voxcpm2",
+        "voxtraltts", "zonos2"
+    ]
+
+    private static let speechToTextModelFamilies: Set<String> = [
+        "canary", "cohereasr", "fireredasr2", "funasrnano", "glmasr",
+        "granitespeech", "granitespeechnar", "higgsaudio3", "lasrctc", "megaasr",
+        "mms", "moonshine", "mossmusic", "mosstranscribediarize", "nemo",
+        "nemotronasr", "parakeet", "qwen2audio", "qwen3asr", "qwen3forcedaligner",
+        "sensevoice", "vibevoice", "vibevoiceasr", "voxtral", "voxtralrealtime",
+        "wav2vec", "whisper"
+    ]
+
+    private static let audioFamilyNameExclusions: Set<String> = ["nemo"]
+
+    private static func normalizedAudioIdentifier(_ value: String) -> String {
+        String(value.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
+
+    private static func matchesAudioFamily(
+        _ families: Set<String>,
+        config: [String: Any],
+        repoID: String
+    ) -> Bool {
+        let typeKeys = [config["model_type"], config["tts_model_type"]]
+            .compactMap { ($0 as? String).map(normalizedAudioIdentifier) }
+        if typeKeys.contains(where: families.contains) {
+            return true
+        }
+        let nameFamilies = families.subtracting(audioFamilyNameExclusions)
+        let nameSegments = repoID
+            .split { !$0.isLetter && !$0.isNumber }
+            .map { normalizedAudioIdentifier(String($0)) }
+        return nameSegments.contains(where: nameFamilies.contains)
+    }
+
     private static func modelCapabilities(
         at snapshotURL: URL,
-        fileManager: FileManager
+        fileManager: FileManager,
+        repoID: String
     ) -> Set<LocalModelCapability> {
         let configURL = snapshotURL.appendingPathComponent("config.json")
         let config: [String: Any]
@@ -861,13 +922,17 @@ enum LocalModelDiscovery {
         }
 
         let speechToTextDescriptors = ["whisper", "asr", "transcribe", "speechrecognition"]
-        if speechToTextDescriptors.contains(where: descriptors.contains) {
+        if speechToTextDescriptors.contains(where: descriptors.contains)
+            || matchesAudioFamily(speechToTextModelFamilies, config: config, repoID: repoID) {
             capabilities.insert(.speechToText)
+            capabilities.insert(.audio)
         }
 
         let textToSpeechDescriptors = ["tts", "texttospeech", "speechsynthesis"]
-        if textToSpeechDescriptors.contains(where: descriptors.contains) {
+        if textToSpeechDescriptors.contains(where: descriptors.contains)
+            || matchesAudioFamily(textToSpeechModelFamilies, config: config, repoID: repoID) {
             capabilities.insert(.textToSpeech)
+            capabilities.insert(.audio)
         }
 
         if let embeddingStamp = config["mlx_embeddings"] as? [String: Any],
