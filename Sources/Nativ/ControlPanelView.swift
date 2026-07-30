@@ -803,8 +803,6 @@ struct ControlPanelView: View {
     }
 
     @discardableResult
-
-    @discardableResult
     private func handleUnpinDrop(_ items: [String]) -> Bool {
         guard let draggedID = draggedChatID(from: items),
               pinnedSessions.contains(where: { $0.chatID == draggedID }) else {
