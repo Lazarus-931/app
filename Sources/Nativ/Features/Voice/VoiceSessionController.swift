@@ -33,6 +33,7 @@ final class VoiceSessionController: ObservableObject {
     private lazy var speechQueue = VoiceSpeechQueue(player: player)
     private var chunker = SentenceChunker()
     private var streamingTTS = false
+    private var readAloudPlaying = false
 
     func start(chat: ChatViewModel, model: NativModel) {
         guard !isActive else {
@@ -122,8 +123,25 @@ final class VoiceSessionController: ObservableObject {
         statusText = "Listening…"
         if usesModelSTT {
             modelRecognizer.start()
+            modelRecognizer.setMuted(readAloudPlaying)
         } else {
             recognizer.start()
+            recognizer.setMuted(readAloudPlaying)
+        }
+    }
+
+    /// Called while a message is read aloud via the speaker button: mute the mic so the
+    /// listening orb never captures the model's own playback.
+    func setReadAloudPlaying(_ playing: Bool) {
+        readAloudPlaying = playing
+        guard isActive else {
+            return
+        }
+        let muted = playing || phase != .listening
+        if usesModelSTT {
+            modelRecognizer.setMuted(muted)
+        } else {
+            recognizer.setMuted(muted)
         }
     }
 
@@ -157,11 +175,14 @@ final class VoiceSessionController: ObservableObject {
             beginListening()
             return
         }
-        // Pause the mic while the model thinks and speaks (prevents echo capture).
+        // Keep the mic engine warm so the reply's audio plays cleanly, but discard its
+        // input (half-duplex) so it never transcribes the model's own voice.
         if usesModelSTT {
-            modelRecognizer.stop()
+            modelRecognizer.start()
+            modelRecognizer.setMuted(true)
         } else {
-            recognizer.stop()
+            recognizer.start()
+            recognizer.setMuted(true)
         }
         phase = .thinking
         statusText = "Thinking…"

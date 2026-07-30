@@ -20,6 +20,7 @@ final class VoiceSpeechRecognizer: ObservableObject {
     var onTurnEnd: (() -> Void)?
 
     private let audioEngine = AVAudioEngine()
+    private let muteGate = MuteGate()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
@@ -66,8 +67,20 @@ final class VoiceSpeechRecognizer: ObservableObject {
     /// Stop the current capture cycle without reporting an utterance.
     func stop() {
         isRunning = false
+        muteGate.set(false)
         endCycle()
         level = 0
+    }
+
+    /// Discard microphone input without tearing down the engine, so the audio device
+    /// stays warm for clean TTS playback and never transcribes the model's own voice.
+    func setMuted(_ muted: Bool) {
+        muteGate.set(muted)
+        if muted {
+            silenceTimer?.invalidate()
+            silenceTimer = nil
+            level = 0
+        }
     }
 
     private func beginCycle() {
@@ -89,8 +102,12 @@ final class VoiceSpeechRecognizer: ObservableObject {
 
         let inputNode = audioEngine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
+        let muteGate = muteGate
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            guard !muteGate.isMuted else {
+                return
+            }
             request.append(buffer)
             let rms = Self.rms(buffer)
             Task { @MainActor [weak self] in
@@ -206,5 +223,22 @@ final class VoiceSpeechRecognizer: ObservableObject {
             return (sum / Float(count)).squareRoot()
         }
         return 0
+    }
+}
+
+private final class MuteGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var muted = false
+
+    var isMuted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return muted
+    }
+
+    func set(_ value: Bool) {
+        lock.lock()
+        muted = value
+        lock.unlock()
     }
 }

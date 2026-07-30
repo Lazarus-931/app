@@ -261,6 +261,9 @@ struct ChatView: View {
         .onReceive(NotificationCenter.default.publisher(for: .readLastAssistantMessage)) { _ in
             readLastAssistantMessage()
         }
+        .onChange(of: tts.speakingMessageID) { _, messageID in
+            voiceController.setReadAloudPlaying(messageID != nil)
+        }
     }
 
     private func isAtTranscriptBottom(_ geometry: ScrollGeometry) -> Bool {
