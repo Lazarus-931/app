@@ -41,6 +41,8 @@ struct ImageGenerationMetrics: Equatable, Sendable, Codable {
 
 @MainActor
 final class ImageGenerationViewModel: ObservableObject {
+    static let fallbackModelID = "mlx-community/flux2-klein-4b-8bit"
+
     @Published var prompt = ""
     @Published var modelID = ""
     @Published var count = 1
@@ -82,14 +84,11 @@ final class ImageGenerationViewModel: ObservableObject {
     }
 
     func applyDefaultModel(_ selectedModelID: String?) {
-        guard modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let selectedModelID,
-              !selectedModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else {
+        guard modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
-
-        modelID = selectedModelID
+        let selected = selectedModelID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        modelID = selected?.isEmpty == false ? selected! : Self.fallbackModelID
         persistCurrentSession(updateTimestamp: false)
     }
 
