@@ -14,6 +14,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
     case openClaw
     case zed
     case continueDev
+    case openInterpreter
     case vscode
     case cursor
     case cline
@@ -43,6 +44,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .openClaw: "OpenClaw"
         case .zed: "Zed"
         case .continueDev: "Continue"
+        case .openInterpreter: "Open Interpreter"
         case .vscode: "VS Code"
         case .cursor: "Cursor"
         case .cline: "Cline"
@@ -65,6 +67,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .openClaw: "openclaw"
         case .zed: "zed"
         case .continueDev: "cn"
+        case .openInterpreter: "interpreter"
         case .vscode: "code"
         case .cursor: "cursor"
         case .cline: "cline"
@@ -89,6 +92,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .openClaw: "Open personal AI agent and gateway"
         case .zed: "High-performance, multiplayer code editor"
         case .continueDev: "Open-source AI code assistant"
+        case .openInterpreter: "Codex-compatible terminal coding agent"
         case .vscode: "Visual Studio Code with MLX or Copilot BYOK"
         case .cursor: "AI-first editor via an OpenAI-compatible provider"
         case .cline: "Autonomous coding agent for VS Code"
@@ -118,6 +122,7 @@ enum IntegrationTool: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .openClaw: URL(string: "https://docs.openclaw.ai/")!
         case .zed: URL(string: "https://zed.dev/download")!
         case .continueDev: URL(string: "https://docs.continue.dev/cli/quickstart")!
+        case .openInterpreter: URL(string: "https://www.openinterpreter.com/docs/terminal/install")!
         case .vscode: URL(string: "https://code.visualstudio.com/")!
         case .cursor: URL(string: "https://cursor.com/")!
         case .cline: URL(string: "https://cline.bot/")!
@@ -312,7 +317,7 @@ struct IntegrationProfileManager {
                 let providers = root["provider"] as? [String: Any]
             else { return false }
             return providers[Self.providerID] != nil
-        case .codex, .hermes, .aider, .qwenCode, .continueDev:
+        case .codex, .hermes, .aider, .qwenCode, .continueDev, .openInterpreter:
             guard let text = String(data: data, encoding: .utf8) else { return false }
             return text.contains(Self.providerID) && text.contains(openAIBaseURL)
         case .goose:
@@ -381,9 +386,25 @@ struct IntegrationProfileManager {
             try configureZed(models: models)
         case .continueDev:
             try configureContinue(selectedModelID: selectedModelID, models: models)
+        case .openInterpreter:
+            try configureOpenInterpreter(selectedModelID: selectedModelID)
         case .vscode, .cursor, .cline, .jetbrains, .buzz:
             break
         }
+    }
+
+    private func configureOpenInterpreter(selectedModelID: String) throws {
+        let contents = """
+        model_provider = \(tomlString(Self.providerID))
+        model = \(tomlString(selectedModelID))
+
+        [model_providers.\(Self.providerID)]
+        name = "Nativ"
+        base_url = \(tomlString(openAIBaseURL))
+        env_key = "NATIV_API_KEY"
+        wire_api = "chat"
+        """
+        try writeText(contents + "\n", to: configurationURL(for: .openInterpreter))
     }
 
     func launch(
@@ -501,6 +522,8 @@ struct IntegrationProfileManager {
             return home.appendingPathComponent(".config/zed/settings.json")
         case .continueDev:
             return integrationsSupportURL.appendingPathComponent("continue-config.yaml")
+        case .openInterpreter:
+            return integrationsSupportURL.appendingPathComponent("openinterpreter/config.toml")
         case .vscode, .cursor, .cline, .jetbrains, .buzz:
             return integrationsSupportURL.appendingPathComponent("\(tool.rawValue)-guided-unused.json")
         }
@@ -925,6 +948,14 @@ struct IntegrationProfileManager {
             return (["."], ["NATIV_API_KEY": "nativ"])
         case .continueDev:
             return (["--config", configurationURL(for: tool).path], [:])
+        case .openInterpreter:
+            return (
+                ["--provider", Self.providerID, "--model", selectedModelID],
+                [
+                    "CODEX_HOME": configurationURL(for: tool).deletingLastPathComponent().path,
+                    "NATIV_API_KEY": "nativ"
+                ]
+            )
         case .vscode, .cursor, .cline, .jetbrains, .buzz:
             return ([], [:])
         }
