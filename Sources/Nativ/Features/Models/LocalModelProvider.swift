@@ -19,6 +19,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
     case ibm
     case liquidAI
     case zAI
+    case blackForestLabs
 
     var displayName: String {
         switch self {
@@ -40,6 +41,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .ibm: "IBM"
         case .liquidAI: "Liquid AI"
         case .zAI: "Z.ai"
+        case .blackForestLabs: "Black Forest Labs"
         }
     }
 
@@ -63,6 +65,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .ibm: "ModelProviderIcon-ibm"
         case .liquidAI: "ModelProviderIcon-liquid"
         case .zAI: "ModelProviderIcon-zai"
+        case .blackForestLabs: "ModelProviderIcon-bfl"
         }
     }
 
@@ -86,6 +89,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
         case .ibm: "IBM"
         case .liquidAI: "L"
         case .zAI: "Z"
+        case .blackForestLabs: "BFL"
         }
     }
 
@@ -104,7 +108,7 @@ enum LocalModelProvider: String, Hashable, Sendable {
 
     var iconTintColor: NSColor {
         switch self {
-        case .google, .openAI, .mistral, .microsoft, .cohere, .apple, .liquidAI, .zAI:
+        case .google, .openAI, .mistral, .microsoft, .cohere, .apple, .liquidAI, .zAI, .blackForestLabs:
             .labelColor
         case .meta:
             NSColor(srgbRed: 0 / 255, green: 129 / 255, blue: 251 / 255, alpha: 1)
@@ -156,7 +160,8 @@ enum LocalModelProviderResolver {
         ModelFamilyMapping(provider: .apple, identifiers: ["openelm"]),
         ModelFamilyMapping(provider: .ibm, identifiers: ["granite"]),
         ModelFamilyMapping(provider: .liquidAI, identifiers: ["lfm"]),
-        ModelFamilyMapping(provider: .zAI, identifiers: ["glm", "cogvlm", "cogvideo"])
+        ModelFamilyMapping(provider: .zAI, identifiers: ["glm", "cogvlm", "cogvideo"]),
+        ModelFamilyMapping(provider: .blackForestLabs, identifiers: ["flux"])
     ]
 
     private static let organizationMappings: [String: LocalModelProvider] = [
@@ -192,7 +197,8 @@ enum LocalModelProviderResolver {
         "zai": .zAI,
         "zaiorg": .zAI,
         "zhipuai": .zAI,
-        "thudm": .zAI
+        "thudm": .zAI,
+        "blackforestlabs": .blackForestLabs
     ]
 
     static func resolve(
