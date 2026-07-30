@@ -661,6 +661,12 @@ struct AudioView: View {
                     shortcut: shortcuts.retryShortcut,
                     kind: .retry
                 )
+                shortcutRow(
+                    title: "Read last reply aloud",
+                    subtitle: "Speaks the model's most recent chat message.",
+                    shortcut: shortcuts.readShortcut,
+                    kind: .readLastMessage
+                )
             }
 
             Text("Raw audio is deleted after five minutes. Transcript history and aggregate analytics stay on this Mac.")
@@ -756,6 +762,8 @@ struct AudioView: View {
                         shortcuts.resetHandsFreeShortcut()
                     case .retry:
                         shortcuts.resetRetryShortcut()
+                    case .readLastMessage:
+                        shortcuts.resetReadShortcut()
                     }
                 }
             } label: {
@@ -907,6 +915,7 @@ struct AudioView: View {
             (.record, shortcuts.recordShortcut),
             (.handsFree, shortcuts.handsFreeShortcut),
             (.retry, shortcuts.retryShortcut),
+            (.readLastMessage, shortcuts.readShortcut),
         ]
         guard !assignments.contains(where: {
             $0.0 != kind && $0.1 == shortcut
@@ -923,6 +932,8 @@ struct AudioView: View {
             shortcuts.handsFreeShortcut = shortcut
         case .retry:
             shortcuts.retryShortcut = shortcut
+        case .readLastMessage:
+            shortcuts.readShortcut = shortcut
         }
         editingShortcut = nil
         shortcutConflict = nil
@@ -933,6 +944,7 @@ private enum AudioShortcutKind: String, Identifiable {
     case record
     case handsFree
     case retry
+    case readLastMessage
 
     var id: String { rawValue }
 
@@ -941,6 +953,7 @@ private enum AudioShortcutKind: String, Identifiable {
         case .record: "Record shortcut"
         case .handsFree: "Hands-free shortcut"
         case .retry: "Retry shortcut"
+        case .readLastMessage: "Read-aloud shortcut"
         }
     }
 }

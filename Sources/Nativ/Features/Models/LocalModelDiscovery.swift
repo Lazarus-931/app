@@ -77,9 +77,12 @@ struct LocalModel: Identifiable, Equatable, Sendable {
     var source: LocalModelSource = .huggingFaceCache
 
     var isEligibleForLanguageModelPicker: Bool {
-        // Any text-generative model qualifies (chat + omni), even if it also carries an
-        // image-generation tag. A vision model qualifies only when it isn't image-gen.
-        capabilities.contains(.text)
+        // Chat is for text, multimodal, and image models. Speech-to-text and
+        // text-to-speech engines belong to the Audio page, not the chat picker.
+        if capabilities.contains(.speechToText) || capabilities.contains(.textToSpeech) {
+            return false
+        }
+        return capabilities.contains(.text)
             || (capabilities.contains(.vision) && !capabilities.contains(.imageGeneration))
     }
 

@@ -35,11 +35,11 @@ struct VoiceSessionOverlay: View {
                         controller.toggleMinimized()
                     }
                 } label: {
-                    VoiceOrbView(
-                        userLevel: controller.userLevel,
-                        modelLevel: controller.modelLevel,
-                        size: 210
+                    VoiceGradientOrb(
+                        level: Float(max(controller.userLevel, controller.modelLevel)),
+                        isRecording: controller.isActive
                     )
+                    .frame(width: 210, height: 210)
                 }
                 .buttonStyle(.plain)
                 .help("Minimize")
@@ -67,11 +67,11 @@ struct VoiceSessionOverlay: View {
                         controller.toggleMinimized()
                     }
                 } label: {
-                    VoiceOrbView(
-                        userLevel: controller.userLevel,
-                        modelLevel: controller.modelLevel,
-                        size: 54
+                    VoiceGradientOrb(
+                        level: Float(max(controller.userLevel, controller.modelLevel)),
+                        isRecording: controller.isActive
                     )
+                    .frame(width: 54, height: 54)
                 }
                 .buttonStyle(.plain)
                 .help("Expand voice conversation")

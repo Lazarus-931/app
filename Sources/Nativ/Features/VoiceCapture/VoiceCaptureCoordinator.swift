@@ -40,6 +40,12 @@ final class VoiceCaptureCoordinator {
         shortcutMonitor.onHandsFreeToggle = { [weak self] in
             self?.toggleHandsFreeCapture()
         }
+        shortcutMonitor.onReadLastMessage = {
+            NotificationCenter.default.post(
+                name: .readLastAssistantMessage,
+                object: nil
+            )
+        }
         recorder.onMeterUpdate = { [weak self] level, elapsed in
             self?.overlay.update(level: level, elapsed: elapsed)
         }
