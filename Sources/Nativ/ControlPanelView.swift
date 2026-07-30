@@ -168,6 +168,8 @@ struct ControlPanelView: View {
     @State private var isSessionsDropTargeted = false
     @State private var isSelectingRecents = false
     @State private var selectedRecentIDs: Set<ControlPanelRecentSession.ID> = []
+    @State private var pendingDeleteRecent: ControlPanelRecentSession?
+    @State private var isConfirmingBulkDelete = false
     @State private var hoveredFooterControl: FooterControl?
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
 
@@ -571,6 +573,35 @@ struct ControlPanelView: View {
                 bulkSelectionBar
             }
         }
+        .alert(
+            "Delete chat?",
+            isPresented: Binding(
+                get: { pendingDeleteRecent != nil },
+                set: { if !$0 { pendingDeleteRecent = nil } }
+            ),
+            presenting: pendingDeleteRecent
+        ) { recent in
+            Button("Delete", role: .destructive) {
+                deleteRecentSession(recent)
+                pendingDeleteRecent = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDeleteRecent = nil
+            }
+        } message: { recent in
+            Text("“\(recent.title)” will be permanently deleted.")
+        }
+        .alert(
+            "Delete \(selectedRecentIDs.count) chats?",
+            isPresented: $isConfirmingBulkDelete
+        ) {
+            Button("Delete", role: .destructive) {
+                bulkDeleteSelected()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The selected chats will be permanently deleted.")
+        }
     }
 
     @ViewBuilder
@@ -633,7 +664,7 @@ struct ControlPanelView: View {
             .disabled(!hasSelectedChats)
 
             Button(role: .destructive) {
-                bulkDeleteSelected()
+                isConfirmingBulkDelete = true
             } label: {
                 Image(systemName: "trash")
             }
@@ -808,7 +839,7 @@ struct ControlPanelView: View {
                 applySidebarSelection(recent.selection)
             },
             onDelete: {
-                deleteRecentSession(recent)
+                pendingDeleteRecent = recent
             },
             onRename: { newTitle in
                 renameRecentSession(recent, to: newTitle)
