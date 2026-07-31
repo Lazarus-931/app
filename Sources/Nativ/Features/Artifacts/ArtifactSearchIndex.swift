@@ -28,7 +28,7 @@ final class ArtifactSearchIndex: ObservableObject {
         artifacts: [Artifact],
         model: String,
         client: NativEmbeddingsClient,
-        dataURL: @escaping (Artifact) -> String?
+        dataURL: @escaping (Artifact) async -> String?
     ) async {
         guard !isIndexing else {
             return
@@ -77,14 +77,14 @@ final class ArtifactSearchIndex: ObservableObject {
         artifact: Artifact,
         model: String,
         client: NativEmbeddingsClient,
-        dataURL: (Artifact) -> String?
+        dataURL: (Artifact) async -> String?
     ) async -> [Float]? {
         let metadata = [artifact.filename, artifact.sessionTitle, artifact.prompt ?? ""]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
 
         var parts: [[Float]] = []
-        if artifact.kind == .image, let url = dataURL(artifact),
+        if artifact.kind == .image, let url = await dataURL(artifact),
            let imageVector = try? await client.embed(dataURL: url, model: model) {
             parts.append(normalized(imageVector))
         }

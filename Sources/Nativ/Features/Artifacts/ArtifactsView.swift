@@ -43,9 +43,15 @@ struct ArtifactGroup: Identifiable {
 
 struct ArtifactsView: View {
     @ObservedObject var store: ArtifactStore
+    let semanticSearch: ArtifactSemanticSearchConfig?
     let onOpenChat: (Artifact) -> Void
     let onUseInChat: (Artifact) -> Void
     let onUseAsReference: (Artifact) -> Void
+
+    @StateObject private var searchIndex = ArtifactSearchIndex()
+    @State private var semanticMatches: [UUID]?
+    @State private var searchDebounce: Task<Void, Never>?
+    @State private var isSemanticDismissed = false
 
     @State private var search = ""
     @State private var kindFilter: ArtifactKind?
@@ -62,7 +68,6 @@ struct ArtifactsView: View {
     @State private var albumSessionID: UUID?
 
     private var filtered: [Artifact] {
-        let query = search.lowercased()
         var result = store.artifacts
         if let kindFilter {
             result = result.filter { $0.kind == kindFilter }
@@ -70,10 +75,21 @@ struct ArtifactsView: View {
         if let sourceFilter {
             result = result.filter { $0.source == sourceFilter }
         }
-        if !query.isEmpty {
-            result = result.filter { $0.searchText.contains(query) }
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            return result.sorted(by: sort.comparator)
         }
-        return result.sorted(by: sort.comparator)
+        if let semanticMatches {
+            var rank: [UUID: Int] = [:]
+            for (position, id) in semanticMatches.enumerated() {
+                rank[id] = position
+            }
+            return result
+                .filter { rank[$0.id] != nil }
+                .sorted { (rank[$0.id] ?? .max) < (rank[$1.id] ?? .max) }
+        }
+        let lowered = query.lowercased()
+        return result.filter { $0.searchText.contains(lowered) }.sorted(by: sort.comparator)
     }
 
     private var groups: [ArtifactGroup] {
@@ -93,15 +109,115 @@ struct ArtifactsView: View {
         return order.map { ArtifactGroup(id: $0, title: $0, items: buckets[$0] ?? []) }
     }
 
+    @ViewBuilder
+    private var semanticBanner: some View {
+        if let config = semanticSearch, !config.isModelInstalled, !store.artifacts.isEmpty,
+           config.isDownloading || !isSemanticDismissed {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkle.magnifyingglass")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Search by what's inside")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(config.isDownloading
+                        ? "Downloading search model… \(Int((config.downloadProgress * 100).rounded()))%"
+                        : "Find artifacts by their contents, not just names. Downloads a \(config.sizeLabel) model you can reuse.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                if config.isDownloading {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button("Enable") { config.onEnable() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    Button {
+                        isSemanticDismissed = true
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color(nsColor: .windowBackgroundColor))
+            Divider()
+        }
+    }
+
+    private func indexArtifacts() {
+        guard let config = semanticSearch, config.isModelInstalled else {
+            return
+        }
+        Task {
+            await searchIndex.index(
+                artifacts: store.artifacts,
+                model: config.modelID,
+                client: config.client,
+                dataURL: dataURL(for:)
+            )
+        }
+    }
+
+    private func scheduleSemanticSearch() {
+        searchDebounce?.cancel()
+        guard let config = semanticSearch, config.isModelInstalled else {
+            semanticMatches = nil
+            return
+        }
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            semanticMatches = nil
+            return
+        }
+        searchDebounce = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled {
+                return
+            }
+            let matches = await searchIndex.search(query: query, model: config.modelID, client: config.client)
+            if Task.isCancelled {
+                return
+            }
+            semanticMatches = matches
+        }
+    }
+
+    private func dataURL(for artifact: Artifact) async -> String? {
+        guard artifact.kind == .image else {
+            return nil
+        }
+        let url = store.fileURL(for: artifact)
+        let mimeType = artifact.mimeType
+        return await Task.detached(priority: .utility) {
+            guard let data = try? Data(contentsOf: url) else {
+                return nil
+            }
+            return "data:\(mimeType);base64,\(data.base64EncodedString())"
+        }.value
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
+            semanticBanner
             if isSelecting {
                 selectionBar
             }
             filterBar
             Divider()
             contentView
+        }
+        .task(id: store.artifacts.count) {
+            indexArtifacts()
+        }
+        .onChange(of: search) { _, _ in
+            scheduleSemanticSearch()
         }
         .overlay {
             if previewID != nil {
