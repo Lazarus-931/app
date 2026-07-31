@@ -6,8 +6,13 @@ final class ArtifactSearchIndex: ObservableObject {
     @Published private(set) var indexedCount = 0
     @Published private(set) var isIndexing = false
 
-    private var vectors: [UUID: [Float]] = [:]
+    // Each artifact keeps its component vectors separately (image content and
+    // metadata text). Matching takes the best component so a strong image match
+    // is never diluted by weak metadata.
+    private var vectors: [UUID: [[Float]]] = [:]
     private let storageURL: URL
+
+    private static let matchThreshold: Float = 0.35
 
     init() {
         let support = FileManager.default
@@ -43,8 +48,8 @@ final class ArtifactSearchIndex: ObservableObject {
             if Task.isCancelled {
                 break
             }
-            if let vector = await Self.embed(artifact: artifact, model: model, client: client, dataURL: dataURL) {
-                vectors[artifact.id] = vector
+            if let components = await Self.embed(artifact: artifact, model: model, client: client, dataURL: dataURL) {
+                vectors[artifact.id] = components
                 indexedCount = vectors.count
             }
         }
@@ -56,13 +61,15 @@ final class ArtifactSearchIndex: ObservableObject {
         guard !trimmed.isEmpty, !vectors.isEmpty else {
             return nil
         }
-        guard let queryVector = try? await client.embed(text: trimmed, model: model) else {
+        // This VLM aligns poorly with bare keywords; a caption-style prompt
+        // pulls the query into the same space as the image embeddings.
+        guard let queryVector = try? await client.embed(text: "a photo of \(trimmed)", model: model) else {
             return nil
         }
         let normalizedQuery = Self.normalized(queryVector)
         let ranked = vectors
-            .map { (id: $0.key, score: Self.dot(normalizedQuery, $0.value)) }
-            .filter { $0.score > 0.15 }
+            .map { (id: $0.key, score: Self.bestScore(normalizedQuery, $0.value)) }
+            .filter { $0.score > Self.matchThreshold }
             .sorted { $0.score > $1.score }
             .prefix(limit)
         return ranked.map(\.id)
@@ -81,37 +88,24 @@ final class ArtifactSearchIndex: ObservableObject {
         model: String,
         client: NativEmbeddingsClient,
         dataURL: (Artifact) async -> String?
-    ) async -> [Float]? {
+    ) async -> [[Float]]? {
         let metadata = [artifact.filename, artifact.sessionTitle, artifact.prompt ?? ""]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
 
-        var parts: [[Float]] = []
+        var components: [[Float]] = []
         if artifact.kind == .image, let url = await dataURL(artifact),
            let imageVector = try? await client.embed(dataURL: url, model: model) {
-            parts.append(normalized(imageVector))
+            components.append(normalized(imageVector))
         }
         if !metadata.isEmpty, let textVector = try? await client.embed(text: metadata, model: model) {
-            parts.append(normalized(textVector))
+            components.append(normalized(textVector))
         }
-        guard !parts.isEmpty else {
-            return nil
-        }
-        return normalized(average(parts))
+        return components.isEmpty ? nil : components
     }
 
-    private static func average(_ vectors: [[Float]]) -> [Float] {
-        guard let dimension = vectors.first?.count, dimension > 0 else {
-            return []
-        }
-        var sum = [Float](repeating: 0, count: dimension)
-        for vector in vectors where vector.count == dimension {
-            for index in 0..<dimension {
-                sum[index] += vector[index]
-            }
-        }
-        let count = Float(vectors.count)
-        return sum.map { $0 / count }
+    private static func bestScore(_ query: [Float], _ components: [[Float]]) -> Float {
+        components.map { dot(query, $0) }.max() ?? -1
     }
 
     private static func normalized(_ vector: [Float]) -> [Float] {
@@ -135,13 +129,13 @@ final class ArtifactSearchIndex: ObservableObject {
 
     // MARK: - Persistence
 
-    private static func load(_ url: URL) -> [UUID: [Float]] {
+    private static func load(_ url: URL) -> [UUID: [[Float]]] {
         guard let data = try? Data(contentsOf: url),
-              let raw = try? JSONDecoder().decode([String: [Float]].self, from: data)
+              let raw = try? JSONDecoder().decode([String: [[Float]]].self, from: data)
         else {
             return [:]
         }
-        var result: [UUID: [Float]] = [:]
+        var result: [UUID: [[Float]]] = [:]
         for (key, value) in raw {
             if let id = UUID(uuidString: key) {
                 result[id] = value
@@ -150,8 +144,8 @@ final class ArtifactSearchIndex: ObservableObject {
         return result
     }
 
-    private static func save(_ vectors: [UUID: [Float]], to url: URL) {
-        var raw: [String: [Float]] = [:]
+    private static func save(_ vectors: [UUID: [[Float]]], to url: URL) {
+        var raw: [String: [[Float]]] = [:]
         for (id, value) in vectors {
             raw[id.uuidString] = value
         }
