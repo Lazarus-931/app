@@ -218,6 +218,9 @@ struct ControlPanelView: View {
         .onAppear {
             applySidebarSelection(navigation.requestedTab.map(ControlPanelSidebarSelection.tab) ?? sidebarSelection)
             handleNewChatRequest()
+            artifacts.onDeleteAttachment = { sessionID, messageID, attachmentID in
+                chat.removeAttachment(sessionID: sessionID, messageID: messageID, attachmentID: attachmentID)
+            }
         }
         .onReceive(navigation.$requestedTab) { tab in
             guard let tab else { return }
@@ -963,6 +966,12 @@ struct ControlPanelView: View {
                             chat.scrollTargetMessageID = artifact.messageID
                         },
                         onUseInChat: { artifact in
+                            if let attachment = artifacts.chatAttachment(for: artifact) {
+                                chat.stageAttachment(attachment)
+                            }
+                            applySidebarSelection(.tab(.chat))
+                        },
+                        onUseAsReference: { artifact in
                             if let attachment = artifacts.chatAttachment(for: artifact) {
                                 chat.stageAttachment(attachment)
                             }

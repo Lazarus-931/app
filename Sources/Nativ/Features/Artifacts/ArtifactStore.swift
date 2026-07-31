@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import QuickLookThumbnailing
 import UniformTypeIdentifiers
 
 @MainActor
@@ -7,22 +8,32 @@ final class ArtifactStore: ObservableObject {
     @Published private(set) var artifacts: [Artifact] = []
     @Published private(set) var isRefreshing = false
 
-    private let baseDirectory: URL
+    var onDeleteAttachment: ((UUID, UUID, UUID) -> Void)?
+
+    private let indexURL: URL
+    private let cacheDirectory: URL
 
     init() {
         let support = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first ?? FileManager.default.temporaryDirectory
-        baseDirectory = support
+        indexURL = support
+            .appendingPathComponent("Nativ", isDirectory: true)
+            .appendingPathComponent("Artifacts Index.json")
+
+        let caches = FileManager.default
+            .urls(for: .cachesDirectory, in: .userDomainMask)
+            .first ?? FileManager.default.temporaryDirectory
+        cacheDirectory = caches
             .appendingPathComponent("Nativ", isDirectory: true)
             .appendingPathComponent("Artifacts", isDirectory: true)
 
-        artifacts = Self.loadManifest(baseDirectory: baseDirectory)
+        artifacts = Self.loadIndex(indexURL)
         refresh()
     }
 
     func fileURL(for artifact: Artifact) -> URL {
-        baseDirectory.appendingPathComponent(artifact.relativePath)
+        cacheDirectory.appendingPathComponent(artifact.relativePath)
     }
 
     func refresh() {
@@ -30,10 +41,11 @@ final class ArtifactStore: ObservableObject {
             return
         }
         isRefreshing = true
-        let base = baseDirectory
+        let cache = cacheDirectory
+        let index = indexURL
         let known = artifacts
         Task.detached(priority: .utility) {
-            let rebuilt = Self.rebuild(baseDirectory: base, known: known)
+            let rebuilt = Self.rebuild(cacheDirectory: cache, indexURL: index, known: known)
             await MainActor.run {
                 self.artifacts = rebuilt
                 self.isRefreshing = false
@@ -42,9 +54,20 @@ final class ArtifactStore: ObservableObject {
     }
 
     func delete(_ artifact: Artifact) {
+        onDeleteAttachment?(artifact.sessionID, artifact.messageID, artifact.id)
         try? FileManager.default.removeItem(at: fileURL(for: artifact))
         artifacts.removeAll { $0.id == artifact.id }
-        Self.writeManifest(artifacts, baseDirectory: baseDirectory)
+        Self.writeIndex(artifacts, to: indexURL)
+    }
+
+    func delete(_ toDelete: [Artifact]) {
+        for artifact in toDelete {
+            onDeleteAttachment?(artifact.sessionID, artifact.messageID, artifact.id)
+            try? FileManager.default.removeItem(at: fileURL(for: artifact))
+        }
+        let ids = Set(toDelete.map(\.id))
+        artifacts.removeAll { ids.contains($0.id) }
+        Self.writeIndex(artifacts, to: indexURL)
     }
 
     func revealInFinder(_ artifact: Artifact) {
@@ -66,6 +89,21 @@ final class ArtifactStore: ObservableObject {
         try? FileManager.default.copyItem(at: fileURL(for: artifact), to: destination)
     }
 
+    func exportToDirectory(_ toExport: [Artifact]) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Export Here"
+        guard panel.runModal() == .OK, let directory = panel.url else {
+            return
+        }
+        for artifact in toExport {
+            let destination = directory.appendingPathComponent(artifact.filename)
+            try? FileManager.default.copyItem(at: fileURL(for: artifact), to: destination)
+        }
+    }
+
     func copyToPasteboard(_ artifact: Artifact) {
         let url = fileURL(for: artifact)
         let pasteboard = NSPasteboard.general
@@ -78,18 +116,28 @@ final class ArtifactStore: ObservableObject {
         pasteboard.writeObjects(items)
     }
 
+    func dragProvider(for artifact: Artifact) -> NSItemProvider {
+        NSItemProvider(contentsOf: fileURL(for: artifact)) ?? NSItemProvider()
+    }
+
     func chatAttachment(for artifact: Artifact) -> ChatImageAttachment? {
         try? ChatImageAttachment(contentsOf: fileURL(for: artifact))
     }
 
+    func thumbnail(for artifact: Artifact, size: CGSize) async -> NSImage? {
+        let url = fileURL(for: artifact)
+        if artifact.kind == .image {
+            return await Self.loadImage(url)
+        }
+        return await Self.generateThumbnail(url, size: size)
+    }
+
     // MARK: - Scanning
 
-    private nonisolated static func rebuild(baseDirectory: URL, known: [Artifact]) -> [Artifact] {
-        let fileManager = FileManager.default
-        try? fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+    private nonisolated static func rebuild(cacheDirectory: URL, indexURL: URL, known: [Artifact]) -> [Artifact] {
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
 
         var byID = Dictionary(known.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var live: Set<UUID> = []
         var result: [Artifact] = []
 
         for session in ChatSessionStore().loadSessions() {
@@ -98,7 +146,6 @@ final class ArtifactStore: ObservableObject {
                 if message.role == .user, !message.content.isEmpty {
                     lastUserPrompt = message.content
                 }
-
                 for attachment in message.imageAttachments {
                     if let artifact = materialize(
                         attachment,
@@ -106,15 +153,13 @@ final class ArtifactStore: ObservableObject {
                         prompt: message.content.isEmpty ? nil : message.content,
                         session: session,
                         message: message,
-                        baseDirectory: baseDirectory,
+                        cacheDirectory: cacheDirectory,
                         existing: byID[attachment.id]
                     ) {
-                        live.insert(artifact.id)
                         result.append(artifact)
                         byID[artifact.id] = artifact
                     }
                 }
-
                 for attachment in message.generatedImages {
                     if let artifact = materialize(
                         attachment,
@@ -122,10 +167,9 @@ final class ArtifactStore: ObservableObject {
                         prompt: lastUserPrompt.isEmpty ? nil : lastUserPrompt,
                         session: session,
                         message: message,
-                        baseDirectory: baseDirectory,
+                        cacheDirectory: cacheDirectory,
                         existing: byID[attachment.id]
                     ) {
-                        live.insert(artifact.id)
                         result.append(artifact)
                         byID[artifact.id] = artifact
                     }
@@ -133,12 +177,8 @@ final class ArtifactStore: ObservableObject {
             }
         }
 
-        for (id, artifact) in byID where !live.contains(id) {
-            try? fileManager.removeItem(at: baseDirectory.appendingPathComponent(artifact.relativePath))
-        }
-
-        let sorted = result.sorted(by: recencySort)
-        writeManifest(sorted, baseDirectory: baseDirectory)
+        let sorted = result.sorted { $0.createdAt > $1.createdAt }
+        writeIndex(sorted, to: indexURL)
         return sorted
     }
 
@@ -148,12 +188,12 @@ final class ArtifactStore: ObservableObject {
         prompt: String?,
         session: ChatSession,
         message: ChatTranscriptMessage,
-        baseDirectory: URL,
+        cacheDirectory: URL,
         existing: Artifact?
     ) -> Artifact? {
         let kind = ArtifactKind.resolve(mimeType: attachment.mimeType, filename: attachment.filename)
         let relativePath = "\(kind.rawValue)/\(attachment.id.uuidString).\(fileExtension(for: attachment))"
-        let destination = baseDirectory.appendingPathComponent(relativePath)
+        let destination = cacheDirectory.appendingPathComponent(relativePath)
         let fileManager = FileManager.default
 
         if let existing, fileManager.fileExists(atPath: destination.path) {
@@ -195,18 +235,37 @@ final class ArtifactStore: ObservableObject {
         return ext.isEmpty ? "dat" : ext
     }
 
-    private nonisolated static func recencySort(_ lhs: Artifact, _ rhs: Artifact) -> Bool {
-        lhs.createdAt > rhs.createdAt
+    // MARK: - Thumbnails
+
+    private nonisolated static func loadImage(_ url: URL) async -> NSImage? {
+        let data = await Task.detached(priority: .utility) {
+            try? Data(contentsOf: url)
+        }.value
+        return data.flatMap(NSImage.init(data:))
     }
 
-    // MARK: - Manifest
-
-    private nonisolated static func manifestURL(baseDirectory: URL) -> URL {
-        baseDirectory.appendingPathComponent("manifest.json")
+    private nonisolated static func generateThumbnail(_ url: URL, size: CGSize) async -> NSImage? {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        let scale = await MainActor.run { NSScreen.main?.backingScaleFactor ?? 2 }
+        let request = QLThumbnailGenerator.Request(
+            fileAt: url,
+            size: size,
+            scale: scale,
+            representationTypes: .thumbnail
+        )
+        let representation = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
+        guard let representation else {
+            return nil
+        }
+        return NSImage(cgImage: representation.cgImage, size: size)
     }
 
-    private nonisolated static func loadManifest(baseDirectory: URL) -> [Artifact] {
-        guard let data = try? Data(contentsOf: manifestURL(baseDirectory: baseDirectory)) else {
+    // MARK: - Index
+
+    private nonisolated static func loadIndex(_ url: URL) -> [Artifact] {
+        guard let data = try? Data(contentsOf: url) else {
             return []
         }
         let decoder = JSONDecoder()
@@ -214,14 +273,17 @@ final class ArtifactStore: ObservableObject {
         return (try? decoder.decode([Artifact].self, from: data)) ?? []
     }
 
-    private nonisolated static func writeManifest(_ artifacts: [Artifact], baseDirectory: URL) {
-        try? FileManager.default.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+    private nonisolated static func writeIndex(_ artifacts: [Artifact], to url: URL) {
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(artifacts) else {
             return
         }
-        try? data.write(to: manifestURL(baseDirectory: baseDirectory), options: .atomic)
+        try? data.write(to: url, options: .atomic)
     }
 }

@@ -15,6 +15,10 @@ enum ArtifactSort: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var isChronological: Bool {
+        self == .newest || self == .oldest
+    }
+
     var comparator: (Artifact, Artifact) -> Bool {
         switch self {
         case .newest:
@@ -31,10 +35,17 @@ enum ArtifactSort: String, CaseIterable, Identifiable {
     }
 }
 
+struct ArtifactGroup: Identifiable {
+    let id: String
+    let title: String
+    let items: [Artifact]
+}
+
 struct ArtifactsView: View {
     @ObservedObject var store: ArtifactStore
     let onOpenChat: (Artifact) -> Void
     let onUseInChat: (Artifact) -> Void
+    let onUseAsReference: (Artifact) -> Void
 
     @State private var search = ""
     @State private var kindFilter: ArtifactKind?
@@ -42,6 +53,10 @@ struct ArtifactsView: View {
     @State private var sort: ArtifactSort = .newest
     @State private var layout: ArtifactLayout = .grid
     @State private var previewID: Artifact.ID?
+    @State private var isSelecting = false
+    @State private var selection: Set<Artifact.ID> = []
+    @State private var pendingDelete: [Artifact] = []
+    @State private var isConfirmingDelete = false
 
     private var filtered: [Artifact] {
         let query = search.lowercased()
@@ -58,12 +73,32 @@ struct ArtifactsView: View {
         return result.sorted(by: sort.comparator)
     }
 
+    private var groups: [ArtifactGroup] {
+        let items = filtered
+        guard sort.isChronological else {
+            return [ArtifactGroup(id: "all", title: "", items: items)]
+        }
+        var buckets: [String: [Artifact]] = [:]
+        var order: [String] = []
+        for artifact in items {
+            let key = Self.bucketTitle(for: artifact.createdAt)
+            if buckets[key] == nil {
+                order.append(key)
+            }
+            buckets[key, default: []].append(artifact)
+        }
+        return order.map { ArtifactGroup(id: $0, title: $0, items: buckets[$0] ?? []) }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
+            if isSelecting {
+                selectionBar
+            }
             filterBar
             Divider()
-            contentView(for: filtered)
+            contentView
         }
         .overlay {
             if previewID != nil {
@@ -79,24 +114,85 @@ struct ArtifactsView: View {
                 )
             }
         }
+        .alert("Delete \(pendingDelete.count) \(pendingDelete.count == 1 ? "item" : "items")?", isPresented: $isConfirmingDelete) {
+            Button("Delete", role: .destructive) {
+                store.delete(pendingDelete)
+                selection.subtract(pendingDelete.map(\.id))
+                pendingDelete = []
+                if selection.isEmpty {
+                    isSelecting = false
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = [] }
+        } message: {
+            Text("This removes the file from the artifact and from its chat history. It can't be undone.")
+        }
     }
 
     @ViewBuilder
-    private func contentView(for artifacts: [Artifact]) -> some View {
+    private var contentView: some View {
         if store.artifacts.isEmpty {
             emptyState(
                 title: "No artifacts yet",
                 message: "Images, videos, and documents from your chats will collect here."
             )
-        } else if artifacts.isEmpty {
-            emptyState(
-                title: "Nothing matches",
-                message: "Try a different filter or search term."
-            )
-        } else if layout == .grid {
-            gridView(artifacts)
+        } else if filtered.isEmpty {
+            emptyState(title: "Nothing matches", message: "Try a different filter or search term.")
         } else {
-            listView(artifacts)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 20, pinnedViews: [.sectionHeaders]) {
+                    ForEach(groups) { group in
+                        Section {
+                            if layout == .grid {
+                                grid(group.items)
+                            } else {
+                                list(group.items)
+                            }
+                        } header: {
+                            if !group.title.isEmpty {
+                                sectionHeader(group.title, count: group.items.count)
+                            }
+                        }
+                    }
+                }
+                .padding(24)
+            }
+        }
+    }
+
+    private func grid(_ artifacts: [Artifact]) -> some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 172, maximum: 220), spacing: 14)],
+            spacing: 14
+        ) {
+            ForEach(artifacts) { artifact in
+                ArtifactTile(
+                    artifact: artifact,
+                    store: store,
+                    isSelecting: isSelecting,
+                    isSelected: selection.contains(artifact.id)
+                )
+                .onTapGesture { activate(artifact) }
+                .modifier(ArtifactDrag(store: store, artifact: artifact, enabled: !isSelecting))
+                .contextMenu { menu(for: artifact) }
+            }
+        }
+    }
+
+    private func list(_ artifacts: [Artifact]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(artifacts) { artifact in
+                ArtifactRow(
+                    artifact: artifact,
+                    store: store,
+                    isSelecting: isSelecting,
+                    isSelected: selection.contains(artifact.id)
+                )
+                .onTapGesture { activate(artifact) }
+                .modifier(ArtifactDrag(store: store, artifact: artifact, enabled: !isSelecting))
+                .contextMenu { menu(for: artifact) }
+                Divider()
+            }
         }
     }
 
@@ -105,12 +201,19 @@ struct ArtifactsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Artifacts")
                     .font(.system(size: 20, weight: .semibold))
-                Text(subtitle)
+                Text("\(filtered.count) \(filtered.count == 1 ? "item" : "items")")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
+
+            Button(isSelecting ? "Done" : "Select") {
+                isSelecting.toggle()
+                if !isSelecting {
+                    selection.removeAll()
+                }
+            }
 
             Picker("", selection: $sort) {
                 ForEach(ArtifactSort.allCases) { option in
@@ -138,6 +241,43 @@ struct ArtifactsView: View {
         .padding(.horizontal, 24)
         .padding(.top, 20)
         .padding(.bottom, 12)
+    }
+
+    private var selectionBar: some View {
+        HStack(spacing: 10) {
+            Text("\(selection.count) selected")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            Button(selection.count == filtered.count ? "Deselect All" : "Select All") {
+                if selection.count == filtered.count {
+                    selection.removeAll()
+                } else {
+                    selection = Set(filtered.map(\.id))
+                }
+            }
+            .font(.system(size: 12))
+
+            Spacer(minLength: 0)
+
+            Button {
+                store.exportToDirectory(selectedArtifacts)
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.down")
+            }
+            .disabled(selection.isEmpty)
+
+            Button(role: .destructive) {
+                pendingDelete = selectedArtifacts
+                isConfirmingDelete = true
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .disabled(selection.isEmpty)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+        .background(Color.nativPanel)
     }
 
     private var filterBar: some View {
@@ -191,35 +331,17 @@ struct ArtifactsView: View {
         .padding(.bottom, 12)
     }
 
-    private func gridView(_ artifacts: [Artifact]) -> some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 172, maximum: 220), spacing: 14)],
-                spacing: 14
-            ) {
-                ForEach(artifacts) { artifact in
-                    ArtifactTile(artifact: artifact, url: store.fileURL(for: artifact))
-                        .onTapGesture { previewID = artifact.id }
-                        .contextMenu { menu(for: artifact) }
-                }
-            }
-            .padding(24)
+    private func sectionHeader(_ title: String, count: Int) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+            Text("\(count)")
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
-    }
-
-    private func listView(_ artifacts: [Artifact]) -> some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(artifacts) { artifact in
-                    ArtifactRow(artifact: artifact, url: store.fileURL(for: artifact))
-                        .onTapGesture { previewID = artifact.id }
-                        .contextMenu { menu(for: artifact) }
-                    Divider()
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 8)
-        }
+        .padding(.vertical, 4)
+        .background(.bar)
     }
 
     @ViewBuilder
@@ -229,6 +351,7 @@ struct ArtifactsView: View {
         Divider()
         if artifact.kind == .image {
             Button("Use in Chat") { onUseInChat(artifact) }
+            Button("Use as Image Reference") { onUseAsReference(artifact) }
         }
         Button("Go to Chat") { onOpenChat(artifact) }
         Divider()
@@ -236,7 +359,10 @@ struct ArtifactsView: View {
         Button("Export…") { store.export(artifact) }
         Button("Copy") { store.copyToPasteboard(artifact) }
         Divider()
-        Button("Delete", role: .destructive) { store.delete(artifact) }
+        Button("Delete", role: .destructive) {
+            pendingDelete = [artifact]
+            isConfirmingDelete = true
+        }
     }
 
     private func filterChip(title: String, systemImage: String? = nil, isOn: Bool, action: @escaping () -> Void) -> some View {
@@ -276,31 +402,79 @@ struct ArtifactsView: View {
         .padding(40)
     }
 
-    private var subtitle: String {
-        let count = filtered.count
-        let noun = count == 1 ? "item" : "items"
-        return "\(count) \(noun)"
+    private var selectedArtifacts: [Artifact] {
+        store.artifacts.filter { selection.contains($0.id) }
+    }
+
+    private func activate(_ artifact: Artifact) {
+        if isSelecting {
+            if selection.contains(artifact.id) {
+                selection.remove(artifact.id)
+            } else {
+                selection.insert(artifact.id)
+            }
+        } else {
+            previewID = artifact.id
+        }
+    }
+
+    private static func bucketTitle(for date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "Today"
+        }
+        if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        }
+        if let days = calendar.dateComponents([.day], from: date, to: Date()).day {
+            if days < 7 {
+                return "This Week"
+            }
+            if days < 30 {
+                return "This Month"
+            }
+        }
+        return date.formatted(.dateTime.month(.wide).year())
+    }
+}
+
+private struct ArtifactDrag: ViewModifier {
+    let store: ArtifactStore
+    let artifact: Artifact
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.onDrag { store.dragProvider(for: artifact) }
+        } else {
+            content
+        }
     }
 }
 
 struct ArtifactTile: View {
     let artifact: Artifact
-    let url: URL
+    let store: ArtifactStore
+    let isSelecting: Bool
+    let isSelected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ArtifactThumbnail(artifact: artifact, url: url)
+            ArtifactThumbnail(artifact: artifact, store: store, size: CGSize(width: 200, height: 132))
                 .frame(height: 132)
                 .frame(maxWidth: .infinity)
                 .background(Color(nsColor: .textBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(alignment: .topLeading) {
-                    sourceBadge
-                        .padding(6)
+                    sourceBadge.padding(6)
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    typeBadge
-                        .padding(6)
+                    typeBadge.padding(6)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isSelecting {
+                        selectionMark.padding(6)
+                    }
                 }
 
             Text(artifact.filename)
@@ -319,7 +493,7 @@ struct ArtifactTile: View {
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.nativPanel))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                .stroke(isSelected ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: isSelected ? 2 : 0.5)
         )
         .contentShape(Rectangle())
     }
@@ -341,15 +515,30 @@ struct ArtifactTile: View {
             .padding(.vertical, 3)
             .background(Color.black.opacity(0.6), in: Capsule())
     }
+
+    private var selectionMark: some View {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 18))
+            .foregroundStyle(isSelected ? Color.accentColor : Color.white)
+            .background(Circle().fill(.black.opacity(0.35)))
+    }
 }
 
 struct ArtifactRow: View {
     let artifact: Artifact
-    let url: URL
+    let store: ArtifactStore
+    let isSelecting: Bool
+    let isSelected: Bool
 
     var body: some View {
         HStack(spacing: 12) {
-            ArtifactThumbnail(artifact: artifact, url: url)
+            if isSelecting {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+            }
+
+            ArtifactThumbnail(artifact: artifact, store: store, size: CGSize(width: 44, height: 44))
                 .frame(width: 44, height: 44)
                 .background(Color(nsColor: .textBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 5))
@@ -382,13 +571,14 @@ struct ArtifactRow: View {
 
 private struct ArtifactThumbnail: View {
     let artifact: Artifact
-    let url: URL
+    let store: ArtifactStore
+    let size: CGSize
 
     @State private var image: NSImage?
 
     var body: some View {
         Group {
-            if artifact.kind == .image, let image {
+            if let image {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFill()
@@ -397,12 +587,8 @@ private struct ArtifactThumbnail: View {
             }
         }
         .clipped()
-        .task(id: url) {
-            guard artifact.kind == .image else {
-                return
-            }
-            let data = await Self.readData(url)
-            image = data.flatMap(NSImage.init(data:))
+        .task(id: artifact.id) {
+            image = await store.thumbnail(for: artifact, size: size)
         }
     }
 
@@ -420,11 +606,5 @@ private struct ArtifactThumbnail: View {
                 }
             }
         }
-    }
-
-    private static func readData(_ url: URL) async -> Data? {
-        await Task.detached(priority: .utility) {
-            try? Data(contentsOf: url)
-        }.value
     }
 }
