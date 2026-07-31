@@ -480,6 +480,30 @@ final class ChatViewModel: ObservableObject {
         pendingImageAttachments.append(attachment)
     }
 
+    func removeAttachment(sessionID: UUID, messageID: UUID, attachmentID: UUID) {
+        if sessionID == currentSessionID {
+            for index in messages.indices where messages[index].id == messageID {
+                messages[index].imageAttachments.removeAll { $0.id == attachmentID }
+                messages[index].generatedImages.removeAll { $0.id == attachmentID }
+            }
+            persistCurrentSession(updateTimestamp: false)
+            return
+        }
+
+        guard var session = storedSessions.first(where: { $0.id == sessionID })
+            ?? sessionStore.loadSession(id: sessionID)
+        else {
+            return
+        }
+        for index in session.messages.indices where session.messages[index].id == messageID {
+            session.messages[index].imageAttachments.removeAll { $0.id == attachmentID }
+            session.messages[index].generatedImages.removeAll { $0.id == attachmentID }
+        }
+        upsertStoredSession(session)
+        sessionStore.saveSession(session)
+        refreshSessionList()
+    }
+
     func renameSession(_ sessionID: UUID, to newTitle: String) {
         let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let index = storedSessions.firstIndex(where: { $0.id == sessionID }) else {
