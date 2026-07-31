@@ -151,19 +151,22 @@ public struct MLXChatMessage: Codable, Equatable, Sendable {
     public var reasoningContent: String?
     public var toolCalls: [MLXChatToolCall]?
     public var toolCallID: String?
+    public var name: String?
 
     public init(
         role: String,
         content: String?,
         reasoningContent: String? = nil,
         toolCalls: [MLXChatToolCall]? = nil,
-        toolCallID: String? = nil
+        toolCallID: String? = nil,
+        name: String? = nil
     ) {
         self.role = role
         self.content = content.map(MLXChatMessageContent.text)
         self.reasoningContent = reasoningContent
         self.toolCalls = toolCalls
         self.toolCallID = toolCallID
+        self.name = name
     }
 
     public init(
@@ -171,13 +174,15 @@ public struct MLXChatMessage: Codable, Equatable, Sendable {
         content: MLXChatMessageContent?,
         reasoningContent: String? = nil,
         toolCalls: [MLXChatToolCall]? = nil,
-        toolCallID: String? = nil
+        toolCallID: String? = nil,
+        name: String? = nil
     ) {
         self.role = role
         self.content = content
         self.reasoningContent = reasoningContent
         self.toolCalls = toolCalls
         self.toolCallID = toolCallID
+        self.name = name
     }
 
     public var textContent: String? {
@@ -191,6 +196,7 @@ public struct MLXChatMessage: Codable, Equatable, Sendable {
         case reasoning
         case toolCalls = "tool_calls"
         case toolCallID = "tool_call_id"
+        case name
     }
 
     public init(from decoder: Decoder) throws {
@@ -201,6 +207,7 @@ public struct MLXChatMessage: Codable, Equatable, Sendable {
             ?? container.decodeIfPresent(String.self, forKey: .reasoning)
         toolCalls = try container.decodeIfPresent([MLXChatToolCall].self, forKey: .toolCalls)
         toolCallID = try container.decodeIfPresent(String.self, forKey: .toolCallID)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -210,6 +217,7 @@ public struct MLXChatMessage: Codable, Equatable, Sendable {
         try container.encodeIfPresent(reasoningContent, forKey: .reasoningContent)
         try container.encodeIfPresent(toolCalls, forKey: .toolCalls)
         try container.encodeIfPresent(toolCallID, forKey: .toolCallID)
+        try container.encodeIfPresent(name, forKey: .name)
     }
 }
 

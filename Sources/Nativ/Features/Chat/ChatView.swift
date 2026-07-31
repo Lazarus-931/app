@@ -938,6 +938,8 @@ final class ChatViewModel: ObservableObject {
                 speaker = "You"
             case .assistant:
                 speaker = message.modelID.map { NativFormatting.truncateModelName($0, maxLength: 60) } ?? "Assistant"
+            case .tool:
+                speaker = "Tool"
             case .error:
                 speaker = "Error"
             }
@@ -1736,6 +1738,8 @@ private struct ChatMessageRow: View {
             return ""
         case .assistant:
             return message.modelID.map { NativFormatting.truncateModelName($0, maxLength: 42) } ?? "Assistant"
+        case .tool:
+            return "Tool"
         case .error:
             return "Error"
         }
@@ -1797,6 +1801,8 @@ private struct ChatMessageRow: View {
             return .accentColor
         case .assistant:
             return .clear
+        case .tool:
+            return .clear
         case .error:
             return Color(nsColor: .systemRed).opacity(0.12)
         }
@@ -1807,6 +1813,8 @@ private struct ChatMessageRow: View {
         case .user:
             return .clear
         case .assistant:
+            return .clear
+        case .tool:
             return .clear
         case .error:
             return Color(nsColor: .systemRed).opacity(0.45)
