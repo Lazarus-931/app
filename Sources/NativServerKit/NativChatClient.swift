@@ -361,6 +361,7 @@ public struct MLXChatCompletion: Equatable, Sendable {
     public let model: String?
     public let content: String
     public let reasoningContent: String?
+    public let toolCalls: [MLXChatToolCall]
     public let finishReason: String?
     public let usage: MLXChatUsage?
     public let requestElapsedSeconds: Double?
@@ -375,15 +376,18 @@ public struct MLXChatCompletion: Equatable, Sendable {
 public struct MLXChatStreamDelta: Equatable, Sendable {
     public let content: String?
     public let reasoningContent: String?
+    public let toolCalls: [MLXChatToolCall]?
     public let decodeTokensPerSecond: Double?
 
     public init(
         content: String? = nil,
         reasoningContent: String? = nil,
+        toolCalls: [MLXChatToolCall]? = nil,
         decodeTokensPerSecond: Double? = nil
     ) {
         self.content = content
         self.reasoningContent = reasoningContent
+        self.toolCalls = toolCalls
         self.decodeTokensPerSecond = decodeTokensPerSecond
     }
 }
@@ -607,13 +611,15 @@ public final class NativChatClient {
         }
         let resolvedContent = try validatedAssistantContent(
             content: choice.message.textContent ?? "",
-            reasoningContent: choice.message.reasoningContent
+            reasoningContent: choice.message.reasoningContent,
+            toolCalls: choice.message.toolCalls
         )
 
         return MLXChatCompletion(
             model: decoded.model,
             content: resolvedContent.content,
             reasoningContent: resolvedContent.reasoningContent,
+            toolCalls: choice.message.toolCalls ?? [],
             finishReason: choice.finishReason,
             usage: decoded.resolvedUsage,
             requestElapsedSeconds: Date().timeIntervalSince(requestStartedAt)
@@ -656,6 +662,7 @@ public final class NativChatClient {
         var usage: MLXChatUsage?
         var timings: MLXChatTimings?
         var responseModel: String?
+        var toolCallAccumulator = MLXChatToolCallAccumulator()
 
         for try await line in bytes.lines {
             try Task.checkCancellation()
@@ -685,6 +692,7 @@ public final class NativChatClient {
                 finishReason = choice.finishReason ?? finishReason
                 let contentDelta = choice.delta.textContent
                 let reasoningDelta = choice.delta.reasoningContent
+                let toolCallDeltas = choice.delta.toolCalls
                 let decodeTokensPerSecond = chunk.timings?.resolvedDecodeTokensPerSecond
                 if let contentDelta, !contentDelta.isEmpty {
                     content += contentDelta
@@ -692,13 +700,18 @@ public final class NativChatClient {
                 if let reasoningDelta, !reasoningDelta.isEmpty {
                     reasoningContent += reasoningDelta
                 }
+                if let toolCallDeltas, !toolCallDeltas.isEmpty {
+                    toolCallAccumulator.merge(toolCallDeltas)
+                }
                 if contentDelta?.isEmpty == false
                     || reasoningDelta?.isEmpty == false
+                    || toolCallDeltas?.isEmpty == false
                     || decodeTokensPerSecond != nil {
                     await onEvent(
                         MLXChatStreamDelta(
                             content: contentDelta,
                             reasoningContent: reasoningDelta,
+                            toolCalls: toolCallDeltas,
                             decodeTokensPerSecond: decodeTokensPerSecond
                         )
                     )
@@ -706,15 +719,18 @@ public final class NativChatClient {
             }
         }
 
+        let toolCalls = toolCallAccumulator.toolCalls
         let resolvedContent = try validatedAssistantContent(
             content: content,
-            reasoningContent: reasoningContent.isEmpty ? nil : reasoningContent
+            reasoningContent: reasoningContent.isEmpty ? nil : reasoningContent,
+            toolCalls: toolCalls.isEmpty ? nil : toolCalls
         )
 
         return MLXChatCompletion(
             model: responseModel,
             content: resolvedContent.content,
             reasoningContent: resolvedContent.reasoningContent,
+            toolCalls: toolCalls,
             finishReason: finishReason,
             usage: resolvedUsage(usage: usage, timings: timings),
             requestElapsedSeconds: Date().timeIntervalSince(requestStartedAt)
@@ -723,9 +739,10 @@ public final class NativChatClient {
 
     private func validatedAssistantContent(
         content: String,
-        reasoningContent: String?
+        reasoningContent: String?,
+        toolCalls: [MLXChatToolCall]?
     ) throws -> (content: String, reasoningContent: String?) {
-        if !content.isEmpty || reasoningContent?.isEmpty == false {
+        if !content.isEmpty || reasoningContent?.isEmpty == false || toolCalls?.isEmpty == false {
             return (content, reasoningContent)
         }
         throw NativChatError.missingAssistantContent
