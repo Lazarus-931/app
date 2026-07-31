@@ -188,15 +188,18 @@ struct ArtifactsView: View {
         }
     }
 
-    private func dataURL(for artifact: Artifact) -> String? {
+    private func dataURL(for artifact: Artifact) async -> String? {
         guard artifact.kind == .image else {
             return nil
         }
         let url = store.fileURL(for: artifact)
-        guard let data = try? Data(contentsOf: url) else {
-            return nil
-        }
-        return "data:\(artifact.mimeType);base64,\(data.base64EncodedString())"
+        let mimeType = artifact.mimeType
+        return await Task.detached(priority: .utility) {
+            guard let data = try? Data(contentsOf: url) else {
+                return nil
+            }
+            return "data:\(mimeType);base64,\(data.base64EncodedString())"
+        }.value
     }
 
     var body: some View {
