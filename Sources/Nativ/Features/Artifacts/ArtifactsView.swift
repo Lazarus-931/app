@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import PDFKit
 import SwiftUI
 
 enum ArtifactLayout {
@@ -171,7 +172,8 @@ struct ArtifactsView: View {
                 artifacts: store.artifacts,
                 model: config.modelID,
                 client: config.client,
-                visualURLs: visualDataURLs(for:)
+                visualURLs: visualDataURLs(for:),
+                textChunks: documentTextChunks(for:)
             )
             if Task.isCancelled {
                 return
@@ -182,6 +184,47 @@ struct ArtifactsView: View {
             }
             semanticMatches = matches
         }
+    }
+
+    private func documentTextChunks(for artifact: Artifact) async -> [String] {
+        guard artifact.kind == .document else {
+            return []
+        }
+        let url = store.fileURL(for: artifact)
+        let ext = artifact.fileExtension.lowercased()
+        return await Task.detached(priority: .utility) {
+            let raw: String
+            if ext == "pdf" {
+                guard let document = PDFDocument(url: url), let string = document.string else {
+                    return []
+                }
+                raw = string
+            } else {
+                guard let string = try? String(contentsOf: url, encoding: .utf8) else {
+                    return []
+                }
+                raw = string
+            }
+            return Self.chunkedText(raw, maxChunks: 8, chunkSize: 1200)
+        }.value
+    }
+
+    private static func chunkedText(_ text: String, maxChunks: Int, chunkSize: Int) -> [String] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return []
+        }
+        var chunks: [String] = []
+        var start = trimmed.startIndex
+        while start < trimmed.endIndex, chunks.count < maxChunks {
+            let end = trimmed.index(start, offsetBy: chunkSize, limitedBy: trimmed.endIndex) ?? trimmed.endIndex
+            let piece = trimmed[start..<end].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !piece.isEmpty {
+                chunks.append(piece)
+            }
+            start = end
+        }
+        return chunks
     }
 
     private func visualDataURLs(for artifact: Artifact) async -> [String] {
