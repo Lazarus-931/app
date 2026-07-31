@@ -198,7 +198,7 @@ struct ArtifactsView: View {
                 spacing: 14
             ) {
                 ForEach(artifacts) { artifact in
-                    ArtifactTile(artifact: artifact, url: store.fileURL(artifact))
+                    ArtifactTile(artifact: artifact, url: store.fileURL(for: artifact))
                         .onTapGesture { previewID = artifact.id }
                         .contextMenu { menu(for: artifact) }
                 }
@@ -211,7 +211,7 @@ struct ArtifactsView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(artifacts) { artifact in
-                    ArtifactRow(artifact: artifact, url: store.fileURL(artifact))
+                    ArtifactRow(artifact: artifact, url: store.fileURL(for: artifact))
                         .onTapGesture { previewID = artifact.id }
                         .contextMenu { menu(for: artifact) }
                     Divider()
