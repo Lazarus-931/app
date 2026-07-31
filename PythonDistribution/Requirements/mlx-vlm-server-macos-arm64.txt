@@ -34,9 +34,10 @@ mlx-embeddings==0.1.0
 mlx-lm==0.31.3
 # DEV: fork mlx with the CPU fast path (bf16 SIMD, threading, int8 SDOT) and
 # mlx-vlm with --device selection (CPU+GPU dual inference) plus the /v1/embeddings
-# endpoint. Source builds include the Metal backend, so mlx-metal is not pinned.
+# endpoint, including image embeddings and the quantized embedding loader.
+# Source builds include the Metal backend, so mlx-metal is not pinned.
 mlx @ git+https://github.com/Lazarus-931/mlx.git@pr/cpu-fast-path
-mlx-vlm @ git+https://github.com/Lazarus-931/mlx-vlm.git@d530835feb2b8bcf70c912abc5f5a5324f5f11aa
+mlx-vlm @ git+https://github.com/Lazarus-931/mlx-vlm.git@a8312ff9e696d386c6e09deb07f3015872281b1a
 multidict==6.7.1
 multiprocess==0.70.19
 numpy==2.4.4
