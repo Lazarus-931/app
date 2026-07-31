@@ -254,6 +254,16 @@ struct ChatView: View {
             followsLatestMessage = true
             transcriptScrollPosition.scrollTo(edge: .bottom)
         }
+        .onChange(of: chat.scrollTargetMessageID) { _, target in
+            guard let target else {
+                return
+            }
+            followsLatestMessage = false
+            DispatchQueue.main.async {
+                transcriptScrollPosition.scrollTo(id: target, anchor: .center)
+                chat.scrollTargetMessageID = nil
+            }
+        }
         .onAppear {
             followsLatestMessage = true
             transcriptScrollPosition.scrollTo(edge: .bottom)
@@ -323,6 +333,7 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var activeRequestSessionID: UUID?
     @Published private(set) var sendingStartedAt: Date?
     @Published private(set) var scrollToken = 0
+    @Published var scrollTargetMessageID: UUID?
     @Published var targetDevice: ChatInferenceDevice = .gpu
     @Published var activeModelIsImageGeneration = false
     @Published var imageGenerationWidth = 1024
@@ -463,6 +474,10 @@ final class ChatViewModel: ObservableObject {
             pendingImageAttachments.removeAll()
             applyCurrentSession(session)
         }
+    }
+
+    func stageAttachment(_ attachment: ChatImageAttachment) {
+        pendingImageAttachments.append(attachment)
     }
 
     func renameSession(_ sessionID: UUID, to newTitle: String) {
@@ -662,7 +677,7 @@ final class ChatViewModel: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.image]
+        panel.allowedContentTypes = [.image, .movie, .pdf, .plainText, .rtf, .spreadsheet, .presentation]
 
         guard panel.runModal() == .OK else {
             return
@@ -2155,7 +2170,7 @@ private struct ChatImageAttachmentView: View {
                     .frame(width: size.width, height: size.height)
             } else {
                 VStack(spacing: 8) {
-                    Image(systemName: "photo")
+                    Image(systemName: ArtifactKind.resolve(mimeType: attachment.mimeType, filename: attachment.filename).systemImage)
                         .font(.title2)
                     Text(attachment.filename)
                         .font(.caption)

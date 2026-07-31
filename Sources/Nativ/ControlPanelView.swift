@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 enum ControlPanelTab: String, CaseIterable, Identifiable {
     case chat = "Chat"
+    case artifacts = "Artifacts"
     case audio = "Audio"
     case dashboard = "Dashboard"
     case system = "System"
@@ -13,7 +14,7 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     case settings = "Settings"
 
     static var allCases: [ControlPanelTab] {
-        [.chat, .audio, .dashboard, .system, .models, .integrations, .developer]
+        [.chat, .artifacts, .audio, .dashboard, .system, .models, .integrations, .developer]
     }
 
     var id: String { rawValue }
@@ -22,6 +23,8 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
         switch self {
         case .chat:
             "bubble.left.and.bubble.right"
+        case .artifacts:
+            "photo.on.rectangle.angled"
         case .audio:
             "waveform.badge.mic"
         case .dashboard:
@@ -151,6 +154,7 @@ struct ControlPanelView: View {
     @ObservedObject var navigation: ControlPanelNavigation
     @ObservedObject var runtime: SystemRuntimeMonitor
     @StateObject private var chat = ChatViewModel()
+    @StateObject private var artifacts = ArtifactStore()
     @StateObject private var dashboard = DashboardViewModel()
     @StateObject private var systemMonitor = SystemMonitorStore()
     @ObservedObject private var downloads = HuggingFaceDownloadManager.shared
@@ -950,6 +954,20 @@ struct ControlPanelView: View {
                         chat: chat,
                         showsConfiguration: $isChatConfigurationVisible,
                         isFullScreen: isFullScreen
+                    )
+                case .artifacts:
+                    ArtifactsView(
+                        store: artifacts,
+                        onOpenChat: { artifact in
+                            applySidebarSelection(.chat(artifact.sessionID))
+                            chat.scrollTargetMessageID = artifact.messageID
+                        },
+                        onUseInChat: { artifact in
+                            if let attachment = artifacts.chatAttachment(for: artifact) {
+                                chat.stageAttachment(attachment)
+                            }
+                            applySidebarSelection(.tab(.chat))
+                        }
                     )
                 case .audio:
                     AudioView(
