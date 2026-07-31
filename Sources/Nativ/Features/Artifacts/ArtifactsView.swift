@@ -150,20 +150,6 @@ struct ArtifactsView: View {
         }
     }
 
-    private func indexArtifacts() {
-        guard let config = semanticSearch, config.isModelInstalled else {
-            return
-        }
-        Task {
-            await searchIndex.index(
-                artifacts: store.artifacts,
-                model: config.modelID,
-                client: config.client,
-                dataURL: dataURL(for:)
-            )
-        }
-    }
-
     private func scheduleSemanticSearch() {
         searchDebounce?.cancel()
         guard let config = semanticSearch, config.isModelInstalled else {
@@ -177,6 +163,15 @@ struct ArtifactsView: View {
         }
         searchDebounce = Task {
             try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled {
+                return
+            }
+            await searchIndex.index(
+                artifacts: store.artifacts,
+                model: config.modelID,
+                client: config.client,
+                dataURL: dataURL(for:)
+            )
             if Task.isCancelled {
                 return
             }
@@ -212,9 +207,6 @@ struct ArtifactsView: View {
             filterBar
             Divider()
             contentView
-        }
-        .task(id: store.artifacts.count) {
-            indexArtifacts()
         }
         .onChange(of: search) { _, _ in
             scheduleSemanticSearch()

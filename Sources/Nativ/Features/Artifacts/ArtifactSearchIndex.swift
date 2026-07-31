@@ -40,6 +40,9 @@ final class ArtifactSearchIndex: ObservableObject {
         vectors = vectors.filter { liveIDs.contains($0.key) }
 
         for artifact in artifacts where vectors[artifact.id] == nil {
+            if Task.isCancelled {
+                break
+            }
             if let vector = await Self.embed(artifact: artifact, model: model, client: client, dataURL: dataURL) {
                 vectors[artifact.id] = vector
                 indexedCount = vectors.count
