@@ -33,7 +33,7 @@ final class ArtifactSearchIndex: ObservableObject {
         artifacts: [Artifact],
         model: String,
         client: NativEmbeddingsClient,
-        dataURL: @escaping (Artifact) async -> String?
+        visualURLs: @escaping (Artifact) async -> [String]
     ) async {
         guard !isIndexing else {
             return
@@ -48,7 +48,7 @@ final class ArtifactSearchIndex: ObservableObject {
             if Task.isCancelled {
                 break
             }
-            if let components = await Self.embed(artifact: artifact, model: model, client: client, dataURL: dataURL) {
+            if let components = await Self.embed(artifact: artifact, model: model, client: client, visualURLs: visualURLs) {
                 vectors[artifact.id] = components
                 indexedCount = vectors.count
             }
@@ -87,16 +87,17 @@ final class ArtifactSearchIndex: ObservableObject {
         artifact: Artifact,
         model: String,
         client: NativEmbeddingsClient,
-        dataURL: (Artifact) async -> String?
+        visualURLs: (Artifact) async -> [String]
     ) async -> [[Float]]? {
         let metadata = [artifact.filename, artifact.sessionTitle, artifact.prompt ?? ""]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
 
         var components: [[Float]] = []
-        if artifact.kind == .image, let url = await dataURL(artifact),
-           let imageVector = try? await client.embed(dataURL: url, model: model) {
-            components.append(normalized(imageVector))
+        for url in await visualURLs(artifact) {
+            if let vector = try? await client.embed(dataURL: url, model: model) {
+                components.append(normalized(vector))
+            }
         }
         if !metadata.isEmpty, let textVector = try? await client.embed(text: metadata, model: model) {
             components.append(normalized(textVector))
