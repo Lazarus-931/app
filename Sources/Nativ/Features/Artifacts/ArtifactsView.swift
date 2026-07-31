@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SwiftUI
 
 enum ArtifactLayout {
@@ -170,7 +171,7 @@ struct ArtifactsView: View {
                 artifacts: store.artifacts,
                 model: config.modelID,
                 client: config.client,
-                dataURL: dataURL(for:)
+                visualURLs: visualDataURLs(for:)
             )
             if Task.isCancelled {
                 return
@@ -183,17 +184,53 @@ struct ArtifactsView: View {
         }
     }
 
-    private func dataURL(for artifact: Artifact) async -> String? {
-        guard artifact.kind == .image else {
-            return nil
-        }
+    private func visualDataURLs(for artifact: Artifact) async -> [String] {
         let url = store.fileURL(for: artifact)
-        let mimeType = artifact.mimeType
-        return await Task.detached(priority: .utility) {
-            guard let data = try? Data(contentsOf: url) else {
-                return nil
+        switch artifact.kind {
+        case .image:
+            let mimeType = artifact.mimeType
+            return await Task.detached(priority: .utility) {
+                guard let data = try? Data(contentsOf: url) else {
+                    return []
+                }
+                return ["data:\(mimeType);base64,\(data.base64EncodedString())"]
+            }.value
+        case .video:
+            return await Self.videoFrameDataURLs(url: url, count: 4)
+        case .document:
+            return []
+        }
+    }
+
+    private static func videoFrameDataURLs(url: URL, count: Int) async -> [String] {
+        await Task.detached(priority: .utility) {
+            let asset = AVURLAsset(url: url)
+            guard let duration = try? await asset.load(.duration) else {
+                return []
             }
-            return "data:\(mimeType);base64,\(data.base64EncodedString())"
+            let seconds = CMTimeGetSeconds(duration)
+            guard seconds.isFinite, seconds > 0 else {
+                return []
+            }
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 512, height: 512)
+            generator.requestedTimeToleranceBefore = .positiveInfinity
+            generator.requestedTimeToleranceAfter = .positiveInfinity
+
+            var urls: [String] = []
+            for index in 0..<count {
+                let fraction = (Double(index) + 0.5) / Double(count)
+                let time = CMTime(seconds: seconds * fraction, preferredTimescale: 600)
+                guard let cgImage = try? await generator.image(at: time).image else {
+                    continue
+                }
+                let rep = NSBitmapImageRep(cgImage: cgImage)
+                if let data = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) {
+                    urls.append("data:image/jpeg;base64,\(data.base64EncodedString())")
+                }
+            }
+            return urls
         }.value
     }
 
