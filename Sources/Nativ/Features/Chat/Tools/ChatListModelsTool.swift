@@ -55,8 +55,8 @@ struct ChatModelLibraryToolExecutor {
                 ChatModelLibraryToolResultPayload.Model(
                     repoID: model.repoID,
                     sizeGB: model.sizeBytes.map(gigabytes),
-                    parameterCount: model.parameterCount,
-                    quantizationBits: model.quantizationBits,
+                    parameterCount: nil,
+                    quantizationBits: nil,
                     capabilities: model.capabilities.map(\.rawValue).sorted()
                 )
             },
