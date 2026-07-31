@@ -181,8 +181,8 @@ struct ControlPanelView: View {
     @State private var hoveredFooterControl: FooterControl?
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
 
-    private static let embeddingModelID = "jinaai/jina-vlm-mlx"
-    private static let embeddingModelSize: Int64 = 2_150_000_000
+    private static let embeddingModelID = "arthurcollet/Qwen3-VL-Embedding-2B-mlx-4bit"
+    private static let embeddingModelSize: Int64 = 1_800_000_000
 
     private var artifactSemanticSearch: ArtifactSemanticSearchConfig {
         let settings = model.settings.normalized()
