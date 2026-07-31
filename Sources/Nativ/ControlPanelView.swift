@@ -1,4 +1,5 @@
 import AppKit
+import NativServerKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -158,6 +159,7 @@ struct ControlPanelView: View {
     @StateObject private var dashboard = DashboardViewModel()
     @StateObject private var systemMonitor = SystemMonitorStore()
     @ObservedObject private var downloads = HuggingFaceDownloadManager.shared
+    @StateObject private var embeddingLibrary = LocalModelLibrary()
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var showsNavigationPanel = false
@@ -178,6 +180,39 @@ struct ControlPanelView: View {
     @State private var reorderInsertAfter = false
     @State private var hoveredFooterControl: FooterControl?
     private let sidebarItemInsets = EdgeInsets(top: -1, leading: 0, bottom: -1, trailing: 0)
+
+    private static let embeddingModelID = "jinaai/jina-vlm-mlx"
+    private static let embeddingModelSize: Int64 = 2_150_000_000
+
+    private var artifactSemanticSearch: ArtifactSemanticSearchConfig {
+        let settings = model.settings.normalized()
+        let baseURL = URL(string: "http://127.0.0.1:\(settings.serverPort)")
+            ?? URL(string: "http://127.0.0.1:8080")!
+        let modelID = Self.embeddingModelID
+        return ArtifactSemanticSearchConfig(
+            modelID: modelID,
+            sizeBytes: Self.embeddingModelSize,
+            client: NativEmbeddingsClient(baseURL: baseURL, apiKey: settings.serverAPIKey),
+            isModelInstalled: embeddingLibrary.models.contains { $0.repoID == modelID },
+            isDownloading: downloads.isDownloading(modelID),
+            downloadProgress: downloads.progress(for: modelID),
+            onEnable: {
+                downloads.download(
+                    repoID: modelID,
+                    sizeBytes: Self.embeddingModelSize,
+                    cachePath: settings.modelSearchPath,
+                    token: model.effectiveHuggingFaceToken
+                ) {
+                    embeddingLibrary.scan(
+                        path: settings.modelSearchPath,
+                        additionalPaths: settings.additionalModelSearchPaths
+                    )
+                    NotificationCenter.default.post(name: .localModelLibraryDidChange, object: nil)
+                }
+                navigation.open(.models)
+            }
+        )
+    }
 
     var body: some View {
         Group {
@@ -221,6 +256,10 @@ struct ControlPanelView: View {
             artifacts.onDeleteAttachment = { sessionID, messageID, attachmentID in
                 chat.removeAttachment(sessionID: sessionID, messageID: messageID, attachmentID: attachmentID)
             }
+            embeddingLibrary.scan(
+                path: model.settings.modelSearchPath,
+                additionalPaths: model.settings.normalized().additionalModelSearchPaths
+            )
         }
         .onReceive(navigation.$requestedTab) { tab in
             guard let tab else { return }
@@ -961,6 +1000,7 @@ struct ControlPanelView: View {
                 case .artifacts:
                     ArtifactsView(
                         store: artifacts,
+                        semanticSearch: artifactSemanticSearch,
                         onOpenChat: { artifact in
                             applySidebarSelection(.chat(artifact.sessionID))
                             chat.scrollTargetMessageID = artifact.messageID
