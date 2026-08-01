@@ -614,21 +614,23 @@ struct ArtifactsView: View {
                 }
             }
 
-            Picker("", selection: $groupByChat) {
-                Text("By Date").tag(false)
-                Text("By Chat").tag(true)
-            }
-            .labelsHidden()
-            .frame(width: 108)
-
-            Picker("", selection: $sort) {
-                ForEach(ArtifactSort.allCases) { option in
-                    Text(option.rawValue).tag(option)
+            Menu {
+                Picker("Group", selection: $groupByChat) {
+                    Text("By Chat").tag(true)
+                    Text("By Date").tag(false)
                 }
+                if !groupByChat {
+                    Divider()
+                    Picker("Sort", selection: $sort) {
+                        ForEach(ArtifactSort.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                }
+            } label: {
+                Text(groupByChat ? "By Chat" : "By Date · \(sort.rawValue)")
             }
-            .labelsHidden()
-            .frame(width: 120)
-            .disabled(groupByChat)
+            .fixedSize()
 
             if !groupByChat {
                 Picker("", selection: $layout) {
