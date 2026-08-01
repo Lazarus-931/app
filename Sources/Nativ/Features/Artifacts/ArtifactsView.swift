@@ -544,8 +544,8 @@ struct ArtifactsView: View {
 
     private func grid(_ artifacts: [Artifact]) -> some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 172, maximum: 220), spacing: 14)],
-            spacing: 14
+            columns: [GridItem(.adaptive(minimum: 172, maximum: 220), spacing: 18)],
+            spacing: 18
         ) {
             ForEach(artifacts) { artifact in
                 ArtifactTile(
@@ -630,13 +630,15 @@ struct ArtifactsView: View {
             .frame(width: 120)
             .disabled(groupByChat)
 
-            Picker("", selection: $layout) {
-                Image(systemName: "square.grid.2x2").tag(ArtifactLayout.grid)
-                Image(systemName: "list.bullet").tag(ArtifactLayout.list)
+            if !groupByChat {
+                Picker("", selection: $layout) {
+                    Image(systemName: "square.grid.2x2").tag(ArtifactLayout.grid)
+                    Image(systemName: "list.bullet").tag(ArtifactLayout.list)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 84)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 84)
 
             Button(action: store.refresh) {
                 Image(systemName: "arrow.clockwise")
@@ -674,23 +676,26 @@ struct ArtifactsView: View {
             Button {
                 ArtifactShare.present(urls: selectedArtifacts.map { store.fileURL(for: $0) })
             } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
+                Image(systemName: "square.and.arrow.up")
             }
+            .help("Share")
             .disabled(selection.isEmpty)
 
             Button {
                 store.exportToDirectory(selectedArtifacts)
             } label: {
-                Label("Export", systemImage: "square.and.arrow.down")
+                Image(systemName: "square.and.arrow.down")
             }
+            .help("Export")
             .disabled(selection.isEmpty)
 
             Button(role: .destructive) {
                 pendingDelete = selectedArtifacts
                 isConfirmingDelete = true
             } label: {
-                Label("Delete", systemImage: "trash")
+                Image(systemName: "trash")
             }
+            .help("Delete")
             .disabled(selection.isEmpty)
         }
         .padding(.horizontal, 24)
@@ -700,6 +705,8 @@ struct ArtifactsView: View {
 
     private var filterBar: some View {
         HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
             filterChip(title: "All", isOn: kindFilter == nil && sourceFilter == nil) {
                 kindFilter = nil
                 sourceFilter = nil
@@ -746,8 +753,9 @@ struct ArtifactsView: View {
             }
             .menuIndicator(.hidden)
             .fixedSize()
-
-            Spacer(minLength: 12)
+                }
+                .padding(.vertical, 2)
+            }
 
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
@@ -870,6 +878,8 @@ struct ArtifactsView: View {
                 }
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                    .fixedSize()
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
