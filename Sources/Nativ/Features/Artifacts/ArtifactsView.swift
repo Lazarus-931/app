@@ -98,6 +98,7 @@ struct ArtifactsView: View {
     @State private var renameText = ""
     @State private var cursorID: Artifact.ID?
     @FocusState private var gridFocused: Bool
+    @FocusState private var searchFocused: Bool
 
     private var filtered: [Artifact] {
         var result = store.artifacts
@@ -777,6 +778,7 @@ struct ArtifactsView: View {
                     .foregroundStyle(.secondary)
                 TextField("Search name or prompt", text: $search)
                     .textFieldStyle(.plain)
+                    .focused($searchFocused)
                     .frame(width: 200)
                 if !search.isEmpty {
                     Button {
@@ -852,6 +854,7 @@ struct ArtifactsView: View {
     }
 
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        guard !searchFocused else { return .ignored }
         let items = filtered
         guard !items.isEmpty else { return .ignored }
         let index = cursorID.flatMap { id in items.firstIndex { $0.id == id } }
