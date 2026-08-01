@@ -156,7 +156,21 @@ struct ChatComposer: View {
                             }
                         }
                         .padding(.vertical, 1)
+                        .opacity(modelLacksVision ? 0.5 : 1)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                }
+
+                if !viewModel.pendingImageAttachments.isEmpty, modelLacksVision {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("The current model can't see images — load a vision model to use them.")
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.system(size: 11))
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
                 }
@@ -380,6 +394,11 @@ struct ChatComposer: View {
         return localLibrary.models.first {
             $0.repoID == selectedModelID || $0.serverModelIdentifier == selectedModelID
         }
+    }
+
+    private var modelLacksVision: Bool {
+        guard let model = selectedLocalModel else { return false }
+        return !model.capabilities.contains(.vision)
     }
 
     private var selectedModelIsImageGeneration: Bool {
