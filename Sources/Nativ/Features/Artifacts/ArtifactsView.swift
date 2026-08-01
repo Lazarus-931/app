@@ -615,10 +615,11 @@ struct ArtifactsView: View {
             }
 
             Menu {
-                Picker("Group", selection: $groupByChat) {
+                Picker("", selection: $groupByChat) {
                     Text("By Chat").tag(true)
                     Text("By Date").tag(false)
                 }
+                .pickerStyle(.inline)
                 if !groupByChat {
                     Divider()
                     Picker("Sort", selection: $sort) {
@@ -626,6 +627,7 @@ struct ArtifactsView: View {
                             Text(option.rawValue).tag(option)
                         }
                     }
+                    .pickerStyle(.inline)
                 }
             } label: {
                 Text(groupByChat ? "By Chat" : "By Date · \(sort.rawValue)")
@@ -758,6 +760,17 @@ struct ArtifactsView: View {
                 }
                 .padding(.vertical, 2)
             }
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: 0.88),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
 
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
@@ -782,6 +795,7 @@ struct ArtifactsView: View {
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
             )
+            .shadow(color: .black.opacity(0.12), radius: 6, x: -3, y: 0)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 12)
