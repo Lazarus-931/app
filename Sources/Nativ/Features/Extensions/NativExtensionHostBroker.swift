@@ -161,13 +161,13 @@ final class NativExtensionHostBroker:
                 apiKey: configuration.serverAPIKey
             )
             .transcribe(
-                transcriptionRequest.audioData,
+                audioData: transcriptionRequest.audioData,
                 fileName: transcriptionRequest.fileName,
                 model: modelID
             )
             return try JSONEncoder().encode(
                 NativExtensionTranscriptionResponse(
-                    text: result,
+                    text: result.text,
                     modelID: modelID
                 )
             )

@@ -1761,17 +1761,9 @@ struct AudioView: View {
                 guard newValue != selectedModelID ?? "" else {
                     return
                 }
-                if newValue.isEmpty {
-                    model.switchPreloadedModel(to: nil, for: .speechToText)
-                } else if let localModel = speechModels.first(where: {
-                    $0.repoID == newValue
-                }) {
-                    model.requestPreloadedModelSwitch(
-                        to: localModel,
-                        for: .speechToText,
-                        availableModels: localLibrary.models
-                    )
-                }
+                var settings = model.settings
+                settings.speechToTextModelID = newValue.isEmpty ? nil : newValue
+                model.settings = settings
             }
         )
     }

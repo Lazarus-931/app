@@ -381,6 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 modelSearchPath: settings.modelSearchPath,
                 additionalModelSearchPaths: settings.additionalModelSearchPaths,
                 selectedModelID: settings.speechToTextModelID,
+                languageModelID: settings.languageModelID,
                 serverBaseURL: URL(string: "http://127.0.0.1:\(settings.serverPort)")
                     ?? URL(string: "http://127.0.0.1:8080")!,
                 serverAPIKey: settings.serverAPIKey,
