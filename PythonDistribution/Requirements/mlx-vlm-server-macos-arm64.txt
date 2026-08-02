@@ -64,6 +64,8 @@ six==1.17.0
 sounddevice==0.5.5
 starlette>=1.0.1
 tokenizers==0.22.2
+torch
+torchvision
 tqdm==4.67.3
 transformers
 typer==0.25.1
