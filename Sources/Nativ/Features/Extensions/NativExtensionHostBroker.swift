@@ -167,7 +167,7 @@ final class NativExtensionHostBroker:
             )
             return try JSONEncoder().encode(
                 NativExtensionTranscriptionResponse(
-                    text: result.text,
+                    text: result,
                     modelID: modelID
                 )
             )
