@@ -244,6 +244,7 @@ struct ArtifactsView: View {
             if Task.isCancelled {
                 return
             }
+            await Task.detached { config.prepareModel() }.value
             await searchIndex.index(
                 artifacts: store.artifacts,
                 model: config.modelID,
@@ -606,15 +607,6 @@ struct ArtifactsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Spacer(minLength: 0)
-
-            Button(isSelecting ? "Done" : "Select") {
-                isSelecting.toggle()
-                if !isSelecting {
-                    selection.removeAll()
-                }
-            }
-
             Menu {
                 Picker("", selection: $groupByChat) {
                     Text("By Chat").tag(true)
@@ -643,6 +635,15 @@ struct ArtifactsView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 84)
+            }
+
+            Spacer(minLength: 0)
+
+            Button(isSelecting ? "Done" : "Select") {
+                isSelecting.toggle()
+                if !isSelecting {
+                    selection.removeAll()
+                }
             }
 
             Button(action: store.refresh) {
