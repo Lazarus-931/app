@@ -89,7 +89,6 @@ struct ChatComposer: View {
     let canCompose: Bool
     let canSend: Bool
     let onSend: () -> Void
-    var onStartVoice: () -> Void = {}
     @State private var editorContentHeight: CGFloat = 0
     @State private var didApplyInitialReasoningDefault = false
     private let textInset = EdgeInsets(top: 14, leading: 14, bottom: 10, trailing: 14)
@@ -230,37 +229,23 @@ struct ChatComposer: View {
                     .buttonStyle(.plain)
                     .help(dictation.isRecording ? "Stop dictation" : "Dictate")
 
-                    if !showsStopButton && !canSend && selectedModelSupportsVoice {
-                        Button(action: onStartVoice) {
-                            Image(systemName: "waveform")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
-                                .background(Color.accentColor, in: Circle())
-                                .contentShape(.circle)
+                    Button {
+                        if showsStopButton {
+                            viewModel.cancel()
+                        } else {
+                            onSend()
                         }
-                        .buttonStyle(.plain)
-                        .help("Start voice conversation")
-                        .accessibilityLabel("Start voice conversation")
-                    } else {
-                        Button {
-                            if showsStopButton {
-                                viewModel.cancel()
-                            } else {
-                                onSend()
-                            }
-                        } label: {
-                            Image(systemName: showsStopButton ? "stop.fill" : "arrow.up")
-                                .font(.system(size: showsStopButton ? 10 : 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
-                                .background(actionButtonColor, in: Circle())
-                                .contentShape(.circle)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!showsStopButton && !canSend)
-                        .help(showsStopButton ? "Stop response" : "Send (Return)")
+                    } label: {
+                        Image(systemName: showsStopButton ? "stop.fill" : "arrow.up")
+                            .font(.system(size: showsStopButton ? 10 : 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(actionButtonColor, in: Circle())
+                            .contentShape(.circle)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(!showsStopButton && !canSend)
+                    .help(showsStopButton ? "Stop response" : "Send (Return)")
                 }
                 .padding(.leading, 10)
                 .padding(.trailing, 12)

@@ -40,25 +40,6 @@ struct ChatView: View {
     @State private var composerHeight: CGFloat = 0
     @State private var followsLatestMessage = true
     @State private var isUserScrollingTranscript = false
-    @State private var showVoiceSession = false
-    @StateObject private var tts = TextToSpeechService()
-    @StateObject private var voiceController = VoiceSessionController()
-
-    private var readAloudModelID: String? {
-        let trimmed = model.settings.normalized().textToSpeechModelID?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (trimmed?.isEmpty == false) ? trimmed : nil
-    }
-
-    private var textToSpeechBaseURL: URL {
-        let settings = model.settings.normalized()
-        let port = settings.textToSpeechDevice == .cpu && model.cpuIsRunning
-            ? settings.cpuServerPort
-            : settings.serverPort
-        return URL(string: "http://127.0.0.1:\(port)")
-            ?? URL(string: "http://127.0.0.1:8080")!
-    }
-
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
@@ -72,9 +53,6 @@ struct ChatView: View {
                             canSend: canSend,
                             onSend: {
                                 chat.send(using: model)
-                            },
-                            onStartVoice: {
-                                startVoiceSession()
                             }
                         )
                         .frame(maxWidth: Layout.conversationMaxWidth)
@@ -116,26 +94,6 @@ struct ChatView: View {
             }
             .padding(.top, 12)
             .padding(.trailing, 22)
-        }
-        .overlay {
-            if showVoiceSession {
-                VoiceSessionOverlay(controller: voiceController, onEnd: endVoiceSession)
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: showVoiceSession)
-    }
-
-    private func startVoiceSession() {
-        voiceController.start(chat: chat, model: model)
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showVoiceSession = true
-        }
-    }
-
-    private func endVoiceSession() {
-        voiceController.stop()
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showVoiceSession = false
         }
     }
 
@@ -209,11 +167,7 @@ struct ChatView: View {
                 } else {
                     ForEach(chat.visibleMessages) { message in
                         ChatMessageRow(
-                            message: message,
-                            tts: tts,
-                            ttsModelID: readAloudModelID,
-                            serverBaseURL: textToSpeechBaseURL,
-                            serverAPIKey: model.settings.serverAPIKey
+                            message: message
                         )
                         .id(message.id)
                     }
@@ -268,37 +222,10 @@ struct ChatView: View {
             followsLatestMessage = true
             transcriptScrollPosition.scrollTo(edge: .bottom)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .readLastAssistantMessage)) { _ in
-            readLastAssistantMessage()
-        }
-        .onChange(of: tts.speakingMessageID) { _, messageID in
-            voiceController.setReadAloudPlaying(messageID != nil)
-        }
     }
 
     private func isAtTranscriptBottom(_ geometry: ScrollGeometry) -> Bool {
         geometry.visibleRect.maxY >= geometry.contentSize.height - 8
-    }
-
-    private func readLastAssistantMessage() {
-        guard let ttsModelID = readAloudModelID,
-              let message = chat.visibleMessages.last(where: {
-                  $0.role == .assistant && !$0.isStreaming && !$0.content.isEmpty
-              })
-        else {
-            return
-        }
-        if tts.isSpeaking(messageID: message.id) {
-            tts.stop()
-        } else {
-            tts.speak(
-                message.content,
-                model: ttsModelID,
-                baseURL: textToSpeechBaseURL,
-                apiKey: model.settings.serverAPIKey,
-                messageID: message.id
-            )
-        }
     }
 }
 
@@ -1599,10 +1526,6 @@ private struct ChatMessageRow: View {
     private static let maximumUserBubbleWidth: CGFloat = 560
 
     let message: ChatTranscriptMessage
-    @ObservedObject var tts: TextToSpeechService
-    let ttsModelID: String?
-    let serverBaseURL: URL
-    let serverAPIKey: String?
     @State private var didCopyResponse = false
     @State private var isHoveringMessage = false
 
@@ -1667,20 +1590,13 @@ private struct ChatMessageRow: View {
                         onCopy: copyResponse
                     )
 
-                    if ttsModelID != nil {
-                        ChatReadAloudButton(
-                            isSpeaking: isReadingAloud,
-                            onToggle: toggleReadAloud
-                        )
-                    }
-
                     Text(message.createdAt, format: .dateTime.hour().minute())
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
                 }
-                .opacity(isHoveringMessage || didCopyResponse || isReadingAloud ? 1 : 0)
-                .accessibilityHidden(!isHoveringMessage && !didCopyResponse && !isReadingAloud)
+                .opacity(isHoveringMessage || didCopyResponse ? 1 : 0)
+                .accessibilityHidden(!isHoveringMessage && !didCopyResponse)
             }
         }
         .frame(maxWidth: .infinity, alignment: rowAlignment)
@@ -1858,24 +1774,6 @@ private struct ChatMessageRow: View {
             && !message.content.isEmpty
     }
 
-    private var isReadingAloud: Bool {
-        tts.isSpeaking(messageID: message.id)
-    }
-
-    private func toggleReadAloud() {
-        if isReadingAloud {
-            tts.stop()
-        } else if let ttsModelID {
-            tts.speak(
-                message.content,
-                model: ttsModelID,
-                baseURL: serverBaseURL,
-                apiKey: serverAPIKey,
-                messageID: message.id
-            )
-        }
-    }
-
     private func copyResponse() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -1950,32 +1848,6 @@ private struct ChatCopyResponseButton: View {
         .onHover { isHovering = $0 }
         .animation(.easeInOut(duration: 0.12), value: isHovering)
         .animation(.easeInOut(duration: 0.15), value: didCopy)
-    }
-}
-
-private struct ChatReadAloudButton: View {
-    let isSpeaking: Bool
-    let onToggle: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: onToggle) {
-            Image(systemName: isSpeaking ? "stop.circle" : "speaker.wave.2")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(
-                    isSpeaking
-                        ? Color.accentColor
-                        : (isHovering ? Color.primary : Color.secondary)
-                )
-                .frame(width: 30, height: 28)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .help(isSpeaking ? "Stop" : "Read aloud")
-        .accessibilityLabel(isSpeaking ? "Stop reading aloud" : "Read response aloud")
-        .onHover { isHovering = $0 }
-        .animation(.easeInOut(duration: 0.12), value: isHovering)
-        .animation(.easeInOut(duration: 0.15), value: isSpeaking)
     }
 }
 
