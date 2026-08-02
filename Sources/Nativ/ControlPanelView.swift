@@ -160,6 +160,7 @@ struct ControlPanelView: View {
     @StateObject private var systemMonitor = SystemMonitorStore()
     @ObservedObject private var downloads = HuggingFaceDownloadManager.shared
     @StateObject private var embeddingLibrary = LocalModelLibrary()
+    @StateObject private var audioCaptureLibrary = AudioCaptureLibrary()
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var showsNavigationPanel = false
@@ -1041,6 +1042,7 @@ struct ControlPanelView: View {
                 case .audio:
                     AudioView(
                         model: model,
+                        captureLibrary: audioCaptureLibrary,
                         onOpenSpeechModels: {
                             navigation.openSpeechModelDiscovery()
                         }

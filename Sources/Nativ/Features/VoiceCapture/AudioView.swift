@@ -92,7 +92,7 @@ struct AudioView: View {
             page
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color.nativMainContentBackground)
+        .background(Color.nativWindow)
         .onAppear {
             refreshLocalModels()
             importExistingTranscripts()

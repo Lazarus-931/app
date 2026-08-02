@@ -35,7 +35,7 @@ struct ExtensionsView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
-        .background(Color.nativMainContentBackground)
+        .background(Color.nativWindow)
         .fileImporter(
             isPresented: $isImporterPresented,
             allowedContentTypes: [.nativExtensionPackage],

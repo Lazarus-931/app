@@ -161,7 +161,7 @@ final class NativExtensionHostBroker:
                 apiKey: configuration.serverAPIKey
             )
             .transcribe(
-                audioData: transcriptionRequest.audioData,
+                transcriptionRequest.audioData,
                 fileName: transcriptionRequest.fileName,
                 model: modelID
             )
