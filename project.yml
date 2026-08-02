@@ -51,6 +51,21 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: $(NATIV_SERVER_KIT_BUNDLE_IDENTIFIER)
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
+  NativExtensionSDK:
+    type: framework
+    platform: macOS
+    configFiles:
+      Debug: Configuration/Signing.xcconfig
+      Release: Configuration/Signing.xcconfig
+    sources:
+      - path: Sources/NativExtensionSDK
+    settings:
+      base:
+        ARCHS: arm64
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        PRODUCT_BUNDLE_IDENTIFIER: $(NATIV_EXTENSION_SDK_BUNDLE_IDENTIFIER)
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
   Nativ:
     type: application
     platform: macOS
@@ -64,8 +79,13 @@ targets:
       - path: Sources/Nativ/ModelProviderIcons
         type: folder
         buildPhase: resources
+      - path: Extensions/VoiceDictation/Manifest.json
+        buildPhase: resources
     dependencies:
       - target: NativServerKit
+      - target: NativExtensionSDK
+      - target: VoiceDictationExtensionRuntime
+        embed: true
       - package: Sparkle
         product: Sparkle
       - package: textual
@@ -76,12 +96,37 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: $(NATIV_BUNDLE_IDENTIFIER)
+        CODE_SIGN_ENTITLEMENTS: Configuration/Nativ.entitlements
+        EX_ENABLE_EXTENSION_POINT_GENERATION: YES
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Configuration/Nativ-Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: Nativ
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         MARKETING_VERSION: 0.0.1
         CURRENT_PROJECT_VERSION: 6
+  VoiceDictationExtensionRuntime:
+    type: extensionkit-extension
+    platform: macOS
+    configFiles:
+      Debug: Configuration/Signing.xcconfig
+      Release: Configuration/Signing.xcconfig
+    sources:
+      - path: Extensions/VoiceDictation/Runtime
+      - path: Extensions/VoiceDictation/Manifest.json
+        buildPhase: resources
+    dependencies:
+      - target: NativExtensionSDK
+    settings:
+      base:
+        ARCHS: arm64
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        PRODUCT_BUNDLE_IDENTIFIER: $(NATIV_VOICE_EXTENSION_BUNDLE_IDENTIFIER)
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Configuration/VoiceDictationExtension-Info.plist
+        MARKETING_VERSION: 0.0.1
+        CURRENT_PROJECT_VERSION: 6
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
   NativTests:
     type: bundle.unit-test
     platform: macOS

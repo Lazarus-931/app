@@ -89,11 +89,6 @@ struct VoiceShortcut: Codable, Equatable, Sendable {
         keyDisplay: nil,
         modifiers: [.option]
     )
-    static let readDefault = VoiceShortcut(
-        keyCode: UInt16(kVK_ANSI_S),
-        keyDisplay: "S",
-        modifiers: [.function]
-    )
 
     var displayName: String {
         let parts = modifiers.displayParts + (keyDisplay.map { [$0] } ?? [])
@@ -145,9 +140,6 @@ extension Notification.Name {
     static let voiceShortcutPreferencesDidChange = Notification.Name(
         "VoiceShortcutPreferencesDidChange"
     )
-    static let readLastAssistantMessage = Notification.Name(
-        "NativReadLastAssistantMessage"
-    )
 }
 
 @MainActor
@@ -163,15 +155,11 @@ final class VoiceShortcutPreferences: ObservableObject {
     @Published var handsFreeShortcut: VoiceShortcut {
         didSet { preferencesDidChange() }
     }
-    @Published var readShortcut: VoiceShortcut {
-        didSet { preferencesDidChange() }
-    }
 
     private struct Payload: Codable {
         let recordShortcut: VoiceShortcut
         let retryShortcut: VoiceShortcut
         let handsFreeShortcut: VoiceShortcut?
-        let readShortcut: VoiceShortcut?
     }
 
     private let defaults: UserDefaults
@@ -193,14 +181,10 @@ final class VoiceShortcutPreferences: ObservableObject {
             handsFreeShortcut = payload.handsFreeShortcut.flatMap {
                 $0.isValid ? $0 : nil
             } ?? .handsFreeDefault
-            readShortcut = payload.readShortcut.flatMap {
-                $0.isValid ? $0 : nil
-            } ?? .readDefault
         } else {
             recordShortcut = .recordDefault
             retryShortcut = .retryDefault
             handsFreeShortcut = .handsFreeDefault
-            readShortcut = .readDefault
         }
     }
 
@@ -216,16 +200,11 @@ final class VoiceShortcutPreferences: ObservableObject {
         handsFreeShortcut = .handsFreeDefault
     }
 
-    func resetReadShortcut() {
-        readShortcut = .readDefault
-    }
-
     private func preferencesDidChange() {
         let payload = Payload(
             recordShortcut: recordShortcut,
             retryShortcut: retryShortcut,
-            handsFreeShortcut: handsFreeShortcut,
-            readShortcut: readShortcut
+            handsFreeShortcut: handsFreeShortcut
         )
         if let data = try? JSONEncoder().encode(payload) {
             defaults.set(data, forKey: storageKey)

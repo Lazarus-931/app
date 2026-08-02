@@ -105,7 +105,6 @@ final class FnControlShortcutMonitor {
     var onChange: ((Bool) -> Void)?
     var onRetry: (() -> Void)?
     var onHandsFreeToggle: (() -> Void)?
-    var onReadLastMessage: (() -> Void)?
 
     private var localMonitor: Any?
     private var globalMonitor: Any?
@@ -116,7 +115,6 @@ final class FnControlShortcutMonitor {
     private var retryState = FnRetryShortcutState()
     private var handsFreeModifierState = VoiceModifierToggleShortcutState()
     private var handsFreeKeyState = FnRetryShortcutState()
-    private var readKeyState = FnRetryShortcutState()
     private var hotKeys: [UInt32: EventHotKeyRef] = [:]
     private var hotKeyEventHandler: EventHandlerRef?
     private let preferences: VoiceShortcutPreferences
@@ -124,7 +122,6 @@ final class FnControlShortcutMonitor {
     private let recordHotKeyID: UInt32 = 1
     private let retryHotKeyID: UInt32 = 2
     private let handsFreeHotKeyID: UInt32 = 3
-    private let readHotKeyID: UInt32 = 4
 
     init(preferences: VoiceShortcutPreferences? = nil) {
         self.preferences = preferences ?? .shared
@@ -134,8 +131,6 @@ final class FnControlShortcutMonitor {
         guard localMonitor == nil, globalMonitor == nil else {
             return
         }
-
-        requestAccessibilityAccessIfNeeded()
 
         localMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.flagsChanged, .keyDown]
@@ -293,10 +288,6 @@ final class FnControlShortcutMonitor {
             if handsFreeKeyState.update(isPressed: isPressed) {
                 onHandsFreeToggle?()
             }
-        case readHotKeyID:
-            if readKeyState.update(isPressed: isPressed) {
-                onReadLastMessage?()
-            }
         default:
             break
         }
@@ -332,7 +323,6 @@ final class FnControlShortcutMonitor {
             (recordHotKeyID, preferences.recordShortcut),
             (retryHotKeyID, preferences.retryShortcut),
             (handsFreeHotKeyID, preferences.handsFreeShortcut),
-            (readHotKeyID, preferences.readShortcut),
         ].filter { $0.1.keyCode != nil }
         guard !keyedShortcuts.isEmpty else {
             return
@@ -406,13 +396,4 @@ final class FnControlShortcutMonitor {
         hotKeyEventHandler = nil
     }
 
-    private func requestAccessibilityAccessIfNeeded() {
-        guard !AXIsProcessTrusted() else {
-            return
-        }
-        let options = [
-            kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
-        ] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
-    }
 }

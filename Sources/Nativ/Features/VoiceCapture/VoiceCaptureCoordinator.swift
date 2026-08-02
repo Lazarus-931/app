@@ -6,6 +6,7 @@ struct VoiceTranscriptionConfiguration {
     let modelSearchPath: String
     let additionalModelSearchPaths: [String]
     let selectedModelID: String?
+    let languageModelID: String?
     let serverBaseURL: URL
     let serverAPIKey: String?
     let serverIsRunning: Bool
@@ -39,12 +40,6 @@ final class VoiceCaptureCoordinator {
         }
         shortcutMonitor.onHandsFreeToggle = { [weak self] in
             self?.toggleHandsFreeCapture()
-        }
-        shortcutMonitor.onReadLastMessage = {
-            NotificationCenter.default.post(
-                name: .readLastAssistantMessage,
-                object: nil
-            )
         }
         recorder.onMeterUpdate = { [weak self] level, elapsed in
             self?.overlay.update(level: level, elapsed: elapsed)
@@ -132,7 +127,9 @@ final class VoiceCaptureCoordinator {
             }
 
             do {
-                try self.recorder.start()
+                try self.recorder.start(
+                    deviceUniqueID: AudioInputDevicePreferences.shared.effectiveDeviceID
+                )
                 self.overlay.didStartRecording()
             } catch {
                 NSLog("Nativ voice recording failed to start: %@", error.localizedDescription)
@@ -292,7 +289,7 @@ final class VoiceCaptureCoordinator {
                     apiKey: requestConfiguration.serverAPIKey
                 )
                 let result = try await client.transcribe(
-                    audioData,
+                    audioData: audioData,
                     fileName: recordingURL.lastPathComponent,
                     model: modelID
                 )
@@ -300,7 +297,7 @@ final class VoiceCaptureCoordinator {
                     return
                 }
 
-                let transcript = result.trimmingCharacters(in: .whitespacesAndNewlines)
+                let transcript = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !transcript.isEmpty else {
                     self.handleEmptyTranscription(
                         recordingURL,
@@ -388,6 +385,10 @@ final class VoiceCaptureCoordinator {
     }
 
     private static func isEmptyTranscriptionError(_ error: Error) -> Bool {
+        if case NativAudioTranscriptionError.emptyTranscript = error {
+            return true
+        }
+
         let message = [
             error.localizedDescription,
             String(describing: error),
@@ -461,14 +462,29 @@ final class VoiceCaptureCoordinator {
             return
         }
         hasShownInsertionPermissionAlert = true
-        showTranscriptionError(
-            title: "Transcript Copied, but Not Inserted",
-            message: """
-            The transcript is on the clipboard. Allow Nativ to control your Mac \
-            in System Settings → Privacy & Security → Accessibility to insert it \
-            at the cursor automatically.
-            """
-        )
+        guard !isPresentingAlert else {
+            return
+        }
+        isPresentingAlert = true
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Nativ Could Not Insert Text"
+        alert.informativeText = """
+        The transcript is on the clipboard. macOS denied Nativ permission to \
+        paste it at the cursor. Enable Nativ in System Settings to insert future \
+        transcripts automatically.
+        """
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Not Now")
+        let response = alert.runModal()
+        isPresentingAlert = false
+        shortcutMonitor.resynchronizeAfterModalInteraction()
+
+        if response == .alertFirstButtonReturn {
+            NativSystemPermissionController.openAccessibilitySettings()
+        }
     }
 
     private static func requestMicrophoneAccess() async -> Bool {
