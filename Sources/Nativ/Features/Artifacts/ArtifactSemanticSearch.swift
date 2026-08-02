@@ -11,6 +11,7 @@ struct ArtifactSemanticSearchConfig {
     let canInstall: Bool
     let insufficientReason: String?
     let onEnable: () -> Void
+    var prepareModel: () -> Void = {}
 
     var sizeLabel: String {
         ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
