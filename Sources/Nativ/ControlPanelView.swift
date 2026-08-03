@@ -11,11 +11,12 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     case system = "System"
     case models = "Models"
     case integrations = "Integrations"
+    case extensions = "Extensions"
     case developer = "Developer"
     case settings = "Settings"
 
     static var allCases: [ControlPanelTab] {
-        [.chat, .artifacts, .audio, .dashboard, .system, .models, .integrations, .developer]
+        [.chat, .artifacts, .audio, .dashboard, .system, .models, .integrations, .extensions, .developer]
     }
 
     var id: String { rawValue }
@@ -36,6 +37,8 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
             "cube.transparent"
         case .integrations:
             "puzzlepiece.extension"
+        case .extensions:
+            "puzzlepiece.extension.fill"
         case .developer:
             "hammer"
         case .settings:
@@ -161,6 +164,9 @@ struct ControlPanelView: View {
     @ObservedObject private var downloads = HuggingFaceDownloadManager.shared
     @StateObject private var embeddingLibrary = LocalModelLibrary()
     @StateObject private var audioCaptureLibrary = AudioCaptureLibrary()
+    @StateObject private var extensionManager = NativExtensionManager(
+        builtInExtensions: [MCPExtension()]
+    )
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
     @State private var showsNavigationPanel = false
@@ -1058,6 +1064,8 @@ struct ControlPanelView: View {
                     )
                 case .integrations:
                     IntegrationsView(model: model)
+                case .extensions:
+                    ExtensionsTabView(manager: extensionManager, model: model)
                 case .developer:
                     DeveloperView(model: model, runtime: runtime)
                 case .settings:

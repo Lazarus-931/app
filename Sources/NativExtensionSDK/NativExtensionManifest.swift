@@ -13,6 +13,7 @@ public enum NativExtensionPermission: String, Codable, CaseIterable, Hashable, S
     case overlay
     case notifications
     case namespacedStorage = "storage.namespaced"
+    case processLaunch = "process.launch"
 
     public var displayName: String {
         switch self {
@@ -30,6 +31,8 @@ public enum NativExtensionPermission: String, Codable, CaseIterable, Hashable, S
             "Notifications"
         case .namespacedStorage:
             "Extension storage"
+        case .processLaunch:
+            "Launch local servers"
         }
     }
 }

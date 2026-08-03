@@ -13,6 +13,7 @@ extension UTType {
 struct ExtensionsView: View {
     @ObservedObject var manager: NativExtensionManager
     let titleLeadingInset: CGFloat
+    var onOpen: (NativExtensionRecord) -> Void = { _ in }
 
     @State private var isImporterPresented = false
     @State private var extensionPendingRemoval: NativExtensionRecord?
@@ -205,6 +206,14 @@ struct ExtensionsView: View {
                 }
 
                 Spacer(minLength: 12)
+
+                if !record.manifest.contributions.sidebar.isEmpty, !record.isRemoved {
+                    Button("Open") {
+                        onOpen(record)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
 
                 extensionActions(record)
             }
