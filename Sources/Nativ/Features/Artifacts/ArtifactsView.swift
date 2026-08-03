@@ -157,7 +157,7 @@ struct ArtifactsView: View {
                     .font(.system(size: 16))
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Search your artifacts by content")
+                    Text("Deep Search your artifacts")
                         .font(.system(size: 12, weight: .semibold))
                     Text("Install a \(config.sizeLabel) on-device model to find artifacts by what's inside them. You can also do this later from the gear menu.")
                         .font(.system(size: 11))
@@ -189,10 +189,10 @@ struct ArtifactsView: View {
         } label: {
             Image(systemName: "gearshape")
         }
-        .help("Content search settings")
+        .help("Deep Search settings")
         .popover(isPresented: $showsSemanticPopover, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 10) {
-                Label("Content search", systemImage: "sparkle.magnifyingglass")
+                Label("Deep Search", systemImage: "sparkle.magnifyingglass")
                     .font(.system(size: 13, weight: .semibold))
                 if config.isModelInstalled {
                     Text("On — searching by image, video and document contents.")
