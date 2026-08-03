@@ -98,6 +98,7 @@ struct NativSettings: Codable, Equatable {
     var additionalModelSearchPaths: [String]
     var mcpServers: [MCPServerConfig]
     var disabledToolNames: [String]
+    var skills: [NativSkill]
     var serverPort: Int
     var cpuServerPort: Int
     var cpuLanguageModelID: String?
@@ -144,6 +145,7 @@ struct NativSettings: Codable, Equatable {
         additionalModelSearchPaths: [String] = [],
         mcpServers: [MCPServerConfig] = [],
         disabledToolNames: [String] = [],
+        skills: [NativSkill] = [],
         serverPort: Int = 8080,
         cpuServerPort: Int = 8081,
         cpuLanguageModelID: String? = nil,
@@ -189,6 +191,7 @@ struct NativSettings: Codable, Equatable {
         self.additionalModelSearchPaths = additionalModelSearchPaths
         self.mcpServers = mcpServers
         self.disabledToolNames = disabledToolNames
+        self.skills = skills
         self.serverPort = serverPort
         self.cpuServerPort = cpuServerPort
         self.cpuLanguageModelID = cpuLanguageModelID
@@ -236,6 +239,7 @@ struct NativSettings: Codable, Equatable {
         case additionalModelSearchPaths
         case mcpServers
         case disabledToolNames
+        case skills
         case serverPort
         case cpuServerPort
         case cpuLanguageModelID
@@ -287,6 +291,7 @@ struct NativSettings: Codable, Equatable {
         additionalModelSearchPaths = try container.decodeIfPresent([String].self, forKey: .additionalModelSearchPaths) ?? defaults.additionalModelSearchPaths
         mcpServers = try container.decodeIfPresent([MCPServerConfig].self, forKey: .mcpServers) ?? defaults.mcpServers
         disabledToolNames = try container.decodeIfPresent([String].self, forKey: .disabledToolNames) ?? defaults.disabledToolNames
+        skills = try container.decodeIfPresent([NativSkill].self, forKey: .skills) ?? defaults.skills
         serverPort = try container.decodeIfPresent(Int.self, forKey: .serverPort) ?? defaults.serverPort
         cpuServerPort = try container.decodeIfPresent(Int.self, forKey: .cpuServerPort) ?? defaults.cpuServerPort
         cpuLanguageModelID = try container.decodeIfPresent(String.self, forKey: .cpuLanguageModelID) ?? defaults.cpuLanguageModelID
@@ -335,6 +340,7 @@ struct NativSettings: Codable, Equatable {
         try container.encode(additionalModelSearchPaths, forKey: .additionalModelSearchPaths)
         try container.encode(mcpServers, forKey: .mcpServers)
         try container.encode(disabledToolNames, forKey: .disabledToolNames)
+        try container.encode(skills, forKey: .skills)
         try container.encode(serverPort, forKey: .serverPort)
         try container.encode(cpuServerPort, forKey: .cpuServerPort)
         try container.encodeIfPresent(cpuLanguageModelID, forKey: .cpuLanguageModelID)

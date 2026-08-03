@@ -38,7 +38,7 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
         case .integrations:
             "puzzlepiece.extension"
         case .extensions:
-            "puzzlepiece.extension.fill"
+            "square.stack.3d.up.fill"
         case .developer:
             "hammer"
         case .settings:
@@ -164,8 +164,9 @@ struct ControlPanelView: View {
     @ObservedObject private var downloads = HuggingFaceDownloadManager.shared
     @StateObject private var embeddingLibrary = LocalModelLibrary()
     @StateObject private var audioCaptureLibrary = AudioCaptureLibrary()
+    @StateObject private var mcpHost = MCPHostManager()
     @StateObject private var extensionManager = NativExtensionManager(
-        builtInExtensions: [MCPExtension()]
+        builtInExtensions: []
     )
     @State private var sidebarSelection: ControlPanelSidebarSelection = .tab(.chat)
     @State private var selectedTab: ControlPanelTab = .chat
@@ -1065,7 +1066,7 @@ struct ControlPanelView: View {
                 case .integrations:
                     IntegrationsView(model: model)
                 case .extensions:
-                    ExtensionsTabView(manager: extensionManager, model: model)
+                    ExtensionsHubView(manager: extensionManager, host: mcpHost, model: model)
                 case .developer:
                     DeveloperView(model: model, runtime: runtime)
                 case .settings:
