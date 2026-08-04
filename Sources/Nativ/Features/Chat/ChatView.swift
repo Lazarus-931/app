@@ -1052,16 +1052,29 @@ final class ChatViewModel: ObservableObject {
         }
 
         var requestMessages = sessionMessages[...userMessageIndex].compactMap(\.apiMessage)
-        if !queuedRequest.settings.systemPrompt.isEmpty {
-            requestMessages.insert(
-                MLXChatMessage(role: "system", content: queuedRequest.settings.systemPrompt),
-                at: 0
-            )
-        }
 
         let settings = queuedRequest.settings
         let toolDefs = (mcpHost?.toolDefinitions() ?? [])
             .filter { !settings.disabledToolNames.contains($0.function.name) }
+
+        var systemParts: [String] = []
+        if !settings.systemPrompt.isEmpty {
+            systemParts.append(settings.systemPrompt)
+        }
+        // The built-in tool-use skill is injected only when tools are available.
+        if !toolDefs.isEmpty {
+            systemParts.append(NativSkill.builtInToolGuide.instructions)
+        }
+        for skill in settings.skills where skill.isEnabled && !skill.instructions.isEmpty {
+            systemParts.append(skill.instructions)
+        }
+        if !systemParts.isEmpty {
+            requestMessages.insert(
+                MLXChatMessage(role: "system", content: systemParts.joined(separator: "\n\n")),
+                at: 0
+            )
+        }
+
         return MLXChatCompletionRequest(
             model: modelID,
             messages: requestMessages,
