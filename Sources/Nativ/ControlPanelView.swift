@@ -1022,6 +1022,7 @@ struct ControlPanelView: View {
                     ChatView(
                         model: model,
                         chat: chat,
+                        mcpHost: mcpHost,
                         showsConfiguration: $isChatConfigurationVisible,
                         isFullScreen: isFullScreen
                     )

@@ -34,6 +34,7 @@ struct ChatView: View {
 
     @ObservedObject var model: NativModel
     @ObservedObject var chat: ChatViewModel
+    @ObservedObject var mcpHost: MCPHostManager
     @Binding var showsConfiguration: Bool
     var isFullScreen = false
     @State private var transcriptScrollPosition = ScrollPosition(edge: .bottom)
@@ -76,6 +77,7 @@ struct ChatView: View {
 
         }
         .background(Color.nativWindow)
+        .onAppear { chat.mcpHost = mcpHost }
         .overlay(alignment: .topTrailing) {
             VStack(alignment: .trailing, spacing: 8) {
                 configurationButton
@@ -231,6 +233,8 @@ struct ChatView: View {
 
 @MainActor
 final class ChatViewModel: ObservableObject {
+    /// MCP tool host, set by ChatView. Enables tool-calling for tool-capable models.
+    weak var mcpHost: MCPHostManager?
     private static let liveDecodeRateRefreshInterval: TimeInterval = 0.25
     private static let streamFlushInterval: TimeInterval = 1.0 / 30.0
 
@@ -942,23 +946,67 @@ final class ChatViewModel: ObservableObject {
                             baseURL: queuedRequest.baseURL,
                             apiKey: queuedRequest.settings.serverAPIKey
                         )
-                        let completion = try await requestClient.streamChat(completionRequest, onEvent: { [weak self] event in
-                            await MainActor.run {
-                                self?.append(
-                                    event: event,
-                                    to: queuedRequest.assistantMessageID,
-                                    in: queuedRequest.sessionID
+                        var workingRequest = completionRequest
+                        var finalCompletion: MLXChatCompletion?
+                        var toolRounds = 0
+                        while true {
+                            let completion = try await requestClient.streamChat(workingRequest, onEvent: { [weak self] event in
+                                await MainActor.run {
+                                    self?.append(
+                                        event: event,
+                                        to: queuedRequest.assistantMessageID,
+                                        in: queuedRequest.sessionID
+                                    )
+                                }
+                            })
+                            finalCompletion = completion
+                            let calls = completion.toolCalls
+                            guard !calls.isEmpty, let host = self.mcpHost, toolRounds < 5 else {
+                                break
+                            }
+                            toolRounds += 1
+                            var toolMessages: [MLXChatMessage] = []
+                            for call in calls {
+                                guard let function = call.function, let toolName = function.name else {
+                                    continue
+                                }
+                                let result: String
+                                do {
+                                    result = try await host.callTool(
+                                        named: toolName,
+                                        argumentsJSON: function.arguments
+                                    )
+                                } catch {
+                                    result = "Error: \(error.localizedDescription)"
+                                }
+                                toolMessages.append(
+                                    MLXChatMessage(
+                                        role: "tool",
+                                        content: result,
+                                        toolCallID: call.id,
+                                        name: toolName
+                                    )
                                 )
                             }
-                        })
-                        finishAssistantMessage(
-                            queuedRequest.assistantMessageID,
-                            in: queuedRequest.sessionID,
-                            fallbackContent: completion.content,
-                            fallbackReasoningContent: completion.reasoningContent,
-                            responseMetrics: ChatResponseMetrics(completion: completion),
-                            isCancelled: false
-                        )
+                            workingRequest.messages.append(
+                                MLXChatMessage(
+                                    role: "assistant",
+                                    content: completion.content,
+                                    toolCalls: calls
+                                )
+                            )
+                            workingRequest.messages.append(contentsOf: toolMessages)
+                        }
+                        if let completion = finalCompletion {
+                            finishAssistantMessage(
+                                queuedRequest.assistantMessageID,
+                                in: queuedRequest.sessionID,
+                                fallbackContent: completion.content,
+                                fallbackReasoningContent: completion.reasoningContent,
+                                responseMetrics: ChatResponseMetrics(completion: completion),
+                                isCancelled: false
+                            )
+                        }
                     }
                     appModel?.refreshMetricsIfRunning(force: true)
                 } catch is CancellationError {
@@ -1012,6 +1060,8 @@ final class ChatViewModel: ObservableObject {
         }
 
         let settings = queuedRequest.settings
+        let toolDefs = (mcpHost?.toolDefinitions() ?? [])
+            .filter { !settings.disabledToolNames.contains($0.function.name) }
         return MLXChatCompletionRequest(
             model: modelID,
             messages: requestMessages,
@@ -1028,6 +1078,7 @@ final class ChatViewModel: ObservableObject {
             thinkingStartToken: settings.thinkingEnabled ? settings.thinkingStartToken : nil,
             thinkingEndToken: settings.thinkingEnabled ? settings.thinkingEndToken : nil,
             responseFormat: settings.chatResponseFormat,
+            tools: toolDefs.isEmpty ? nil : toolDefs,
             stream: true,
             device: queuedRequest.device == .cpu ? "cpu" : "gpu"
         )
@@ -2376,5 +2427,5 @@ private struct ChatEmptyTranscriptView: View {
 }
 
 #Preview {
-    ChatView(model: .init(), chat: ChatViewModel(), showsConfiguration: .constant(true))
+    ChatView(model: .init(), chat: ChatViewModel(), mcpHost: MCPHostManager(), showsConfiguration: .constant(true))
 }
