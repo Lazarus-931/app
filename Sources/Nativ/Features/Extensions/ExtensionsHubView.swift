@@ -9,6 +9,7 @@ struct ExtensionsHubView: View {
     @ObservedObject var model: NativModel
     @State private var section: HubSection = .extensions
     @State private var didLaunch = false
+    @State private var showingPalette = false
 
     enum HubSection: String, CaseIterable, Identifiable {
         case extensions = "Extensions"
@@ -50,6 +51,35 @@ struct ExtensionsHubView: View {
         .onChange(of: model.settings.mcpServers) { _, servers in
             host.reload(servers: servers)
         }
+        .background {
+            Button("") { showingPalette.toggle() }
+                .keyboardShortcut("k", modifiers: .command)
+                .hidden()
+        }
+        .overlay {
+            if showingPalette {
+                HubCommandPalette(items: paletteItems) { showingPalette = false }
+            }
+        }
+    }
+
+    private var paletteItems: [HubPaletteItem] {
+        var items: [HubPaletteItem] = HubSection.allCases.map { s in
+            HubPaletteItem(title: "Open \(s.rawValue)", subtitle: "Section", systemImage: s.systemImage) { section = s }
+        }
+        for record in manager.records {
+            items.append(HubPaletteItem(title: record.manifest.displayName, subtitle: "Extension", systemImage: "square.stack.3d.up") { section = .extensions })
+        }
+        for server in model.settings.mcpServers {
+            items.append(HubPaletteItem(title: server.name, subtitle: "MCP server", systemImage: "server.rack") { section = .mcp })
+            for tool in host.tools(forServer: server.id) {
+                items.append(HubPaletteItem(title: tool.displayName, subtitle: "Tool · \(server.name)", systemImage: "hammer") { section = .tools })
+            }
+        }
+        for skill in model.settings.skills {
+            items.append(HubPaletteItem(title: skill.name, subtitle: "Skill", systemImage: "sparkles") { section = .skills })
+        }
+        return items
     }
 
     private var subnav: some View {
@@ -365,5 +395,90 @@ private struct SkillEditor: View {
         }
         .padding(20)
         .frame(width: 460)
+    }
+}
+
+// MARK: - Command palette (⌘K)
+
+struct HubPaletteItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let action: () -> Void
+}
+
+private struct HubCommandPalette: View {
+    let items: [HubPaletteItem]
+    let onClose: () -> Void
+    @State private var query = ""
+    @FocusState private var focused: Bool
+
+    private var results: [HubPaletteItem] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return items }
+        return items.filter { ($0.title + " " + $0.subtitle).lowercased().contains(q) }
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.black.opacity(0.12).ignoresSafeArea().onTapGesture { onClose() }
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search servers, tools, skills\u{2026}", text: $query)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15))
+                        .focused($focused)
+                        .onSubmit {
+                            results.first?.action()
+                            onClose()
+                        }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                Divider()
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(results) { item in
+                            Button {
+                                item.action()
+                                onClose()
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: item.systemImage)
+                                        .frame(width: 18)
+                                        .foregroundStyle(.secondary)
+                                    Text(item.title).font(.system(size: 13, weight: .medium))
+                                    Spacer(minLength: 8)
+                                    Text(item.subtitle).font(.system(size: 11)).foregroundStyle(.tertiary)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if results.isEmpty {
+                            Text("No matches")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .padding(20)
+                        }
+                    }
+                }
+                .frame(maxHeight: 320)
+            }
+            .frame(width: 460)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.2), radius: 24, y: 10)
+            .padding(.top, 80)
+        }
+        .onAppear { focused = true }
+        .onExitCommand { onClose() }
     }
 }

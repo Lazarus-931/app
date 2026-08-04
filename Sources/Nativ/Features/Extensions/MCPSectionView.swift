@@ -91,11 +91,21 @@ private struct MCPServerRow: View {
     let onEdit: () -> Void
     let onDelete: () -> Void
 
+    @State private var pulse = false
+
     var body: some View {
         HStack(spacing: 12) {
             Circle()
                 .fill(statusColor)
                 .frame(width: 7, height: 7)
+                .opacity(isConnecting && pulse ? 0.35 : 1)
+                .animation(
+                    isConnecting
+                        ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true)
+                        : .default,
+                    value: pulse
+                )
+                .onAppear { pulse = true }
             VStack(alignment: .leading, spacing: 2) {
                 Text(server.name.isEmpty ? "Untitled server" : server.name)
                     .font(.system(size: 13, weight: .medium))
@@ -134,6 +144,11 @@ private struct MCPServerRow: View {
                 .controlSize(.small)
         }
         .padding(.vertical, 11)
+    }
+
+    private var isConnecting: Bool {
+        if case .connecting = state { return true }
+        return false
     }
 
     private var statusColor: Color {
