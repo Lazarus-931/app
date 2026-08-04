@@ -164,16 +164,64 @@ private struct MCPServerJSON: Codable {
     var arguments: [String]
     var environment: [String: String]
     var isEnabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case command
+        case arguments = "args"
+        case environment = "env"
+        case isEnabled
+    }
+
+    init(name: String, command: String, arguments: [String], environment: [String: String], isEnabled: Bool) {
+        self.name = name
+        self.command = command
+        self.arguments = arguments
+        self.environment = environment
+        self.isEnabled = isEnabled
+    }
+
+    // Lenient: the scaffold and pasted standard mcp.json entries may omit name
+    // and isEnabled.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        command = (try? c.decode(String.self, forKey: .command)) ?? ""
+        arguments = (try? c.decode([String].self, forKey: .arguments)) ?? []
+        environment = (try? c.decode([String: String].self, forKey: .environment)) ?? [:]
+        isEnabled = (try? c.decode(Bool.self, forKey: .isEnabled)) ?? true
+    }
 }
 
+private let mcpJSONScaffold = """
+{
+  "name": "",
+  "command": "",
+  "args": [],
+  "env": {}
+}
+"""
+
 private struct MCPServerEditor: View {
-    @State var server: MCPServerConfig
     let onSave: (MCPServerConfig) -> Void
     let onCancel: () -> Void
 
-    @State private var editingJSON = false
-    @State private var jsonText = ""
+    @State private var server: MCPServerConfig
+    @State private var editingJSON: Bool
+    @State private var jsonText: String
     @State private var jsonError: String?
+
+    init(server: MCPServerConfig, onSave: @escaping (MCPServerConfig) -> Void, onCancel: @escaping () -> Void) {
+        _server = State(initialValue: server)
+        self.onSave = onSave
+        self.onCancel = onCancel
+        // A brand-new server (nothing filled in) opens straight into a
+        // pre-bracketed JSON scaffold so you can just type — or paste a
+        // standard mcp.json entry.
+        let isNew = server.name.isEmpty && server.command.isEmpty && server.arguments.isEmpty
+        _editingJSON = State(initialValue: isNew)
+        _jsonText = State(initialValue: isNew ? mcpJSONScaffold : "")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -311,6 +359,11 @@ private struct MCPServerEditor: View {
 }
 
 // MARK: - Community catalog
+//
+// A catalog entry mirrors an approved community `manifest.yaml` plus a logo.
+// A future community PR contributes a manifest + a logo image (dropped into
+// Assets.xcassets as `MCPLogo-<name>`); until an asset exists we render a
+// tinted glyph tile so the grid always looks complete.
 
 struct MCPCatalogEntry: Identifiable {
     let id = UUID()
@@ -318,6 +371,9 @@ struct MCPCatalogEntry: Identifiable {
     let summary: String
     let command: String
     let arguments: [String]
+    let symbol: String
+    let tint: Color
+    var logoAssetName: String { "MCPLogo-\(name)" }
 
     func makeConfig() -> MCPServerConfig {
         MCPServerConfig(name: name, command: command, arguments: arguments, isEnabled: true)
@@ -326,61 +382,154 @@ struct MCPCatalogEntry: Identifiable {
 
 private let mcpCatalog: [MCPCatalogEntry] = [
     .init(name: "filesystem", summary: "Read and write files in allowed folders.",
-          command: "npx", arguments: ["-y", "@modelcontextprotocol/server-filesystem", "."]),
+          command: "npx", arguments: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+          symbol: "folder.fill", tint: .blue),
     .init(name: "git", summary: "Inspect and operate on Git repositories.",
-          command: "uvx", arguments: ["mcp-server-git"]),
+          command: "uvx", arguments: ["mcp-server-git"],
+          symbol: "arrow.triangle.branch", tint: .orange),
     .init(name: "github", summary: "Search and manage GitHub issues, PRs, and code.",
-          command: "npx", arguments: ["-y", "@modelcontextprotocol/server-github"]),
+          command: "npx", arguments: ["-y", "@modelcontextprotocol/server-github"],
+          symbol: "chevron.left.forwardslash.chevron.right", tint: .primary),
     .init(name: "fetch", summary: "Fetch and read web pages as markdown.",
-          command: "uvx", arguments: ["mcp-server-fetch"]),
+          command: "uvx", arguments: ["mcp-server-fetch"],
+          symbol: "globe", tint: .teal),
     .init(name: "memory", summary: "A persistent knowledge graph the model can recall.",
-          command: "npx", arguments: ["-y", "@modelcontextprotocol/server-memory"]),
+          command: "npx", arguments: ["-y", "@modelcontextprotocol/server-memory"],
+          symbol: "brain.head.profile", tint: .purple),
     .init(name: "sqlite", summary: "Query and edit a local SQLite database.",
-          command: "uvx", arguments: ["mcp-server-sqlite", "--db-path", "database.db"]),
+          command: "uvx", arguments: ["mcp-server-sqlite", "--db-path", "database.db"],
+          symbol: "cylinder.split.1x2", tint: .green),
 ]
+
+/// A square logo: the bundled `MCPLogo-<name>` image if present, otherwise a
+/// tinted rounded tile with the entry's glyph.
+private struct MCPLogoTile: View {
+    let entry: MCPCatalogEntry
+    var size: CGFloat = 44
+
+    var body: some View {
+        Group {
+            if let nsImage = NSImage(named: entry.logoAssetName) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .padding(size * 0.16)
+            } else {
+                Image(systemName: entry.symbol)
+                    .font(.system(size: size * 0.42, weight: .semibold))
+                    .foregroundStyle(entry.tint)
+            }
+        }
+        .frame(width: size, height: size)
+        .background(entry.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+    }
+}
 
 private struct MCPCatalogView: View {
     let installedNames: Set<String>
     let onAdd: (MCPCatalogEntry) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var hoveringClose = false
+
+    private let columns = [GridItem(.adaptive(minimum: 220, maximum: 300), spacing: 14)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("Community catalog")
-                        .font(.system(size: 15, weight: .semibold))
-                    Text("Approved servers. Adding one launches it locally the first time you connect.")
-                        .font(.system(size: 11))
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("Native-sponsored servers, approved and merged into Nativ. Adding one launches it locally the first time you connect.")
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
-                Button("Done") { dismiss() }
+                Spacer(minLength: 16)
+                closeButton
             }
-            .padding(20)
-            Divider()
+            .padding(24)
+
             ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(mcpCatalog.enumerated()), id: \.element.id) { index, entry in
-                        if index > 0 { Divider() }
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.name).font(.system(size: 13, weight: .medium))
-                                Text(entry.summary).font(.system(size: 11)).foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 12)
-                            if installedNames.contains(entry.name) {
-                                Text("Added").font(.system(size: 11)).foregroundStyle(.secondary)
-                            } else {
-                                Button("Add") { onAdd(entry) }
-                            }
-                        }
-                        .padding(.vertical, 11)
-                        .padding(.horizontal, 20)
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+                    ForEach(mcpCatalog) { entry in
+                        MCPCatalogCard(
+                            entry: entry,
+                            isAdded: installedNames.contains(entry.name),
+                            onAdd: { onAdd(entry) }
+                        )
                     }
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
         }
-        .frame(width: 520, height: 420)
+        .frame(width: 720, height: 560)
+    }
+
+    private var closeButton: some View {
+        Button(action: { dismiss() }) {
+            Image(systemName: "xmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+                .background(
+                    Circle().fill(Color.primary.opacity(hoveringClose ? 0.10 : 0))
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveringClose = $0 }
+        .help("Close")
+    }
+}
+
+private struct MCPCatalogCard: View {
+    let entry: MCPCatalogEntry
+    let isAdded: Bool
+    let onAdd: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                MCPLogoTile(entry: entry)
+                Spacer(minLength: 0)
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tint)
+                    .help("Native-sponsored")
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.name)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(entry.summary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 4)
+            if isAdded {
+                Label("Added", systemImage: "checkmark")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            } else {
+                Button(action: onAdd) {
+                    Label("Add", systemImage: "plus")
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(14)
+        .frame(height: 168, alignment: .topLeading)
+        .background(Color.primary.opacity(hovering ? 0.05 : 0.025), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+        )
+        .onHover { hovering = $0 }
     }
 }
