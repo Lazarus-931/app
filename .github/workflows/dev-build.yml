@@ -39,3 +39,16 @@ jobs:
 
       - name: Build app (unsigned Debug)
         run: make xcode-build
+
+      - name: Zip app bundle
+        run: |
+          set -euo pipefail
+          cd build/XcodeDerivedData/Build/Products/Debug
+          ditto -c -k --keepParent Nativ.app Nativ-dev.zip
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nativ-dev-${{ github.sha }}
+          path: build/XcodeDerivedData/Build/Products/Debug/Nativ-dev.zip
+          retention-days: 7
