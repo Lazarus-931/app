@@ -1012,11 +1012,6 @@ struct ControlPanelView: View {
                 .transition(.opacity)
         }
         .modifier(ControlPanelDetailSafeArea(isFullScreen: isFullScreen))
-        .overlay(alignment: .bottomTrailing) {
-            if selectedTab == .chat, voiceController == nil {
-                startConversationButton
-            }
-        }
         .overlay {
             if let voiceController {
                 VoiceConversationView(controller: voiceController) {
@@ -1027,22 +1022,10 @@ struct ControlPanelView: View {
         }
     }
 
-    private var startConversationButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                voiceController = VoiceConversationController(chat: chat, model: model)
-            }
-        } label: {
-            Image(systemName: "waveform")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 52, height: 52)
-                .background(Circle().fill(Color.accentColor))
-                .shadow(color: .black.opacity(0.25), radius: 8, y: 2)
+    private func startVoiceConversation() {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            voiceController = VoiceConversationController(chat: chat, model: model)
         }
-        .buttonStyle(.plain)
-        .padding(22)
-        .help("Start voice conversation")
     }
 
     @ViewBuilder
@@ -1056,7 +1039,8 @@ struct ControlPanelView: View {
                         chat: chat,
                         mcpHost: mcpHost,
                         showsConfiguration: $isChatConfigurationVisible,
-                        isFullScreen: isFullScreen
+                        isFullScreen: isFullScreen,
+                        onStartConversation: startVoiceConversation
                     )
                 case .artifacts:
                     ArtifactsView(

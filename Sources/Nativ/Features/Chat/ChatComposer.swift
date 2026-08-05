@@ -89,6 +89,7 @@ struct ChatComposer: View {
     let canCompose: Bool
     let canSend: Bool
     let onSend: () -> Void
+    let onStartConversation: () -> Void
     @State private var editorContentHeight: CGFloat = 0
     @State private var didApplyInitialReasoningDefault = false
     private let textInset = EdgeInsets(top: 14, leading: 14, bottom: 10, trailing: 14)
@@ -232,20 +233,22 @@ struct ChatComposer: View {
                     Button {
                         if showsStopButton {
                             viewModel.cancel()
-                        } else {
+                        } else if canSend {
                             onSend()
+                        } else if voiceCapable {
+                            onStartConversation()
                         }
                     } label: {
-                        Image(systemName: showsStopButton ? "stop.fill" : "arrow.up")
-                            .font(.system(size: showsStopButton ? 10 : 15, weight: .semibold))
+                        Image(systemName: actionButtonSymbol)
+                            .font(.system(size: showsStopButton ? 10 : (actionButtonSymbol == "waveform" ? 13 : 15), weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 32, height: 32)
                             .background(actionButtonColor, in: Circle())
                             .contentShape(.circle)
                     }
                     .buttonStyle(.plain)
-                    .disabled(!showsStopButton && !canSend)
-                    .help(showsStopButton ? "Stop response" : "Send (Return)")
+                    .disabled(!showsStopButton && !canSend && !voiceCapable)
+                    .help(actionButtonHelp)
                 }
                 .padding(.leading, 10)
                 .padding(.trailing, 12)
@@ -584,7 +587,7 @@ struct ChatComposer: View {
     }
 
     private var actionButtonColor: Color {
-        if showsStopButton || canSend {
+        if showsStopButton || canSend || voiceCapable {
             return .accentColor
         }
         return Color(nsColor: .tertiaryLabelColor)
@@ -592,6 +595,29 @@ struct ChatComposer: View {
 
     private var showsStopButton: Bool {
         viewModel.isCurrentSessionSending && !canSend
+    }
+
+    /// True when the chat is ready to reply and the field is empty — in that
+    /// state the send arrow becomes a start-voice-conversation button, because
+    /// a click is certain to begin a real human-to-model exchange.
+    private var voiceCapable: Bool {
+        canCompose
+            && unavailableReason == nil
+            && viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var actionButtonSymbol: String {
+        if showsStopButton { return "stop.fill" }
+        if canSend { return "arrow.up" }
+        if voiceCapable { return "waveform" }
+        return "arrow.up"
+    }
+
+    private var actionButtonHelp: String {
+        if showsStopButton { return "Stop response" }
+        if canSend { return "Send (Return)" }
+        if voiceCapable { return "Start voice conversation" }
+        return "Send (Return)"
     }
 
     private func workingStatus(elapsed: TimeInterval) -> String {

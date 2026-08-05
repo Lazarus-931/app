@@ -37,6 +37,7 @@ struct ChatView: View {
     @ObservedObject var mcpHost: MCPHostManager
     @Binding var showsConfiguration: Bool
     var isFullScreen = false
+    var onStartConversation: () -> Void = {}
     @State private var transcriptScrollPosition = ScrollPosition(edge: .bottom)
     @State private var composerHeight: CGFloat = 0
     @State private var followsLatestMessage = true
@@ -54,7 +55,8 @@ struct ChatView: View {
                             canSend: canSend,
                             onSend: {
                                 chat.send(using: model)
-                            }
+                            },
+                            onStartConversation: onStartConversation
                         )
                         .frame(maxWidth: Layout.conversationMaxWidth)
                         .frame(maxWidth: .infinity)
