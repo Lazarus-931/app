@@ -13,15 +13,8 @@ struct VoiceConversationView: View {
             VStack(spacing: 26) {
                 Spacer()
 
-                Orb(
-                    color1: colors.0,
-                    color2: colors.1,
-                    inputVolume: controller.inputLevel,
-                    outputVolume: controller.outputLevel,
-                    agentState: controller.state
-                )
-                .frame(width: 260, height: 260)
-                .shadow(color: colors.0.opacity(0.35), radius: 40)
+                ThinkingOrbView(state: thinkingOrbState, size: 240)
+                    .frame(width: 260, height: 260)
 
                 Text(stateLabel)
                     .font(.system(size: 13, weight: .semibold))
@@ -92,6 +85,17 @@ struct VoiceConversationView: View {
         case .speaking: return "Speaking"
         case .disconnected: return "Ended"
         case .unknown: return ""
+        }
+    }
+
+    /// Maps the conversation state onto a thinking-orbs animation verb.
+    private var thinkingOrbState: String {
+        switch controller.state {
+        case .connecting, .initializing: return "connecting"
+        case .listening: return "listening"
+        case .thinking: return "working"
+        case .speaking: return "composing"
+        case .disconnected, .unknown: return "breathing"
         }
     }
 
