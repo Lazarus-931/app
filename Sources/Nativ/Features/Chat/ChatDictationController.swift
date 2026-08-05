@@ -5,6 +5,8 @@ import SwiftUI
 @MainActor
 final class ChatDictationController: ObservableObject {
     @Published private(set) var isRecording = false
+    /// Normalized 0…1 mic level from the capture tap, for visualizers.
+    @Published private(set) var level: Float = 0
     @Published var errorMessage: String?
 
     private let audioEngine = AVAudioEngine()
@@ -33,6 +35,22 @@ final class ChatDictationController: ObservableObject {
         recognitionTask = nil
         recognitionRequest = nil
         isRecording = false
+        level = 0
+    }
+
+    /// RMS level of a capture buffer, normalized/shaped to 0…1 to match the
+    /// app's other input meters.
+    private static func meterLevel(from buffer: AVAudioPCMBuffer) -> Float {
+        guard let channel = buffer.floatChannelData?[0] else { return 0 }
+        let count = Int(buffer.frameLength)
+        guard count > 0 else { return 0 }
+        var sum: Float = 0
+        for i in 0 ..< count {
+            let sample = channel[i]
+            sum += sample * sample
+        }
+        let rms = (sum / Float(count)).squareRoot()
+        return min(1, pow(min(1, rms * 8), 0.65))
     }
 
     private func start(baseText: String, onTranscript: @escaping (String) -> Void) {
@@ -82,8 +100,10 @@ final class ChatDictationController: ObservableObject {
         let inputNode = audioEngine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             request.append(buffer)
+            let level = ChatDictationController.meterLevel(from: buffer)
+            Task { @MainActor [weak self] in self?.level = level }
         }
 
         audioEngine.prepare()
