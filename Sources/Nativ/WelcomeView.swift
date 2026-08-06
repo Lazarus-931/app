@@ -602,9 +602,9 @@ private struct WelcomeView: View {
                             .foregroundStyle(.blue)
                             .frame(width: 38, height: 38)
                         VStack(alignment: .leading, spacing: 5) {
-                            Text("Grant permissions once")
+                            Text("Optional permissions")
                                 .font(.headline)
-                            Text("Turn these on now so Nativ never interrupts you later. Everything — audio and transcription — stays local to your Mac.")
+                            Text("Nativ works fully without any of these. Enable them only if you want voice dictation, voice notes, or meeting capture — audio and transcription stay local to your Mac.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -657,7 +657,7 @@ private struct WelcomeView: View {
         case .voice:
             return "Optionally add a voice for reading responses aloud."
         case .permissions:
-            return "Grant the system access Nativ needs to work."
+            return "Optional access for voice features — Nativ works fine without it."
         case .apiKey:
             return "Optionally protect the server’s management endpoints."
         }
