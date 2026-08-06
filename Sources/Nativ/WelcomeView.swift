@@ -47,6 +47,7 @@ private struct WelcomeView: View {
     private enum Step: Equatable {
         case model
         case voice
+        case permissions
         case apiKey
     }
 
@@ -55,6 +56,7 @@ private struct WelcomeView: View {
     @StateObject private var hubLibrary = HuggingFaceModelLibrary()
     @ObservedObject private var downloadManager = HuggingFaceDownloadManager.shared
     @State private var step = Step.model
+    @StateObject private var permissions = NativPermissionStore()
     @State private var selectedModelID: String?
     @State private var downloadedRecommendedModelID: String?
     @State private var didRequestRecommendedModels = false
@@ -93,6 +95,8 @@ private struct WelcomeView: View {
                         modelStep
                     case .voice:
                         voiceStep
+                    case .permissions:
+                        permissionsStep
                     case .apiKey:
                         apiKeyStep
                     }
@@ -114,6 +118,11 @@ private struct WelcomeView: View {
         .onDisappear {
             modelLibrary.cancel()
             hubLibrary.cancel()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+        ) { _ in
+            if step == .permissions { permissions.refresh() }
         }
     }
 
@@ -145,7 +154,11 @@ private struct WelcomeView: View {
                 Capsule()
                     .fill(Color.secondary.opacity(0.22))
                     .frame(width: 34, height: 1)
-                WelcomeStepIndicator(number: 3, title: "API Key", isActive: step == .apiKey)
+                WelcomeStepIndicator(number: 3, title: "Permissions", isActive: step == .permissions)
+                Capsule()
+                    .fill(Color.secondary.opacity(0.22))
+                    .frame(width: 34, height: 1)
+                WelcomeStepIndicator(number: 4, title: "API Key", isActive: step == .apiKey)
             }
         }
         .padding(.bottom, 24)
@@ -359,7 +372,7 @@ private struct WelcomeView: View {
                 Button("Skip") {
                     selectedTTSModelID = nil
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        step = .apiKey
+                        step = .permissions
                     }
                 }
                 .buttonStyle(.bordered)
@@ -368,7 +381,7 @@ private struct WelcomeView: View {
 
                 Button("Continue") {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        step = .apiKey
+                        step = .permissions
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -501,7 +514,7 @@ private struct WelcomeView: View {
             HStack {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        step = .voice
+                        step = .permissions
                     }
                 } label: {
                     Label("Back", systemImage: "chevron.left")
@@ -579,12 +592,72 @@ private struct WelcomeView: View {
         .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var permissionsStep: some View {
+        VStack(spacing: 16) {
+            WelcomeCard {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .top, spacing: 14) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(.blue)
+                            .frame(width: 38, height: 38)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Grant permissions once")
+                                .font(.headline)
+                            Text("Turn these on now so Nativ never interrupts you later. Everything — audio and transcription — stays local to your Mac.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    Divider()
+
+                    NativPermissionsCard(store: permissions)
+
+                    NativPermissionsSummary(store: permissions)
+
+                    Text("You can change these any time from Settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(20)
+            }
+
+            HStack {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        step = .voice
+                    }
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .buttonStyle(.borderless)
+
+                Spacer()
+
+                Button("Continue") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        step = .apiKey
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .onAppear { permissions.refresh() }
+    }
+
     private var headerSubtitle: String {
         switch step {
         case .model:
             return "Choose how your local server should start."
         case .voice:
             return "Optionally add a voice for reading responses aloud."
+        case .permissions:
+            return "Grant the system access Nativ needs to work."
         case .apiKey:
             return "Optionally protect the server’s management endpoints."
         }
