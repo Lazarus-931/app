@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage(AppAppearance.storageKey) private var appearanceRaw = AppAppearance.system.rawValue
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchAtLoginError: String?
+    @StateObject private var permissions = NativPermissionStore()
 
     private var appearance: AppAppearance {
         AppAppearance(rawValue: appearanceRaw) ?? .system
@@ -51,6 +52,13 @@ struct SettingsView: View {
                             .foregroundStyle(.red)
                     }
                 }
+
+                Section("Permissions") {
+                    NativPermissionsCard(store: permissions)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                    NativPermissionsSummary(store: permissions)
+                }
             }
             .formStyle(.grouped)
         }
@@ -59,6 +67,12 @@ struct SettingsView: View {
         }
         .onChange(of: launchAtLogin) { _, enabled in
             updateLaunchAtLogin(enabled)
+        }
+        .onAppear { permissions.refresh() }
+        .onReceive(
+            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+        ) { _ in
+            permissions.refresh()
         }
     }
 
