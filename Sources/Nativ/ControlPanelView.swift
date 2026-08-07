@@ -1553,7 +1553,7 @@ private struct ControlPanelRecentSessionRow: View {
                             .frame(width: 5, height: 5)
                             .accessibilityHidden(true)
 
-                        ShimmerText(text: recent.title, active: isActive)
+                        TextShimmerWave(text: recent.title, active: isActive)
                             .lineLimit(1)
                             .truncationMode(.tail)
 
