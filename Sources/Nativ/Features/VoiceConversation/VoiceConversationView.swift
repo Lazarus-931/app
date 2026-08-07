@@ -5,6 +5,12 @@ import SwiftUI
 struct VoiceConversationView: View {
     @ObservedObject var controller: VoiceConversationController
     let onEnd: () -> Void
+    @State private var appeared = false
+
+    /// The louder of the two live levels, driving the surrounding bloom.
+    private var glow: CGFloat {
+        CGFloat(max(controller.inputLevel, controller.outputLevel))
+    }
 
     var body: some View {
         ZStack {
@@ -13,15 +19,26 @@ struct VoiceConversationView: View {
             VStack(spacing: 26) {
                 Spacer()
 
-                Orb(
-                    color1: colors.0,
-                    color2: colors.1,
-                    inputVolume: controller.inputLevel,
-                    outputVolume: controller.outputLevel,
-                    agentState: controller.state
-                )
-                .frame(width: 260, height: 260)
-                .shadow(color: colors.0.opacity(0.35), radius: 40)
+                ZStack {
+                    Circle()
+                        .fill(colors.0)
+                        .frame(width: 300, height: 300)
+                        .blur(radius: 70)
+                        .scaleEffect(0.85 + glow * 0.5)
+                        .opacity(0.16 + Double(glow) * 0.5)
+                        .animation(.easeOut(duration: 0.18), value: glow)
+
+                    Orb(
+                        color1: colors.0,
+                        color2: colors.1,
+                        inputVolume: controller.inputLevel,
+                        outputVolume: controller.outputLevel,
+                        agentState: controller.state
+                    )
+                    .frame(width: 320, height: 320)
+                }
+                .scaleEffect(appeared ? 1 : 0.86)
+                .opacity(appeared ? 1 : 0)
 
                 Text(stateLabel)
                     .font(.system(size: 13, weight: .semibold))
@@ -42,7 +59,10 @@ struct VoiceConversationView: View {
             }
             .padding(40)
         }
-        .onAppear { controller.start() }
+        .onAppear {
+            controller.start()
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) { appeared = true }
+        }
         .onDisappear { controller.stop() }
     }
 

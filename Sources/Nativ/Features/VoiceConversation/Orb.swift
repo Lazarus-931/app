@@ -83,6 +83,13 @@ class MetalOrbRenderer: NSObject, MTKViewDelegate {
     private var randomOffsets: [Float] = []
     private var currentAgentState: VisualizerAgentState = .unknown
 
+    // Eased targets: the shader uniforms glide toward these each frame so state
+    // colors cross-fade and audio levels follow an attack/release envelope.
+    private var targetColor1 = simd_float4(repeating: 0)
+    private var targetColor2 = simd_float4(repeating: 0)
+    private var targetInput: Float = 0
+    private var targetOutput: Float = 0
+
     // MARK: - Init
 
     override init() {
@@ -100,13 +107,13 @@ class MetalOrbRenderer: NSObject, MTKViewDelegate {
     // MARK: - Public updaters
 
     func updateColors(color1: Color, color2: Color) {
-        uniforms.color1 = colorToSIMD4(color1)
-        uniforms.color2 = colorToSIMD4(color2)
+        targetColor1 = colorToSIMD4(color1)
+        targetColor2 = colorToSIMD4(color2)
     }
 
     func updateVolumes(input: Float, output: Float) {
-        uniforms.inputVolume = max(0, min(1, input))
-        uniforms.outputVolume = max(0, min(1, output))
+        targetInput = max(0, min(1, input))
+        targetOutput = max(0, min(1, output))
     }
 
     func updateAgentState(_ state: VisualizerAgentState) {
@@ -126,10 +133,33 @@ class MetalOrbRenderer: NSObject, MTKViewDelegate {
               let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { return }
 
         let fps = max(view.preferredFramesPerSecond, 1)
-        // Slow down animation when thinking (0.02x speed instead of 0.1x)
-        let animationSpeed: Float = currentAgentState == .thinking ? 0.02 : 0.1
-        animationTime += (1.0 / Float(fps)) * animationSpeed
         uniforms.time = Float(CACurrentMediaTime() - startTime)
+        let t = uniforms.time
+
+        // Glide the state colors toward their target so transitions cross-fade.
+        let colorRate: Float = 0.14
+        uniforms.color1 += (targetColor1 - uniforms.color1) * colorRate
+        uniforms.color2 += (targetColor2 - uniforms.color2) * colorRate
+
+        // Envelope-follow the audio levels: fast attack, slow release.
+        uniforms.inputVolume = Self.follow(uniforms.inputVolume, targetInput)
+        uniforms.outputVolume = Self.follow(uniforms.outputVolume, targetOutput)
+
+        // Deliberate motion per state so the orb is never frozen: a breathing
+        // ripple while thinking, a gentle pulse while listening at rest.
+        switch currentAgentState {
+        case .thinking:
+            uniforms.outputVolume = max(uniforms.outputVolume, 0.12 + 0.10 * sin(t * 2.1))
+            uniforms.inputVolume = max(uniforms.inputVolume, 0.08 + 0.06 * sin(t * 1.4))
+        case .listening:
+            uniforms.inputVolume = max(uniforms.inputVolume, 0.05 + 0.04 * sin(t * 1.2))
+        default:
+            break
+        }
+
+        // Thinking eases the flow speed rather than freezing it.
+        let animationSpeed: Float = currentAgentState == .thinking ? 0.05 : 0.1
+        animationTime += (1.0 / Float(fps)) * animationSpeed
         uniforms.animation = animationTime
         uniforms.offsets = simd_float8(randomOffsets + [0])
 
@@ -146,6 +176,13 @@ class MetalOrbRenderer: NSObject, MTKViewDelegate {
     }
 
     // MARK: - Private
+
+    /// Attack/release envelope follower: rises quickly toward a louder target,
+    /// falls back slowly, so the orb pops on speech and eases down organically.
+    private static func follow(_ current: Float, _ target: Float) -> Float {
+        let rate: Float = target > current ? 0.5 : 0.08
+        return current + (target - current) * rate
+    }
 
     private func generateRandomOffsets() {
         randomOffsets = (0 ..< 7).map { _ in Float.random(in: 0 ... (Float.pi * 2)) }
