@@ -969,6 +969,7 @@ struct ControlPanelView: View {
             recent: recent,
             isSelected: sidebarSelection == recent.selection,
             isCurrent: isCurrentRecent(recent),
+            isActive: isRecentActive(recent),
             isSelectionDisabled: isRecentSelectionDisabled(recent),
             isDeleteDisabled: isRecentDeleteDisabled(recent),
             canRename: canRenameRecent(recent),
@@ -1192,6 +1193,16 @@ struct ControlPanelView: View {
         switch recent.selection {
         case .chat(let sessionID):
             return sessionID == chat.currentSessionID
+        case .tab:
+            return false
+        }
+    }
+
+    /// True while this chat is the one generating a response — drives the title shimmer.
+    private func isRecentActive(_ recent: ControlPanelRecentSession) -> Bool {
+        switch recent.selection {
+        case .chat(let sessionID):
+            return sessionID == chat.activeRequestSessionID
         case .tab:
             return false
         }
@@ -1477,6 +1488,7 @@ private struct ControlPanelRecentSessionRow: View {
     let recent: ControlPanelRecentSession
     let isSelected: Bool
     let isCurrent: Bool
+    let isActive: Bool
     let isSelectionDisabled: Bool
     let isDeleteDisabled: Bool
     let canRename: Bool
@@ -1541,7 +1553,7 @@ private struct ControlPanelRecentSessionRow: View {
                             .frame(width: 5, height: 5)
                             .accessibilityHidden(true)
 
-                        Text(recent.title)
+                        ShimmerText(text: recent.title, active: isActive)
                             .lineLimit(1)
                             .truncationMode(.tail)
 
