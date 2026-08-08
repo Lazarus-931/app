@@ -1535,6 +1535,11 @@ private struct ControlPanelRecentSessionRow: View {
                         .onExitCommand {
                             isRenaming = false
                         }
+                        // Clicking away ends the rename (commit) instead of
+                        // leaving a stuck field/caret that swallows clicks.
+                        .onChange(of: renameFieldFocused) { _, focused in
+                            if !focused, isRenaming { commitRename() }
+                        }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
