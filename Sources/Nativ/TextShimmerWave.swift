@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// A per-character shimmer *wave*: a bright band travels across the glyphs, each
-/// character easing from a dim base to a bright highlight (with a subtle lift)
-/// in sequence — a flowing wave rather than a flat gradient sweep. Animates only
-/// while `active`; otherwise it's plain primary text.
+/// A per-character shimmer *wave* on a single `Text`: a bright band travels
+/// across the glyphs, each character easing from a dim base to a bright
+/// highlight (with a subtle lift) in sequence. Uses an `AttributedString` with
+/// per-character color + baseline offset — so the font, shaping, kerning, and
+/// truncation are identical to normal text (no per-glyph layout breakage).
+/// Animates only while `active`; otherwise it's plain primary text.
 struct TextShimmerWave: View {
     let text: String
     var active: Bool
@@ -11,40 +13,45 @@ struct TextShimmerWave: View {
     var highlight: Color = .primary
     /// Seconds for the wave to travel the whole string once.
     var duration: Double = 1.1
-    /// Width of the bright band, in characters.
+    /// Reach of the band, in characters (its dim falloff).
     var spread: Double = 2.2
+    /// Widens the fully-bright plateau (higher = longer white part).
+    var whiteGain: Double = 1.7
     /// Vertical lift (points) of the brightest characters.
-    var lift: CGFloat = 1.5
-
-    // Cap length so the per-character row can't blow out the sidebar layout.
-    private var displayText: String {
-        text.count > 40 ? String(text.prefix(39)) + "…" : text
-    }
+    var lift: Double = 1.5
 
     var body: some View {
         if active {
             TimelineView(.animation) { timeline in
-                wave(at: timeline.date.timeIntervalSinceReferenceDate)
+                Text(attributed(at: timeline.date.timeIntervalSinceReferenceDate))
             }
         } else {
             Text(text).foregroundStyle(Color.primary)
         }
     }
 
-    private func wave(at time: TimeInterval) -> some View {
-        let chars = Array(displayText)
-        let travel = Double(chars.count) + spread * 2
+    private func attributed(at time: TimeInterval) -> AttributedString {
+        var attr = AttributedString(text)
+        let count = text.count
+        guard count > 0 else { return attr }
+
+        let travel = Double(count) + spread * 2
         let progress = time.truncatingRemainder(dividingBy: duration) / duration
         let head = progress * travel - spread  // sweeps -spread … count+spread, looping
-        return HStack(spacing: 0) {
-            ForEach(Array(chars.enumerated()), id: \.offset) { index, character in
-                let distance = abs(head - Double(index))
-                let raw = max(0, 1 - distance / spread)        // triangular 0…1
-                let eased = raw * raw * (3 - 2 * raw)          // smoothstep
-                Text(String(character))
-                    .foregroundStyle(base.mix(with: highlight, by: eased))
-                    .offset(y: -CGFloat(eased) * lift)
-            }
+
+        var index = attr.startIndex
+        var i = 0
+        while index < attr.endIndex {
+            let next = attr.index(afterCharacter: index)
+            let distance = abs(head - Double(i))
+            let raw = max(0, 1 - distance / spread)      // triangular reach 0…1
+            let widened = min(1, raw * whiteGain)        // clip the top → wider bright plateau
+            let eased = widened * widened * (3 - 2 * widened)  // smoothstep
+            attr[index ..< next].foregroundColor = base.mix(with: highlight, by: eased)
+            attr[index ..< next].baselineOffset = eased * lift
+            index = next
+            i += 1
         }
+        return attr
     }
 }
