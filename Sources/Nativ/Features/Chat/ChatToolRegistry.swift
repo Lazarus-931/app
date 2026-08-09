@@ -182,6 +182,10 @@ enum ChatToolDispatcher {
         return ChatToolExecutionOutcome(content: content, attachments: [])
     }
 
+    static func requiresConsent(for toolName: String?) -> Bool {
+        toolName == ChatWebToolRegistry.browserTaskToolName
+    }
+
     private static func failurePayloadForImageTool(name: String, error: Error) -> String {
         ChatImageToolExecutor().failurePayload(operation: name, error: error)
     }

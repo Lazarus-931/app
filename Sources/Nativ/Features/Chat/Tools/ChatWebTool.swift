@@ -4,6 +4,7 @@ import NativServerKit
 enum ChatWebToolRegistry {
     static let searchToolName = "web_search"
     static let readToolName = "web_read"
+    static let browserTaskToolName = "browser_task"
 
     static func definitions(configuration: BrowsingConfiguration) -> [MLXChatToolDefinition] {
         var definitions: [MLXChatToolDefinition] = []
@@ -24,6 +25,16 @@ enum ChatWebToolRegistry {
                 properties: ["url": .object([
                     "type": .string("string"),
                     "description": .string("The full http or https URL to read.")
+                ])]
+            ))
+        }
+        if configuration.browserProvider == .browserUse {
+            definitions.append(definition(
+                name: browserTaskToolName,
+                description: "Complete an interactive browser task. Ask for user confirmation before acting on a website.",
+                properties: ["task": .object([
+                    "type": .string("string"),
+                    "description": .string("A specific browser task with the intended website and outcome.")
                 ])]
             ))
         }
@@ -52,6 +63,7 @@ enum ChatWebToolError: LocalizedError {
     case unavailable(String)
     case invalidArguments
     case invalidURL
+    case invalidTask
     case requestFailed(Int, String)
 
     var errorDescription: String? {
@@ -59,6 +71,7 @@ enum ChatWebToolError: LocalizedError {
         case .unavailable(let detail): detail
         case .invalidArguments: "The tool call needs a non-empty query or URL."
         case .invalidURL: "Only public http or https URLs can be read."
+        case .invalidTask: "The browser task needs a specific instruction."
         case .requestFailed(let status, let detail): "The browsing provider returned HTTP \(status): \(detail)"
         }
     }
@@ -67,6 +80,7 @@ enum ChatWebToolError: LocalizedError {
 private struct ChatWebArguments: Decodable {
     let query: String?
     let url: String?
+    let task: String?
 }
 
 private struct ChatWebResult: Encodable {
@@ -107,6 +121,11 @@ struct ChatWebToolExecutor {
                 throw ChatWebToolError.unavailable("Choose a page reader in Extensions → Browsing first.")
             }
             result = try await read(url: url, provider: provider)
+        case ChatWebToolRegistry.browserTaskToolName:
+            guard let task = normalized(arguments.task), let provider = configuration.browserProvider else {
+                throw ChatWebToolError.invalidTask
+            }
+            result = try await browserTask(task: task, provider: provider)
         default:
             throw ChatImageToolError.unsupportedTool(name)
         }
@@ -120,8 +139,10 @@ struct ChatWebToolExecutor {
         let provider: String
         if operation == ChatWebToolRegistry.searchToolName {
             provider = configuration.searchProvider?.displayName ?? "None"
-        } else {
+        } else if operation == ChatWebToolRegistry.readToolName {
             provider = configuration.readProvider?.displayName ?? "None"
+        } else {
+            provider = configuration.browserProvider?.displayName ?? "None"
         }
         let payload = ChatWebResult(ok: false, provider: provider, results: nil, content: nil, error: error.localizedDescription)
         let encoder = JSONEncoder()
@@ -201,6 +222,52 @@ struct ChatWebToolExecutor {
         }
     }
 
+    private func browserTask(task: String, provider: BrowsingProvider) async throws -> ChatWebResult {
+        guard provider == .browserUse else {
+            throw ChatWebToolError.unavailable("\(provider.displayName) needs Nativ’s local browser runner before it can complete browser tasks.")
+        }
+        let key = try credential(for: provider)
+        let run = try await post(
+            "https://api.browser-use.com/api/v4/runs",
+            key: key,
+            header: "X-Browser-Use-API-Key",
+            body: ["task": task, "maxCostUsd": 1.0]
+        )
+        guard let runID = string(run["id"]), !runID.isEmpty else {
+            throw ChatWebToolError.unavailable("Browser Use did not return a run identifier.")
+        }
+
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline {
+            try Task.checkCancellation()
+            let status = try await get(
+                "https://api.browser-use.com/api/v4/runs/\(runID)/status",
+                key: key,
+                header: "X-Browser-Use-API-Key"
+            )
+            let state = string(status["status"])?.lowercased() ?? ""
+            if ["completed", "failed", "cancelled"].contains(state) {
+                let completed = try await get(
+                    "https://api.browser-use.com/api/v4/runs/\(runID)",
+                    key: key,
+                    header: "X-Browser-Use-API-Key"
+                )
+                if state == "completed" {
+                    return ChatWebResult(
+                        ok: true,
+                        provider: provider.displayName,
+                        results: nil,
+                        content: pageContent(string(completed["result"]) ?? string(completed["output"]) ?? string(completed["summary"])),
+                        error: nil
+                    )
+                }
+                throw ChatWebToolError.unavailable(string(completed["error"]) ?? "Browser Use \(state) the task.")
+            }
+            try await Task.sleep(for: .seconds(2))
+        }
+        throw ChatWebToolError.unavailable("Browser Use is still working. Try a more focused task.")
+    }
+
     private func credential(for provider: BrowsingProvider) throws -> String {
         guard let key = BrowsingCredentials.load(for: provider) else {
             throw ChatWebToolError.unavailable("Add a \(provider.displayName) API key in Extensions → Browsing.")
@@ -220,6 +287,12 @@ struct ChatWebToolExecutor {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(bearer ? "Bearer \(key)" : key, forHTTPHeaderField: header)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await object(for: request)
+    }
+
+    private func get(_ endpoint: String, key: String, header: String) async throws -> [String: Any] {
+        var request = URLRequest(url: URL(string: endpoint)!)
+        request.setValue(key, forHTTPHeaderField: header)
         return try await object(for: request)
     }
 

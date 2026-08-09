@@ -117,6 +117,22 @@ final class ChatToolRegistryTests: XCTestCase {
         XCTAssertFalse(brave.map(\.function.name).contains(ChatWebToolRegistry.readToolName))
     }
 
+    func testBrowserTaskIsOnlyAdvertisedForAnInteractiveBrowserProvider() {
+        let browserUse = ChatToolRegistry.definitions(
+            canEditImage: false,
+            browsing: BrowsingConfiguration(browserProvider: .browserUse)
+        ).map(\.function.name)
+        let chromium = ChatToolRegistry.definitions(
+            canEditImage: false,
+            browsing: BrowsingConfiguration(browserProvider: .chromium)
+        ).map(\.function.name)
+
+        XCTAssertTrue(browserUse.contains(ChatWebToolRegistry.browserTaskToolName))
+        XCTAssertFalse(chromium.contains(ChatWebToolRegistry.browserTaskToolName))
+        XCTAssertTrue(ChatToolDispatcher.requiresConsent(for: ChatWebToolRegistry.browserTaskToolName))
+        XCTAssertFalse(ChatToolDispatcher.requiresConsent(for: ChatWebToolRegistry.searchToolName))
+    }
+
     func testImageToolSchemasAreGoldenPinned() throws {
         let golden = #"""
             [{"function":{"description":"Create one or more new images from a detailed text prompt. Image-model selection is handled by the app; do not ask for or provide a model identifier.","name":"generate_image","parameters":{"additionalProperties":false,"properties":{"count":{"maximum":4,"minimum":1,"type":"integer"},"height":{"maximum":2048,"minimum":256,"type":"integer"},"prompt":{"description":"A specific visual description or edit instruction.","type":"string"},"seed":{"type":["integer","null"]},"width":{"maximum":2048,"minimum":256,"type":"integer"}},"required":["prompt"],"type":"object"}},"type":"function"},{"function":{"description":"Edit the most recently attached or generated image using a text instruction. Image-model selection is handled by the app; do not ask for or provide a model identifier.","name":"edit_image","parameters":{"additionalProperties":false,"properties":{"count":{"maximum":4,"minimum":1,"type":"integer"},"height":{"maximum":2048,"minimum":256,"type":"integer"},"prompt":{"description":"A specific visual description or edit instruction.","type":"string"},"seed":{"type":["integer","null"]},"width":{"maximum":2048,"minimum":256,"type":"integer"}},"required":["prompt"],"type":"object"}},"type":"function"}]

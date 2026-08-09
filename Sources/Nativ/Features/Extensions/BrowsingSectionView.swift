@@ -39,9 +39,9 @@ struct BrowsingSectionView: View {
             HStack(spacing: 8) {
                 capabilityPill("web_search", enabled: model.settings.browsing.searchProvider != nil)
                 capabilityPill("web_read", enabled: model.settings.browsing.readProvider != nil)
-                capabilityPill("browser_task", enabled: false)
+                capabilityPill("browser_task", enabled: model.settings.browsing.browserProvider == .browserUse)
             }
-            Text("Search results are capped at five and page text is capped before it reaches your model. Browser tasks need explicit approval and are coming after the local runner is complete.")
+            Text("Search results are capped at five and page text is capped before it reaches your model. Browser tasks always ask before a provider can act on the web.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -138,12 +138,14 @@ private struct BrowsingProviderCard: View {
                     if provider.supportsRead { selectButton("Use for reading", isSelected: selectedForRead) { $0.readProvider = provider } }
                     if provider.supportsBrowserTasks {
                         selectButton("Use for browser tasks", isSelected: selectedForBrowser) { $0.browserProvider = provider }
-                            .disabled(true)
+                            .disabled(provider != .browserUse)
                     }
                 }
             }
             if provider.supportsBrowserTasks {
-                Text("Browser tasks are not enabled in this build yet; this provider is listed now so the configuration surface stays in one place.")
+                Text(provider == .browserUse
+                    ? "Every task asks in chat before Browser Use can start it. Nativ caps each task at $1."
+                    : "Local Chromium is reserved for the isolated Nativ Browser Runner, which is not bundled yet.")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
