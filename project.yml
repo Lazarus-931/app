@@ -100,7 +100,8 @@ targets:
         buildPhase: resources
       - path: Extensions/VoiceDictation/Manifest.json
         buildPhase: resources
-      - path: Extensions/Browsing/Manifest.json
+      - path: Extensions/Browsing
+        type: folder
         buildPhase: resources
     dependencies:
       - target: NativServerKit
