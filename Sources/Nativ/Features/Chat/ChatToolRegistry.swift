@@ -12,7 +12,7 @@ struct ChatToolExecutionContext {
     let imageReferences: [ChatImageAttachment]
     let modelSearchPath: String
     let additionalModelSearchPaths: [String]
-    let browsing: BrowsingConfiguration = .init()
+    let browsing: BrowsingConfiguration
     var analyticsDatabaseURL: URL? = nil
     var imageToolDependencies = ChatImageToolDependencies.live
     var imageModelSelection: ChatImageModelSelectionHandler? = nil

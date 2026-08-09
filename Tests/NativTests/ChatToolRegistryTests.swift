@@ -58,6 +58,7 @@ private func makeContext(
         imageReferences: [],
         modelSearchPath: modelSearchPath,
         additionalModelSearchPaths: [],
+        browsing: .init(),
         analyticsDatabaseURL: FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathComponent("Analytics.sqlite3")
