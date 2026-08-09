@@ -194,7 +194,8 @@ private struct BrowsingProviderCard: View {
             model.settings.browsing = browsing.normalized()
             errorText = nil
         }
-        .buttonStyle(isSelected ? .borderedProminent : .bordered)
+        .buttonStyle(.bordered)
+        .tint(isSelected ? .accentColor : .secondary)
         .controlSize(.small)
     }
 
