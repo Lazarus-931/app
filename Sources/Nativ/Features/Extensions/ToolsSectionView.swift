@@ -71,6 +71,7 @@ struct ToolsSectionView: View {
         definitions += ChatServerStatsToolRegistry.definitions()
         definitions += ChatSwitchModelToolRegistry.definitions()
         definitions += ChatImageToolRegistry.definitions(canEdit: false)
+        definitions += ChatWebToolRegistry.definitions(configuration: model.settings.browsing)
         return definitions.map {
             ToolItem(
                 name: $0.function.name,

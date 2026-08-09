@@ -12,6 +12,7 @@ struct ChatToolExecutionContext {
     let imageReferences: [ChatImageAttachment]
     let modelSearchPath: String
     let additionalModelSearchPaths: [String]
+    let browsing: BrowsingConfiguration = .init()
     var analyticsDatabaseURL: URL? = nil
     var imageToolDependencies = ChatImageToolDependencies.live
     var imageModelSelection: ChatImageModelSelectionHandler? = nil
@@ -32,12 +33,16 @@ enum ChatToolRoundGate {
 }
 
 enum ChatToolRegistry {
-    static func definitions(canEditImage: Bool) -> [MLXChatToolDefinition] {
+    static func definitions(
+        canEditImage: Bool,
+        browsing: BrowsingConfiguration = .init()
+    ) -> [MLXChatToolDefinition] {
         var tools = ChatImageToolRegistry.definitions(canEdit: canEditImage)
         tools.append(contentsOf: ChatSystemMonitorToolRegistry.definitions())
         tools.append(contentsOf: ChatModelLibraryToolRegistry.definitions())
         tools.append(contentsOf: ChatServerStatsToolRegistry.definitions())
         tools.append(contentsOf: ChatSwitchModelToolRegistry.definitions())
+        tools.append(contentsOf: ChatWebToolRegistry.definitions(configuration: browsing))
         return tools
     }
 }
@@ -52,6 +57,8 @@ enum ChatToolDispatcher {
         ChatSystemMonitorToolRegistry.toolName: executeSystemMonitorTool,
         ChatModelLibraryToolRegistry.toolName: executeModelLibraryTool,
         ChatServerStatsToolRegistry.toolName: executeServerStatsTool,
+        ChatWebToolRegistry.searchToolName: executeWebTool,
+        ChatWebToolRegistry.readToolName: executeWebTool,
     ]
 
     private static let failureHandlers: [String: FailureHandler] = [
@@ -68,6 +75,12 @@ enum ChatToolDispatcher {
         },
         ChatSwitchModelToolRegistry.toolName: { name, error in
             ChatSwitchModelToolExecutor().failurePayload(operation: name, error: error)
+        },
+        ChatWebToolRegistry.searchToolName: { name, error in
+            ChatWebToolExecutor().failurePayload(operation: name, error: error, configuration: .init())
+        },
+        ChatWebToolRegistry.readToolName: { name, error in
+            ChatWebToolExecutor().failurePayload(operation: name, error: error, configuration: .init())
         },
     ]
 
@@ -158,6 +171,14 @@ enum ChatToolDispatcher {
         context: ChatToolExecutionContext
     ) async throws -> ChatToolExecutionOutcome {
         let content = try ChatServerStatsToolExecutor().execute(call: call, context: context)
+        return ChatToolExecutionOutcome(content: content, attachments: [])
+    }
+
+    private static func executeWebTool(
+        call: MLXChatToolCall,
+        context: ChatToolExecutionContext
+    ) async throws -> ChatToolExecutionOutcome {
+        let content = try await ChatWebToolExecutor().execute(call: call, configuration: context.browsing)
         return ChatToolExecutionOutcome(content: content, attachments: [])
     }
 

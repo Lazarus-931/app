@@ -2,6 +2,18 @@ import XCTest
 @testable import NativServerKit
 
 final class NativSettingsTests: XCTestCase {
+    func testBrowsingConfigurationOnlyKeepsProvidersForTheirCapability() {
+        let configuration = BrowsingConfiguration(
+            searchProvider: .brave,
+            readProvider: .brave,
+            browserProvider: .firecrawl
+        )
+
+        XCTAssertEqual(configuration.searchProvider, .brave)
+        XCTAssertNil(configuration.readProvider)
+        XCTAssertNil(configuration.browserProvider)
+    }
+
     func testLaunchArgumentsRouteEachPreloadedModelToItsOwnFlag() {
         let settings = NativSettings(
             languageModelID: "org/language",

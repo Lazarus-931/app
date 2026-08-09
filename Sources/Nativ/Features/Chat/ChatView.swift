@@ -1249,6 +1249,7 @@ final class ChatViewModel: ObservableObject {
                         imageReferences: references,
                         modelSearchPath: queuedRequest.settings.expandedModelSearchPath,
                         additionalModelSearchPaths: queuedRequest.settings.additionalModelSearchPaths,
+                        browsing: queuedRequest.settings.browsing,
                         imageModelSelection: { [weak self] request in
                             guard let self else {
                                 throw CancellationError()
@@ -1362,7 +1363,8 @@ final class ChatViewModel: ObservableObject {
         let advertisesToolsForModel = advertisesTools && queuedRequest.languageModelSupportsTools
         var toolDefinitions: [MLXChatToolDefinition] = advertisesToolsForModel
             ? ChatToolRegistry.definitions(
-                canEditImage: precedingMessages.contains { !$0.imageAttachments.isEmpty }
+                canEditImage: precedingMessages.contains { !$0.imageAttachments.isEmpty },
+                browsing: settings.browsing
             )
             : []
         if advertisesToolsForModel {

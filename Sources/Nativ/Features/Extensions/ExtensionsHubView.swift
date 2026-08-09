@@ -15,6 +15,7 @@ struct ExtensionsHubView: View {
         case extensions = "Extensions"
         case mcp = "MCP"
         case tools = "Tools"
+        case browsing = "Browsing"
         case skills = "Skills"
 
         var id: String { rawValue }
@@ -25,6 +26,7 @@ struct ExtensionsHubView: View {
             case .extensions: "square.stack.3d.up"
             case .mcp: "server.rack"
             case .tools: "hammer"
+            case .browsing: "globe"
             case .skills: "sparkles"
             }
         }
@@ -95,6 +97,8 @@ struct ExtensionsHubView: View {
             MCPSectionView(host: host, model: model)
         case .tools:
             ToolsSectionView(host: host, model: model)
+        case .browsing:
+            BrowsingSectionView(model: model)
         case .skills:
             SkillsSectionView(model: model)
         }
