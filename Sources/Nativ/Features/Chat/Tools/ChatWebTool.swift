@@ -178,9 +178,10 @@ struct ChatWebToolExecutor {
                 key: key,
                 header: "Authorization",
                 bearer: true,
-                body: ["query": query, "limit": 5, "sources": [["type": "web"]]]
+                body: ["query": query, "limit": 5, "sources": ["web"]]
             )
-            let rows = object["data"] as? [[String: Any]] ?? object["results"] as? [[String: Any]] ?? []
+            let data = object["data"] as? [String: Any] ?? object
+            let rows = data["web"] as? [[String: Any]] ?? data["results"] as? [[String: Any]] ?? []
             return ChatWebResult(ok: true, provider: provider.displayName, results: rows.map(resultItem), content: nil, error: nil)
         case .browserbase:
             let object = try await post(
@@ -342,7 +343,17 @@ struct ChatWebToolExecutor {
               !host.hasSuffix(".local"),
               host != "localhost",
               host != "127.0.0.1",
-              host != "::1"
+              host != "::1",
+              !host.hasPrefix("10."),
+              !host.hasPrefix("127."),
+              !host.hasPrefix("192.168."),
+              !host.hasPrefix("172.16."),
+              !host.hasPrefix("172.17."),
+              !host.hasPrefix("172.18."),
+              !host.hasPrefix("172.19."),
+              !host.hasPrefix("172.2"),
+              !host.hasPrefix("172.30."),
+              !host.hasPrefix("172.31.")
         else { return nil }
         return url
     }
