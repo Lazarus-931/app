@@ -185,6 +185,14 @@ final class NativModel: ObservableObject, ChatModelSwitchingSurface {
         restartServer()
     }
 
+    func setBraveSearchAPIKey(_ token: String?) {
+        let normalizedToken = ServerAPIAuthentication.normalizedToken(token)
+        guard normalizedToken != settings.normalized().braveSearchAPIKey else {
+            return
+        }
+        settings.braveSearchAPIKey = normalizedToken
+    }
+
     func logOutSystemHuggingFaceCredential() throws {
         guard let credential = systemHuggingFaceCredential else {
             return
