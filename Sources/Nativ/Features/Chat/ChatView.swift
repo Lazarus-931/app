@@ -1246,7 +1246,7 @@ final class ChatViewModel: ObservableObject {
                         imageGenerationModelID: activeImageModelID,
                         baseURL: queuedRequest.settings.serverBaseURL,
                         apiKey: queuedRequest.settings.serverAPIKey,
-                        braveSearchAPIKey: queuedRequest.settings.braveSearchAPIKey,
+                        braveSearchAPIKey: BraveSearchCredential.load(),
                         imageReferences: references,
                         modelSearchPath: queuedRequest.settings.expandedModelSearchPath,
                         additionalModelSearchPaths: queuedRequest.settings.additionalModelSearchPaths,
@@ -1364,7 +1364,7 @@ final class ChatViewModel: ObservableObject {
         var toolDefinitions: [MLXChatToolDefinition] = advertisesToolsForModel
             ? ChatToolRegistry.definitions(
                 canEditImage: precedingMessages.contains { !$0.imageAttachments.isEmpty },
-                hasWebSearch: settings.braveSearchAPIKey != nil
+                hasWebSearch: BraveSearchCredential.load() != nil
             )
             : []
         if advertisesToolsForModel {

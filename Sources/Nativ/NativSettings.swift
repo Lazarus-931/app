@@ -333,7 +333,6 @@ struct NativSettings: Codable, Equatable {
     var speechToTextModelID: String?
     var embeddingModelID: String?
     var serverAPIKey: String?
-    var braveSearchAPIKey: String?
     var huggingFaceToken: String?
     var serverHost: String
     var serverPort: Int
@@ -384,7 +383,6 @@ struct NativSettings: Codable, Equatable {
         speechToTextModelID: String? = nil,
         embeddingModelID: String? = nil,
         serverAPIKey: String? = nil,
-        braveSearchAPIKey: String? = nil,
         huggingFaceToken: String? = nil,
         serverHost: String = Self.defaultServerHost,
         serverPort: Int = 8080,
@@ -434,7 +432,6 @@ struct NativSettings: Codable, Equatable {
         self.speechToTextModelID = speechToTextModelID
         self.embeddingModelID = embeddingModelID
         self.serverAPIKey = serverAPIKey
-        self.braveSearchAPIKey = braveSearchAPIKey
         self.huggingFaceToken = huggingFaceToken
         self.serverHost = serverHost
         self.serverPort = serverPort
@@ -542,7 +539,6 @@ struct NativSettings: Codable, Equatable {
         speechToTextModelID = try container.decodeIfPresent(String.self, forKey: .speechToTextModelID) ?? defaults.speechToTextModelID
         embeddingModelID = try container.decodeIfPresent(String.self, forKey: .embeddingModelID) ?? defaults.embeddingModelID
         serverAPIKey = try container.decodeIfPresent(String.self, forKey: .serverAPIKey) ?? defaults.serverAPIKey
-        braveSearchAPIKey = defaults.braveSearchAPIKey
         huggingFaceToken = try container.decodeIfPresent(String.self, forKey: .huggingFaceToken) ?? defaults.huggingFaceToken
         serverHost = try container.decodeIfPresent(String.self, forKey: .serverHost) ?? defaults.serverHost
         serverPort = try container.decodeIfPresent(Int.self, forKey: .serverPort) ?? defaults.serverPort
@@ -666,11 +662,7 @@ struct NativSettings: Codable, Equatable {
 
     static func load(
         from url: URL = storageURL,
-        credentialStore: ServerAPICredentialStoring = ServerAPIKeychain(),
-        braveSearchCredentialStore: ServerAPICredentialStoring = ServerAPIKeychain(
-            service: "dev.local.Nativ.brave-search-api-key",
-            account: "nativ-brave-search"
-        )
+        credentialStore: ServerAPICredentialStoring = ServerAPIKeychain()
     ) -> Self {
         let storedSettings: Self
         if let data = try? Data(contentsOf: url),
@@ -706,23 +698,16 @@ struct NativSettings: Codable, Equatable {
             settings.serverAPIKey = legacyToken
         }
 
-        settings.braveSearchAPIKey = try? braveSearchCredentialStore.load()
-
         return settings
     }
 
     func save(
         to url: URL = storageURL,
-        credentialStore: ServerAPICredentialStoring = ServerAPIKeychain(),
-        braveSearchCredentialStore: ServerAPICredentialStoring = ServerAPIKeychain(
-            service: "dev.local.Nativ.brave-search-api-key",
-            account: "nativ-brave-search"
-        )
+        credentialStore: ServerAPICredentialStoring = ServerAPIKeychain()
     ) {
         let settings = normalized()
         try? settings.writePropertyList(to: url)
         try? credentialStore.save(settings.serverAPIKey)
-        try? braveSearchCredentialStore.save(settings.braveSearchAPIKey)
     }
 
     private func writePropertyList(to url: URL) throws {
@@ -752,7 +737,6 @@ struct NativSettings: Codable, Equatable {
         settings.speechToTextModelID = Self.normalizedModelID(settings.speechToTextModelID)
         settings.embeddingModelID = Self.normalizedModelID(settings.embeddingModelID)
         settings.serverAPIKey = ServerAPIAuthentication.normalizedToken(settings.serverAPIKey)
-        settings.braveSearchAPIKey = ServerAPIAuthentication.normalizedToken(settings.braveSearchAPIKey)
         settings.huggingFaceToken = HuggingFaceAuthentication.normalizedToken(settings.huggingFaceToken)
         settings.serverHost = Self.normalizedServerHost(settings.serverHost)
         settings.serverPort = min(max(settings.serverPort, 1), 65_535)

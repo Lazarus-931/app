@@ -23,6 +23,15 @@ enum ChatWebSearchToolRegistry {
     }
 }
 
+enum BraveSearchCredential {
+    static func load() -> String? {
+        try? ServerAPIKeychain(
+            service: "dev.local.Nativ.brave-search-api-key",
+            account: "nativ-brave-search"
+        ).load()
+    }
+}
+
 enum ChatWebSearchToolError: LocalizedError {
     case unsupportedTool(String)
     case invalidArguments

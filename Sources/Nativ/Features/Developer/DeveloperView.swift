@@ -227,35 +227,23 @@ struct DeveloperView: View {
         )
     }
 
-    private var webSearchAPIKeyPanel: some View {
-        WebSearchAPIKeyPanel(
-            token: model.settings.braveSearchAPIKey,
-            onSetToken: model.setBraveSearchAPIKey
-        )
-    }
-
     private var authenticationPanels: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 12) {
-                    huggingFaceAuthenticationPanel
-                        .frame(minWidth: 300, maxWidth: .infinity)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                huggingFaceAuthenticationPanel
+                    .frame(minWidth: 300, maxWidth: .infinity)
 
-                    serverAPIAuthenticationPanel
-                        .frame(minWidth: 300, maxWidth: .infinity)
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    huggingFaceAuthenticationPanel
-                        .frame(maxWidth: .infinity)
-
-                    serverAPIAuthenticationPanel
-                        .frame(maxWidth: .infinity)
-                }
+                serverAPIAuthenticationPanel
+                    .frame(minWidth: 300, maxWidth: .infinity)
             }
 
-            webSearchAPIKeyPanel
-                .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 12) {
+                huggingFaceAuthenticationPanel
+                    .frame(maxWidth: .infinity)
+
+                serverAPIAuthenticationPanel
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -651,113 +639,6 @@ private struct EditableFieldChrome: ViewModifier {
 private extension View {
     func editableFieldChrome(isFocused: Bool) -> some View {
         modifier(EditableFieldChrome(isFocused: isFocused))
-    }
-}
-
-private struct WebSearchAPIKeyPanel: View {
-    let token: String?
-    let onSetToken: (String?) -> Void
-    @State private var tokenEntry = ""
-    @State private var isEditing = false
-    @State private var showsRemovalConfirmation = false
-    @FocusState private var tokenFieldIsFocused: Bool
-
-    private var activeToken: String? {
-        ServerAPIAuthentication.normalizedToken(token)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "globe")
-                    .foregroundStyle(.purple)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Web Search")
-                        .font(.callout.weight(.semibold))
-                    Text("Brave Search API key for the built-in web search tool.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(activeToken == nil ? "Not Configured" : "Configured")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(activeToken == nil ? .secondary : .green)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            if isEditing {
-                HStack(spacing: 8) {
-                    SecureField("Paste a Brave Search API key", text: $tokenEntry)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($tokenFieldIsFocused)
-                        .onSubmit(saveToken)
-                    Button("Cancel", action: cancelEditing)
-                        .buttonStyle(.bordered)
-                    Button("Save", action: saveToken)
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(ServerAPIAuthentication.normalizedToken(tokenEntry) == nil)
-                }
-                .padding(12)
-                .task { tokenFieldIsFocused = true }
-            } else {
-                HStack {
-                    Text(activeToken == nil ? "Add a key to enable web search." : "The key is stored securely in Keychain.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if activeToken == nil {
-                        Button("Add Key", action: beginEditing)
-                            .buttonStyle(.borderedProminent)
-                    } else {
-                        Button("Change", action: beginEditing)
-                            .buttonStyle(.bordered)
-                        Button("Remove", role: .destructive) {
-                            showsRemovalConfirmation = true
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-                .padding(12)
-            }
-        }
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
-        .alert("Remove the web search API key?", isPresented: $showsRemovalConfirmation) {
-            Button("Remove Key", role: .destructive) {
-                onSetToken(nil)
-            }
-            .keyboardShortcut(.defaultAction)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Web search will no longer be available to models.")
-        }
-    }
-
-    private func beginEditing() {
-        tokenEntry = ""
-        isEditing = true
-    }
-
-    private func cancelEditing() {
-        tokenEntry = ""
-        isEditing = false
-        tokenFieldIsFocused = false
-    }
-
-    private func saveToken() {
-        guard let token = ServerAPIAuthentication.normalizedToken(tokenEntry) else {
-            return
-        }
-        onSetToken(token)
-        cancelEditing()
     }
 }
 

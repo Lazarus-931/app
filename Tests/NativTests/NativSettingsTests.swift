@@ -157,22 +157,6 @@ final class NativSettingsTests: XCTestCase {
         XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("nativ_secret"))
     }
 
-    func testBraveSearchAPIKeyIsOmittedFromEncodedSettings() throws {
-        let data = try PropertyListEncoder().encode(
-            NativSettings(braveSearchAPIKey: "brave_secret")
-        )
-        let propertyList = try XCTUnwrap(
-            PropertyListSerialization.propertyList(
-                from: data,
-                options: [],
-                format: nil
-            ) as? [String: Any]
-        )
-
-        XCTAssertNil(propertyList["braveSearchAPIKey"])
-        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("brave_secret"))
-    }
-
     func testSavingSettingsStoresServerAPIKeyInCredentialStore() throws {
         let url = temporarySettingsURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -188,30 +172,6 @@ final class NativSettingsTests: XCTestCase {
         XCTAssertEqual(
             NativSettings.load(from: url, credentialStore: credentialStore).serverAPIKey,
             "nativ_secret"
-        )
-    }
-
-    func testSavingSettingsStoresBraveSearchAPIKeyInCredentialStore() throws {
-        let url = temporarySettingsURL()
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        let serverCredentialStore = TestServerAPICredentialStore()
-        let braveSearchCredentialStore = TestServerAPICredentialStore()
-
-        NativSettings(braveSearchAPIKey: "  brave_secret\n").save(
-            to: url,
-            credentialStore: serverCredentialStore,
-            braveSearchCredentialStore: braveSearchCredentialStore
-        )
-
-        XCTAssertEqual(braveSearchCredentialStore.token, "brave_secret")
-        XCTAssertNil(try propertyList(at: url)["braveSearchAPIKey"])
-        XCTAssertEqual(
-            NativSettings.load(
-                from: url,
-                credentialStore: serverCredentialStore,
-                braveSearchCredentialStore: braveSearchCredentialStore
-            ).braveSearchAPIKey,
-            "brave_secret"
         )
     }
 
