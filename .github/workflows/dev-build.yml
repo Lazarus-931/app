@@ -39,3 +39,10 @@ jobs:
 
       - name: Build app (unsigned Debug)
         run: make xcode-build
+
+      - name: Upload Nativ app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nativ_browsing-platform
+          path: build/NativDevelopmentDerivedData/Build/Products/Debug/Nativ.app
+          if-no-files-found: error
