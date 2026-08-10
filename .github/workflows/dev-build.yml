@@ -46,3 +46,4 @@ jobs:
           name: Nativ_browsing-platform
           path: build/NativDevelopmentDerivedData/Build/Products/Debug/Nativ.app
           if-no-files-found: error
+          include-hidden-files: true
