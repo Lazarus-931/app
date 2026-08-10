@@ -105,48 +105,80 @@ private struct ChatTranscriptView: View {
         model.settings.normalized().languageModelID
     }
 
+    private var showsModelLoadingOverlay: Bool {
+        chat.messages.isEmpty && chat.visibleMessages.isEmpty && model.isModelLoading
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if chat.visibleMessages.isEmpty {
-                    if chat.messages.isEmpty {
-                        ChatEmptyTranscriptView(
-                            isRunning: model.isRunning,
-                            selectedModelID: selectedModelID,
-                            modelLoadingProgress: model.isModelLoading ? model.modelLoadingProgress : nil
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 120)
-                    }
-                } else {
-                    ForEach(chat.visibleMessages) { message in
-                        let editUnavailableReason = userPromptEditingUnavailableReason(for: message)
-                        ChatMessageRow(
-                            message: message,
-                            imageModelSelectionRequest: chat.imageModelSelectionRequest(
-                                for: message.id
-                            ),
-                            canEditUserMessage: editUnavailableReason == nil,
-                            editUserMessageUnavailableReason: editUnavailableReason,
-                            isEditingUserMessage: chat.promptEditContext?.messageID == message.id,
-                            onEditUserMessage: chat.beginEditingUserMessage,
-                            onConfirmToolConsent: chat.confirmToolConsent,
-                            onDenyToolConsent: chat.denyToolConsent,
-                            onSelectImageModel: chat.selectImageModel,
-                            onCancelImageModelSelection: chat.cancelImageModelSelection
-                        )
-                        .equatable()
-                        .id(message.id)
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if chat.visibleMessages.isEmpty {
+                        if chat.messages.isEmpty && !showsModelLoadingOverlay {
+                            ChatEmptyTranscriptView(
+                                isRunning: model.isRunning,
+                                selectedModelID: selectedModelID
+                            )
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 120)
+                        }
+                    } else {
+                        ForEach(chat.visibleMessages) { message in
+                            let editUnavailableReason = userPromptEditingUnavailableReason(for: message)
+                            ChatMessageRow(
+                                message: message,
+                                imageModelSelectionRequest: chat.imageModelSelectionRequest(
+                                    for: message.id
+                                ),
+                                canEditUserMessage: editUnavailableReason == nil,
+                                editUserMessageUnavailableReason: editUnavailableReason,
+                                isEditingUserMessage: chat.promptEditContext?.messageID == message.id,
+                                onEditUserMessage: chat.beginEditingUserMessage,
+                                onConfirmToolConsent: chat.confirmToolConsent,
+                                onDenyToolConsent: chat.denyToolConsent,
+                                onSelectImageModel: chat.selectImageModel,
+                                onCancelImageModelSelection: chat.cancelImageModelSelection
+                            )
+                            .equatable()
+                            .id(message.id)
+                        }
                     }
                 }
+                .frame(maxWidth: Layout.conversationMaxWidth - conversationWidthReduction)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, Layout.horizontalPadding)
+                .padding(.top, 18)
+                .padding(.bottom, max(18, composerHeight))
             }
-            .frame(maxWidth: Layout.conversationMaxWidth - conversationWidthReduction)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, Layout.horizontalPadding)
-            .padding(.top, 18)
-            .padding(.bottom, max(18, composerHeight))
+            .scrollPosition($transcriptScrollPosition)
+            .onScrollPhaseChange { _, newPhase, context in
+                switch newPhase {
+                case .tracking, .interacting:
+                    isUserScrollingTranscript = true
+                    followsLatestMessage = false
+                case .decelerating:
+                    if isUserScrollingTranscript {
+                        followsLatestMessage = false
+                    }
+                case .idle:
+                    guard isUserScrollingTranscript else { return }
+                    isUserScrollingTranscript = false
+                    followsLatestMessage = isAtTranscriptBottom(context.geometry)
+                case .animating:
+                    break
+                }
+            }
+
+            if showsModelLoadingOverlay {
+                ModelLoadingOverlay(
+                    modelName: model.modelLoadingID ?? selectedModelID ?? "Model",
+                    progress: model.modelLoadingProgress ?? 0
+                )
+                .padding(.bottom, composerHeight)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
         }
-        .scrollPosition($transcriptScrollPosition)
         .overlay(alignment: .bottom) {
             ChatComposerContainer(
                 model: model,
@@ -163,23 +195,6 @@ private struct ChatTranscriptView: View {
                     }
                 }
             )
-        }
-        .onScrollPhaseChange { _, newPhase, context in
-            switch newPhase {
-            case .tracking, .interacting:
-                isUserScrollingTranscript = true
-                followsLatestMessage = false
-            case .decelerating:
-                if isUserScrollingTranscript {
-                    followsLatestMessage = false
-                }
-            case .idle:
-                guard isUserScrollingTranscript else { return }
-                isUserScrollingTranscript = false
-                followsLatestMessage = isAtTranscriptBottom(context.geometry)
-            case .animating:
-                break
-            }
         }
         .onChange(of: chat.scrollToken) { _, _ in
             if followsLatestMessage {
@@ -3249,32 +3264,13 @@ private struct ChatSelectablePromptText: NSViewRepresentable {
     }
 }
 
-private extension Color {
-    static let nativMark = Color(nsColor: NSColor(name: nil) { appearance in
-        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return isDark ? NSColor.black : NSColor(white: 0.86, alpha: 1)
-    })
-}
-
 private struct ChatEmptyTranscriptView: View {
     let isRunning: Bool
     let selectedModelID: String?
-    let modelLoadingProgress: Double?
 
     var body: some View {
         VStack(spacing: 16) {
-            Image("NativMark")
-                .resizable()
-                .renderingMode(.template)
-                .scaledToFit()
-                .frame(width: 64)
-                .foregroundStyle(Color.nativMark)
-
-            if let modelLoadingProgress {
-                ProgressView(value: modelLoadingProgress)
-                    .progressViewStyle(.linear)
-                    .frame(width: 180)
-            }
+            NativMark()
 
             VStack(spacing: 7) {
                 Text(title)
@@ -3287,9 +3283,6 @@ private struct ChatEmptyTranscriptView: View {
     }
 
     private var title: String {
-        if modelLoadingProgress != nil {
-            return "Loading model"
-        }
         if !isRunning {
             return "Server is stopped"
         }
@@ -3300,10 +3293,6 @@ private struct ChatEmptyTranscriptView: View {
     }
 
     private var detail: String {
-        if let modelLoadingProgress {
-            let percentage = Int((modelLoadingProgress * 100).rounded())
-            return "\(selectedModelID ?? "Model") · \(percentage)%"
-        }
         if !isRunning {
             return "Start the server to chat."
         }
@@ -3311,6 +3300,79 @@ private struct ChatEmptyTranscriptView: View {
             return "Choose a model in Models."
         }
         return selectedModelID ?? ""
+    }
+}
+
+private struct NativMark: View {
+    var body: some View {
+        Image("NativMark")
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+            .frame(width: 64)
+            .foregroundStyle(.secondary)
+    }
+}
+
+private struct ModelLoadingMark: View {
+    let progress: Double
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var logoColor: Color {
+        colorScheme == .dark ? .white : .black
+    }
+
+    private var fillColor: Color {
+        colorScheme == .dark ? .black : .white
+    }
+
+    private var clampedProgress: Double {
+        min(max(progress, 0), 1)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                mark
+                    .foregroundStyle(logoColor)
+
+                fillColor
+                    .frame(height: proxy.size.height * clampedProgress)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .mask(mark)
+            }
+        }
+        .frame(width: 88, height: 88)
+        .animation(.easeInOut(duration: 0.16), value: clampedProgress)
+        .accessibilityLabel("Model loading, \(Int((clampedProgress * 100).rounded())) percent")
+    }
+
+    private var mark: some View {
+        Image("NativMark")
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+    }
+}
+
+private struct ModelLoadingOverlay: View {
+    let modelName: String
+    let progress: Double
+
+    var body: some View {
+        VStack(spacing: 16) {
+            ModelLoadingMark(progress: progress)
+
+            VStack(spacing: 7) {
+                Text("Loading model")
+                    .font(.headline)
+                Text("\(modelName) · \(Int((min(max(progress, 0), 1) * 100).rounded()))%")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
