@@ -54,22 +54,6 @@ enum ControlPanelTab: String, CaseIterable, Identifiable {
     }
 }
 
-private enum ChatWorkspaceMode: String, CaseIterable, Identifiable {
-    case chat = "Chat"
-    case images = "Images"
-
-    var id: Self { self }
-
-    var systemImage: String {
-        switch self {
-        case .chat:
-            "bubble.left.and.bubble.right"
-        case .images:
-            "photo.on.rectangle"
-        }
-    }
-}
-
 @MainActor
 final class ControlPanelNavigation: ObservableObject {
     @Published private(set) var requestedTab: ControlPanelTab?
@@ -2431,67 +2415,29 @@ private struct ChatWorkspaceView: View {
     let conversationWidthReduction: CGFloat
 
     var body: some View {
-        VStack(spacing: 0) {
-            modeBar
-
-            Group {
-                switch mode {
-                case .chat:
-                    ChatView(
-                        model: model,
-                        chat: chat,
-                        mcpHost: mcpHost,
-                        showsConfiguration: $showsConfiguration,
-                        conversationWidthReduction: conversationWidthReduction
-                    )
-                case .images:
-                    ImageGenerationView(model: model, viewModel: imageGeneration)
-                }
+        Group {
+            switch mode {
+            case .chat:
+                ChatView(
+                    model: model,
+                    chat: chat,
+                    mcpHost: mcpHost,
+                    workspaceMode: mode,
+                    onSelectWorkspaceMode: onSelectMode,
+                    showsConfiguration: $showsConfiguration,
+                    conversationWidthReduction: conversationWidthReduction
+                )
+            case .images:
+                ImageGenerationView(
+                    model: model,
+                    viewModel: imageGeneration,
+                    workspaceMode: mode,
+                    onSelectWorkspaceMode: onSelectMode
+                )
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.nativMainContentBackground)
-    }
-
-    private var modeBar: some View {
-        ZStack(alignment: .bottom) {
-            Color.nativMainContentBackground
-
-            HStack(spacing: 2) {
-                ForEach(ChatWorkspaceMode.allCases) { item in
-                    Button {
-                        onSelectMode(item)
-                    } label: {
-                        Label(item.rawValue, systemImage: item.systemImage)
-                            .font(.system(size: 12, weight: item == mode ? .semibold : .medium))
-                            .foregroundStyle(item == mode ? Color.primary : Color.secondary)
-                            .padding(.horizontal, 12)
-                            .frame(height: 28)
-                            .background {
-                                if item == mode {
-                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .fill(Color.accentColor.opacity(0.13))
-                                }
-                            }
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(item.rawValue) workspace")
-                    .accessibilityAddTraits(item == mode ? .isSelected : [])
-                }
-            }
-            .padding(3)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            }
-            .padding(.bottom, 8)
-
-            Divider()
-        }
-        .frame(height: 46)
-        .animation(.easeOut(duration: 0.12), value: mode)
     }
 }
 
