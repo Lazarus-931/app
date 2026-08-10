@@ -19,7 +19,10 @@
         "systemImage": "globe",
         "order": 260
       }
-    ]
+    ],
+    "commands": [],
+    "shortcuts": [],
+    "settings": []
   },
   "permissions": [
     "storage.namespaced"
