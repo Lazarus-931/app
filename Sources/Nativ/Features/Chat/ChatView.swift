@@ -176,7 +176,6 @@ private struct ChatTranscriptView: View {
                 )
                 .padding(.bottom, composerHeight)
                 .allowsHitTesting(false)
-                .transition(.opacity)
             }
         }
         .overlay(alignment: .bottom) {
@@ -3319,12 +3318,16 @@ private struct ModelLoadingMark: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private var logoColor: Color {
-        colorScheme == .dark ? .white : .black
+    private var unfilledColor: Color {
+        colorScheme == .dark
+            ? Color(white: 0.26)
+            : Color(white: 0.80)
     }
 
     private var fillColor: Color {
-        colorScheme == .dark ? .black : .white
+        colorScheme == .dark
+            ? Color(white: 0.94)
+            : Color(white: 0.12)
     }
 
     private var clampedProgress: Double {
@@ -3332,19 +3335,19 @@ private struct ModelLoadingMark: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                mark
-                    .foregroundStyle(logoColor)
+        ZStack {
+            mark
+                .foregroundStyle(unfilledColor)
 
-                fillColor
-                    .frame(height: proxy.size.height * clampedProgress)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .mask(mark)
-            }
+            mark
+                .foregroundStyle(fillColor)
+                .mask {
+                    Rectangle()
+                        .scaleEffect(y: clampedProgress, anchor: .bottom)
+                }
         }
         .frame(width: 88, height: 88)
-        .animation(.easeInOut(duration: 0.16), value: clampedProgress)
+        .animation(.linear(duration: 0.12), value: clampedProgress)
         .accessibilityLabel("Model loading, \(Int((clampedProgress * 100).rounded())) percent")
     }
 
