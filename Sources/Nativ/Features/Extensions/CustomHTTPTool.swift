@@ -94,18 +94,18 @@ enum CustomHTTPToolError: LocalizedError {
     case httpStatus(Int, String)
 
     var errorDescription: String? {
-        return switch self {
+        switch self {
         case .invalidName:
-            "Use a short tool name that starts with a letter."
+            return "Use a short tool name that starts with a letter."
         case .invalidEndpoint:
-            "Enter a complete http or https URL."
+            return "Enter a complete http or https URL."
         case .invalidParameters:
-            "Parameters must be a JSON object schema."
+            return "Parameters must be a JSON object schema."
         case .invalidResponse:
-            "The service returned an unreadable response."
+            return "The service returned an unreadable response."
         case let .httpStatus(status, body):
             let detail = body.trimmingCharacters(in: .whitespacesAndNewlines)
-            detail.isEmpty ? "The service returned HTTP \(status)." : "The service returned HTTP \(status): \(detail)"
+            return detail.isEmpty ? "The service returned HTTP \(status)." : "The service returned HTTP \(status): \(detail)"
         }
     }
 }
