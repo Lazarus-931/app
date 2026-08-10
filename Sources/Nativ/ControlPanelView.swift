@@ -2476,6 +2476,7 @@ private struct ChatWorkspaceView: View {
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("\(item.rawValue) workspace")
                     .accessibilityAddTraits(item == mode ? .isSelected : [])
                 }
             }
