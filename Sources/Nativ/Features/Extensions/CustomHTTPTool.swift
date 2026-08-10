@@ -94,7 +94,7 @@ enum CustomHTTPToolError: LocalizedError {
     case httpStatus(Int, String)
 
     var errorDescription: String? {
-        switch self {
+        return switch self {
         case .invalidName:
             "Use a short tool name that starts with a letter."
         case .invalidEndpoint:
