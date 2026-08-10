@@ -3308,8 +3308,8 @@ private struct NativMark: View {
             .resizable()
             .renderingMode(.template)
             .scaledToFit()
-            .frame(width: 64)
-            .foregroundStyle(.secondary)
+            .frame(width: 64, height: 64)
+            .foregroundStyle(.primary)
     }
 }
 
@@ -3325,9 +3325,7 @@ private struct ModelLoadingMark: View {
     }
 
     private var fillColor: Color {
-        colorScheme == .dark
-            ? Color(white: 0.94)
-            : Color(white: 0.12)
+        .primary
     }
 
     private var clampedProgress: Double {
@@ -3346,8 +3344,7 @@ private struct ModelLoadingMark: View {
                         .scaleEffect(y: clampedProgress, anchor: .bottom)
                 }
         }
-        .frame(width: 88, height: 88)
-        .animation(.linear(duration: 0.12), value: clampedProgress)
+        .frame(width: 64, height: 64)
         .accessibilityLabel("Model loading, \(Int((clampedProgress * 100).rounded())) percent")
     }
 
