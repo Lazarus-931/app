@@ -43,12 +43,12 @@ jobs:
       - name: Zip app bundle
         run: |
           set -euo pipefail
-          cd build/XcodeDerivedData/Build/Products/Debug
+          cd build/NativDevelopmentDerivedData/Build/Products/Debug
           ditto -c -k --keepParent Nativ.app nativ-img-chat.zip
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
           name: nativ-img-chat-${{ github.sha }}
-          path: build/XcodeDerivedData/Build/Products/Debug/nativ-img-chat.zip
+          path: build/NativDevelopmentDerivedData/Build/Products/Debug/nativ-img-chat.zip
           retention-days: 7
