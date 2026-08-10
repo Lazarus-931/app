@@ -4,20 +4,27 @@ import SwiftUI
 struct ToolsSectionView: View {
     @ObservedObject var host: MCPHostManager
     @ObservedObject var model: NativModel
-    var onAddViaMCP: () -> Void = {}
     @State private var inspecting: ToolItem?
+    @State private var showsAddTool = false
 
     var body: some View {
         HubSectionScaffold(
             title: "Tools",
-            subtitle: "Capabilities tool-capable models can call. Select a tool to inspect or try it."
+            subtitle: "Built-in capabilities, custom tools, and tools from connected servers."
         ) {
-            Button(action: onAddViaMCP) {
-                Label("Add via MCP", systemImage: "plus")
+            Button {
+                showsAddTool = true
+            } label: {
+                Label("Add tool", systemImage: "plus")
             }
+            .buttonStyle(.borderedProminent)
         } content: {
             VStack(alignment: .leading, spacing: 22) {
                 toolGroup(title: "Built-in", tools: nativeTools)
+
+                if !customTools.isEmpty {
+                    toolGroup(title: "Custom", tools: customTools)
+                }
 
                 ForEach(enabledServers) { server in
                     let tools = mcpTools(for: server)
@@ -29,6 +36,9 @@ struct ToolsSectionView: View {
         }
         .sheet(item: $inspecting) { tool in
             ToolInspectorView(tool: tool, host: host)
+        }
+        .sheet(isPresented: $showsAddTool) {
+            AddCustomToolSheet(model: model)
         }
     }
 
@@ -86,6 +96,18 @@ struct ToolsSectionView: View {
         }
     }
 
+    private var customTools: [ToolItem] {
+        model.settings.customTools.map {
+            ToolItem(
+                name: $0.toolName,
+                title: $0.name,
+                detail: $0.displaySummary,
+                parameters: try? $0.definition().function.parameters,
+                executionHint: "This custom tool sends model-provided JSON to \($0.endpoint) when it is called in chat."
+            )
+        }
+    }
+
     private func mcpTools(for server: MCPServerConfig) -> [ToolItem] {
         let defs = host.toolDefinitions()
         return host.tools(forServer: server.id).map { pair in
@@ -109,6 +131,7 @@ struct ToolItem: Identifiable {
     var parameters: MLXJSONValue?
     var isRunnable: Bool = false
     var isBuiltIn: Bool = false
+    var executionHint: String?
 }
 
 private struct ToolRow: View {
@@ -236,7 +259,7 @@ private struct ToolInspectorView: View {
                     }
                 }
             } else {
-                Text("Built-in tools run inside a chat when a tool-capable model calls them.")
+                Text(tool.executionHint ?? "Built-in tools run inside a chat when a tool-capable model calls them.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -283,6 +306,108 @@ private struct ToolInspectorView: View {
                     running = false
                 }
             }
+        }
+    }
+}
+
+private struct AddCustomToolSheet: View {
+    @ObservedObject var model: NativModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var summary = ""
+    @State private var endpoint = ""
+    @State private var parametersJSON = CustomHTTPTool.defaultParametersJSON
+    @State private var showsParameters = false
+    @State private var validationError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Add tool")
+                    .font(.system(size: 17, weight: .semibold))
+                Text("Create a tool that calls an HTTP endpoint with the model’s JSON arguments.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            form
+
+            if let validationError {
+                Text(validationError)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: dismiss.callAsFunction)
+                Button("Add tool", action: save)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 480)
+    }
+
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            field("Name") {
+                TextField("Weather lookup", text: $name)
+            }
+            field("Description") {
+                TextField("Looks up a forecast for a place.", text: $summary)
+            }
+            field("Endpoint") {
+                TextField("https://example.com/tools/weather", text: $endpoint)
+                    .textContentType(.URL)
+            }
+            Text("Nativ sends a POST request with the model’s JSON arguments to this URL.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            DisclosureGroup("Parameters", isExpanded: $showsParameters) {
+                TextEditor(text: $parametersJSON)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(height: 150)
+                    .padding(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                    )
+                    .padding(.top, 6)
+            }
+            .font(.system(size: 12, weight: .medium))
+        }
+    }
+
+    @ViewBuilder
+    private func field<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+            content()
+        }
+    }
+
+    private func save() {
+        do {
+            let tool = try CustomHTTPTool.make(
+                name: name,
+                summary: summary,
+                endpoint: endpoint,
+                parametersJSON: parametersJSON
+            )
+            guard !model.settings.customTools.contains(where: { $0.toolName == tool.toolName }) else {
+                validationError = "A tool with that name already exists."
+                return
+            }
+            model.settings.customTools.append(tool)
+            dismiss()
+        } catch {
+            validationError = error.localizedDescription
         }
     }
 }
