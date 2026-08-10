@@ -157,7 +157,6 @@ struct HubEmptyHint: View {
 
 private struct ExtensionsSectionView: View {
     @ObservedObject var manager: NativExtensionManager
-    @State private var configuringExtensionID: String?
 
     var body: some View {
         HubSectionScaffold(
@@ -174,13 +173,7 @@ private struct ExtensionsSectionView: View {
             } else {
                 VStack(spacing: 12) {
                     ForEach(manager.records) { record in
-                        ExtensionRow(
-                            record: record,
-                            manager: manager,
-                            onConfigure: {
-                                configuringExtensionID = record.id
-                            }
-                        )
+                        ExtensionRow(record: record, manager: manager)
                     }
                 }
             }
@@ -188,30 +181,12 @@ private struct ExtensionsSectionView: View {
         .onAppear {
             manager.refreshPermissionStatuses()
         }
-        .sheet(
-            isPresented: Binding(
-                get: { configuringExtensionID != nil },
-                set: { isPresented in
-                    if !isPresented { configuringExtensionID = nil }
-                }
-            )
-        ) {
-            if let configuringExtensionID,
-               let configuration = manager.makeConfigurationView(
-                for: configuringExtensionID
-               ) {
-                configuration
-                    .frame(width: 660, height: 350)
-                    .interactiveDismissDisabled(false)
-            }
-        }
     }
 }
 
 private struct ExtensionRow: View {
     let record: NativExtensionRecord
     @ObservedObject var manager: NativExtensionManager
-    let onConfigure: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -233,14 +208,6 @@ private struct ExtensionRow: View {
                         .padding(.top, 1)
                 }
                 Spacer(minLength: 12)
-                if manager.hasConfiguration(for: record.id) {
-                    Button(action: onConfigure) {
-                        Image(systemName: "ellipsis")
-                            .frame(width: 26, height: 26)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Configure \(record.manifest.displayName)")
-                }
                 Toggle(
                     "",
                     isOn: Binding(
@@ -419,7 +386,6 @@ private struct FlowLayout: Layout {
 private struct SkillsSectionView: View {
     @ObservedObject var model: NativModel
     @State private var editing: NativSkill?
-    @State private var pendingDelete: NativSkill?
 
     var body: some View {
         HubSectionScaffold(
@@ -433,21 +399,21 @@ private struct SkillsSectionView: View {
             }
         } content: {
             VStack(spacing: 0) {
-                SkillRow(
-                    skill: NativSkill.builtInToolGuide,
-                    isBuiltIn: true,
-                    onToggle: {},
-                    onEdit: {},
-                    onDelete: {}
-                )
-                ForEach(model.settings.skills) { skill in
-                    Divider()
-                    SkillRow(
-                        skill: skill,
-                        onToggle: { toggle(skill) },
-                        onEdit: { editing = skill },
-                        onDelete: { pendingDelete = skill }
+                if model.settings.skills.isEmpty {
+                    HubEmptyHint(
+                        icon: "sparkles",
+                        text: "No skills yet. Add reusable instructions the model can apply."
                     )
+                } else {
+                    ForEach(Array(model.settings.skills.enumerated()), id: \.element.id) { index, skill in
+                        if index > 0 { Divider() }
+                        SkillRow(
+                            skill: skill,
+                            onToggle: { toggle(skill) },
+                            onEdit: { editing = skill },
+                            onDelete: { delete(skill) }
+                        )
+                    }
                 }
             }
         }
@@ -458,25 +424,6 @@ private struct SkillsSectionView: View {
             } onCancel: {
                 editing = nil
             }
-        }
-        .alert(
-            "Delete skill?",
-            isPresented: Binding(
-                get: { pendingDelete != nil },
-                set: { if !$0 { pendingDelete = nil } }
-            ),
-            presenting: pendingDelete
-        ) { skill in
-            Button("Delete", role: .destructive) {
-                delete(skill)
-                pendingDelete = nil
-            }
-            .keyboardShortcut(.defaultAction)
-            Button("Cancel", role: .cancel) {
-                pendingDelete = nil
-            }
-        } message: { skill in
-            Text("“\(skill.name.isEmpty ? "This skill" : skill.name)” will be permanently deleted.")
         }
     }
 

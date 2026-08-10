@@ -332,6 +332,7 @@ struct NativSettings: Codable, Equatable {
     var additionalModelSearchPaths: [String]
     var languageModelID: String?
     var mcpServers: [MCPServerConfig]
+    var customTools: [CustomHTTPTool]
     var disabledToolNames: [String]
     var skills: [NativSkill]
     var imageGenerationModelID: String?
@@ -382,6 +383,7 @@ struct NativSettings: Codable, Equatable {
         additionalModelSearchPaths: [String] = [],
         languageModelID: String? = nil,
         mcpServers: [MCPServerConfig] = [],
+        customTools: [CustomHTTPTool] = [],
         disabledToolNames: [String] = [],
         skills: [NativSkill] = [],
         imageGenerationModelID: String? = nil,
@@ -431,6 +433,7 @@ struct NativSettings: Codable, Equatable {
         self.additionalModelSearchPaths = additionalModelSearchPaths
         self.languageModelID = languageModelID
         self.mcpServers = mcpServers
+        self.customTools = customTools
         self.disabledToolNames = disabledToolNames
         self.skills = skills
         self.imageGenerationModelID = imageGenerationModelID
@@ -482,6 +485,7 @@ struct NativSettings: Codable, Equatable {
         case additionalModelSearchPaths
         case languageModelID
         case mcpServers
+        case customTools
         case disabledToolNames
         case skills
         case imageGenerationModelID
@@ -538,6 +542,7 @@ struct NativSettings: Codable, Equatable {
         additionalModelSearchPaths = try container.decodeIfPresent([String].self, forKey: .additionalModelSearchPaths) ?? defaults.additionalModelSearchPaths
         languageModelID = try container.decodeIfPresent(String.self, forKey: .languageModelID) ?? legacySelectedModelID ?? defaults.languageModelID
         mcpServers = try container.decodeIfPresent([MCPServerConfig].self, forKey: .mcpServers) ?? defaults.mcpServers
+        customTools = try container.decodeIfPresent([CustomHTTPTool].self, forKey: .customTools) ?? defaults.customTools
         disabledToolNames = try container.decodeIfPresent([String].self, forKey: .disabledToolNames) ?? defaults.disabledToolNames
         skills = try container.decodeIfPresent([NativSkill].self, forKey: .skills) ?? defaults.skills
         imageGenerationModelID = try container.decodeIfPresent(String.self, forKey: .imageGenerationModelID) ?? defaults.imageGenerationModelID
@@ -590,6 +595,7 @@ struct NativSettings: Codable, Equatable {
         try container.encode(additionalModelSearchPaths, forKey: .additionalModelSearchPaths)
         try container.encodeIfPresent(languageModelID, forKey: .languageModelID)
         try container.encode(mcpServers, forKey: .mcpServers)
+        try container.encode(customTools, forKey: .customTools)
         try container.encode(disabledToolNames, forKey: .disabledToolNames)
         try container.encode(skills, forKey: .skills)
         try container.encodeIfPresent(imageGenerationModelID, forKey: .imageGenerationModelID)
