@@ -1243,45 +1243,6 @@ final class ChatViewModel: ObservableObject {
                     continue
                 }
 
-                if ChatToolDispatcher.requiresConsent(for: toolCall.function?.name) {
-                    updateToolMessage(
-                        toolMessageID,
-                        in: queuedRequest.sessionID,
-                        status: .awaitingConsent,
-                        content: "This browser task may navigate sites and interact with public web content.",
-                        attachments: []
-                    )
-                    let approved = await awaitToolConsent(for: toolMessageID)
-                    switch ChatToolConsentRouter.outcome(approved: approved, isCancelled: Task.isCancelled) {
-                    case .cancelled:
-                        cancelToolMessages(
-                            currentID: toolMessageID,
-                            currentCall: toolCall,
-                            remainingCalls: Array(toolCalls.dropFirst(index + 1)),
-                            after: insertionAnchor,
-                            in: queuedRequest.sessionID
-                        )
-                        throw CancellationError()
-                    case .declined:
-                        updateToolMessage(
-                            toolMessageID,
-                            in: queuedRequest.sessionID,
-                            status: .declined,
-                            content: #"{"ok":false,"error":"Browser task was declined."}"#,
-                            attachments: []
-                        )
-                        continue
-                    case .approved:
-                        updateToolMessage(
-                            toolMessageID,
-                            in: queuedRequest.sessionID,
-                            status: .running,
-                            content: "",
-                            attachments: []
-                        )
-                    }
-                }
-
                 do {
                     let references = latestImageReferences(
                         beforeOrAt: toolMessageID,
