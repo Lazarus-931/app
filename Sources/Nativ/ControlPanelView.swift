@@ -1885,7 +1885,7 @@ struct ControlPanelView: View {
         if let survivor = recentSessions.first(where: { !removedIDs.contains($0.id) }) {
             applySidebarSelection(survivor.selection)
         } else if chatWorkspaceMode == .images {
-            imageGeneration.createSession()
+            imageGeneration.beginNewDraft()
             showImageWorkspace()
         } else {
             createChatSession()
@@ -1977,10 +1977,11 @@ struct ControlPanelView: View {
                     showChatWorkspace()
                 },
                 onUseAsReference: { artifact in
+                    imageGeneration.beginNewDraft()
+                    showImageWorkspace()
                     if let attachment = artifacts.chatAttachment(for: artifact) {
                         imageGeneration.useAsReference(attachment)
                     }
-                    showImageWorkspace()
                 }
             )
         case .dashboard:
@@ -2065,8 +2066,6 @@ struct ControlPanelView: View {
                 switch chatWorkspaceMode {
                 case .chat where chat.currentSessionID == nil:
                     chat.createSession()
-                case .images where imageGeneration.currentSessionID == nil:
-                    imageGeneration.createSession()
                 default:
                     break
                 }
@@ -2124,7 +2123,7 @@ struct ControlPanelView: View {
 
     private func createRecentSession() {
         if selectedTab == .chat, chatWorkspaceMode == .images {
-            imageGeneration.createSession()
+            imageGeneration.beginNewDraft()
             showImageWorkspace()
         } else {
             createChatSession()
@@ -2267,7 +2266,7 @@ struct ControlPanelView: View {
         } else {
             switch recent.selection {
             case .imageGeneration:
-                imageGeneration.createSession()
+                imageGeneration.beginNewDraft()
                 showImageWorkspace()
             case .chat, .tab, .extensionPage:
                 createChatSession()
@@ -2351,13 +2350,13 @@ struct ControlPanelView: View {
 
     private var newRecentHelp: String {
         selectedTab == .chat && chatWorkspaceMode == .images
-            ? "Create a new image session"
+            ? "Start a new image draft"
             : "Create a new chat"
     }
 
     private var newRecentTitle: String {
         selectedTab == .chat && chatWorkspaceMode == .images
-            ? "New image session"
+            ? "New image"
             : "New chat"
     }
 
@@ -2373,10 +2372,14 @@ struct ControlPanelView: View {
     }
 
     private func selectChatWorkspaceMode(_ mode: ChatWorkspaceMode) {
+        guard mode != chatWorkspaceMode else {
+            return
+        }
         switch mode {
         case .chat:
             showChatWorkspace()
         case .images:
+            imageGeneration.beginNewDraft(preservingUncommittedDraft: true)
             showImageWorkspace()
         }
     }
@@ -2392,9 +2395,6 @@ struct ControlPanelView: View {
     }
 
     private func showImageWorkspace() {
-        if imageGeneration.currentSessionID == nil {
-            imageGeneration.createSession()
-        }
         chatWorkspaceMode = .images
         selectedTab = .chat
         sidebarSelection = imageGeneration.currentSessionID
@@ -2436,6 +2436,9 @@ private struct ChatWorkspaceView: View {
                 )
             }
         }
+        .id(mode)
+        .transition(.opacity)
+        .animation(.easeOut(duration: 0.1), value: mode)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.nativMainContentBackground)
     }

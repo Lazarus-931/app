@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ImageGenerationView: View {
     private enum Layout {
         static let conversationMaxWidth: CGFloat = 860
+        static let composerMaxWidth: CGFloat = 680
         static let horizontalPadding: CGFloat = 32
     }
 
@@ -25,7 +26,7 @@ struct ImageGenerationView: View {
                     workspaceMode: workspaceMode,
                     onSelectWorkspaceMode: onSelectWorkspaceMode
                 )
-                    .frame(maxWidth: Layout.conversationMaxWidth)
+                    .frame(maxWidth: Layout.composerMaxWidth)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, Layout.horizontalPadding)
                     .onGeometryChange(for: CGFloat.self) { proxy in

@@ -50,5 +50,6 @@ struct ChatWorkspacePicker: View {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         }
+        .animation(.easeOut(duration: 0.1), value: selection)
     }
 }
