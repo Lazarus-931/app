@@ -105,7 +105,7 @@ enum CustomHTTPToolError: LocalizedError {
             "The service returned an unreadable response."
         case let .httpStatus(status, body):
             let detail = body.trimmingCharacters(in: .whitespacesAndNewlines)
-            return detail.isEmpty ? "The service returned HTTP \(status)." : "The service returned HTTP \(status): \(detail)"
+            detail.isEmpty ? "The service returned HTTP \(status)." : "The service returned HTTP \(status): \(detail)"
         }
     }
 }
