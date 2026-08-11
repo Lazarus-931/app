@@ -39,3 +39,41 @@ jobs:
 
       - name: Build app (unsigned Debug)
         run: make xcode-build
+
+      - name: Run focused onboarding metadata tests
+        run: |
+          xcodebuild \
+            -project Nativ.xcodeproj \
+            -scheme Nativ \
+            -configuration Debug \
+            -derivedDataPath build/NativDevelopmentDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            -only-testing:NativTests/HuggingFaceCuratedModelLoaderTests/testBoundsFetchConcurrencyAndPreservesSuccessfulModelOrder \
+            -only-testing:NativTests/HuggingFaceCuratedModelLoaderTests/testRepeatedCuratedModelDecodingIsStable \
+            test
+
+      - name: Zip app bundle
+        run: |
+          set -euo pipefail
+          cd build/NativDevelopmentDerivedData/Build/Products/Debug
+          ditto -c -k --keepParent Nativ.app Nativ-onboarding-stability.zip
+
+      - name: Run focused tests with Thread Sanitizer
+        run: |
+          xcodebuild \
+            -project Nativ.xcodeproj \
+            -scheme Nativ \
+            -configuration Debug \
+            -derivedDataPath build/NativDevelopmentDerivedData \
+            -enableThreadSanitizer YES \
+            CODE_SIGNING_ALLOWED=NO \
+            -only-testing:NativTests/HuggingFaceCuratedModelLoaderTests/testBoundsFetchConcurrencyAndPreservesSuccessfulModelOrder \
+            -only-testing:NativTests/HuggingFaceCuratedModelLoaderTests/testRepeatedCuratedModelDecodingIsStable \
+            test
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nativ-onboarding-stability-${{ github.sha }}
+          path: build/NativDevelopmentDerivedData/Build/Products/Debug/Nativ-onboarding-stability.zip
+          retention-days: 7
