@@ -47,9 +47,10 @@ jobs:
             -scheme Nativ \
             -configuration Debug \
             -derivedDataPath build/NativDevelopmentDerivedData \
-            -only-testing:NativTests/NativSettingsTests/testServerOnlyLaunchArgumentsOmitSelectedModels \
+            CODE_SIGNING_ALLOWED=NO \
             -only-testing:NativTests/NativSettingsTests/testServerStartupModeRoundTripsWithoutChangingLaunchConfiguration \
             -only-testing:NativTests/NativSettingsTests/testMissingServerStartupModePreservesAutomaticStartup \
+            -only-testing:NativTests/NativSettingsTests/testLegacyServerStartupModesMigrateToAutomatic \
             -only-testing:NativTests/NativSettingsTests/testModelManagementClientCallsAuthenticatedUnloadEndpoint \
             test
 
