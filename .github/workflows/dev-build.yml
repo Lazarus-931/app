@@ -40,6 +40,19 @@ jobs:
       - name: Build app (unsigned Debug)
         run: make xcode-build
 
+      - name: Run focused startup and model release tests
+        run: |
+          xcodebuild \
+            -project Nativ.xcodeproj \
+            -scheme Nativ \
+            -configuration Debug \
+            -derivedDataPath build/NativDevelopmentDerivedData \
+            -only-testing:NativTests/NativSettingsTests/testServerOnlyLaunchArgumentsOmitSelectedModels \
+            -only-testing:NativTests/NativSettingsTests/testServerStartupModeRoundTripsWithoutChangingLaunchConfiguration \
+            -only-testing:NativTests/NativSettingsTests/testMissingServerStartupModePreservesAutomaticStartup \
+            -only-testing:NativTests/NativSettingsTests/testModelManagementClientCallsAuthenticatedUnloadEndpoint \
+            test
+
       - name: Zip app bundle
         run: |
           set -euo pipefail
