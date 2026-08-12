@@ -39,3 +39,31 @@ jobs:
 
       - name: Build app (unsigned Debug)
         run: make xcode-build
+
+      - name: Run focused browsing and chat capability tests
+        run: |
+          xcodebuild \
+            -project Nativ.xcodeproj \
+            -scheme Nativ \
+            -configuration Debug \
+            -derivedDataPath build/NativDevelopmentDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            -only-testing:NativTests/ChatCapabilitySelectionTests \
+            -only-testing:NativTests/ChatToolRegistryTests \
+            -only-testing:NativTests/ChatWebReadToolTests \
+            -only-testing:NativTests/ChatWebSearchToolTests \
+            -only-testing:NativTests/ChatWebSourcePresentationTests \
+            test
+
+      - name: Zip app bundle
+        run: |
+          set -euo pipefail
+          cd build/NativDevelopmentDerivedData/Build/Products/Debug
+          ditto -c -k --keepParent Nativ.app Nativ-per-chat-research.zip
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nativ-per-chat-research-${{ github.sha }}
+          path: build/NativDevelopmentDerivedData/Build/Products/Debug/Nativ-per-chat-research.zip
+          retention-days: 7
