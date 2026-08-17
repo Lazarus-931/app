@@ -39,3 +39,23 @@ jobs:
 
       - name: Build app (unsigned Debug)
         run: make xcode-build
+
+      - name: Package review app
+        run: |
+          set -euo pipefail
+          products=build/NativDevelopmentDerivedData/Build/Products/Debug
+          if [ ! -d "$products/Nativ.app" ]; then
+            products=build/XcodeDerivedData/Build/Products/Debug
+          fi
+          ls -la "$products" | head -20
+          ditto -c -k --keepParent "$products/Nativ.app" "$products/Nativ-live-settings.zip"
+
+      - name: Upload review app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nativ-live-settings-${{ github.sha }}
+          path: |
+            build/NativDevelopmentDerivedData/Build/Products/Debug/Nativ-live-settings.zip
+            build/XcodeDerivedData/Build/Products/Debug/Nativ-live-settings.zip
+          if-no-files-found: error
+          retention-days: 7
