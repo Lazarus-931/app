@@ -34,8 +34,41 @@ jobs:
       - name: Cache Swift package dependencies
         uses: actions/cache@v4
         with:
-          path: build/XcodeDerivedData/SourcePackages
+          path: build/NativDevelopmentDerivedData/SourcePackages
           key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
 
       - name: Build app (unsigned Debug)
         run: make xcode-build
+
+      - name: Run focused chat image model tests
+        run: |
+          xcodebuild \
+            -project Nativ.xcodeproj \
+            -scheme Nativ \
+            -configuration Debug \
+            -derivedDataPath build/NativDevelopmentDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            -only-testing:NativTests/ChatToolRegistryTests \
+            -only-testing:NativTests/NativToolRouterTests \
+            -only-testing:NativTests/NativMCPAccessTests \
+            -only-testing:NativTests/ChatImageModelSelectionGateTests \
+            -only-testing:NativTests/ChatTranscriptMessageCodableTests \
+            -only-testing:NativTests/LocalModelDiscoveryTests \
+            -only-testing:NativTests/MLXImageModelResolverTests \
+            test
+
+      - name: Package Agent -2 review app
+        run: |
+          set -euo pipefail
+          products=build/NativDevelopmentDerivedData/Build/Products/Debug
+          mv "$products/Nativ.app" "$products/Nativ-mcp.app"
+          ditto -c -k --keepParent \
+            "$products/Nativ-mcp.app" \
+            "$products/Nativ-mcp.zip"
+
+      - name: Upload Agent -2 review app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nativ-mcp-${{ github.sha }}
+          path: build/NativDevelopmentDerivedData/Build/Products/Debug/Nativ-mcp.zip
+          retention-days: 7
