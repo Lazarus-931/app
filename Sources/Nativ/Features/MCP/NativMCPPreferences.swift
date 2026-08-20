@@ -55,6 +55,9 @@ final class NativMCPPreferences: ObservableObject {
     }
 
     func secret(for agentID: UUID) -> String? {
+        if let injected = ProcessInfo.processInfo.environment["NATIV_TEST_AGENT_KEY"], !injected.isEmpty {
+            return injected
+        }
         if let existing = (try? secrets.load(for: agentID)) ?? nil, !existing.isEmpty {
             return existing
         }
